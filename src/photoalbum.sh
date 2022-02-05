@@ -16,7 +16,7 @@ USAGE
 }
 
 function makemake {
-  [ ! -f ./photoalbumrc ] && cp /etc/default/photoalbum ./photoalbumrc
+  [ ! -f ./photoalbumrc ] && cp $DEFAULTRC ./photoalbumrc
   cat <<MAKEFILE > ./Makefile
 all:
 	photoalbum generate photoalbumrc

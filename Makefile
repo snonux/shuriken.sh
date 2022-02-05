@@ -1,4 +1,5 @@
 NAME=photoalbum
+#DESTDIR=/
 all: version documentation build
 build:
 	test ! -d ./bin && mkdir ./bin || exit 0
