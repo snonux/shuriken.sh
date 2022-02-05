@@ -59,8 +59,12 @@ function scalephotos {
 
     if [ ! -f "${destphoto_nospace}" ]; then
       echo "Scaling ${photo} to ${destphoto_nospace}"
-      convert -auto-orient \
-        -geometry ${GEOMETRY} "${photo}" "${destphoto_nospace}"
+      if [ ! -z "${GEOMETRY}" ]; then
+        convert -auto-orient \
+            -geometry ${GEOMETRY} "${photo}" "${destphoto_nospace}"
+      else
+        convert -auto-orient "${photo}" "${destphoto_nospace}"
+      fi
     fi
   done
 }
