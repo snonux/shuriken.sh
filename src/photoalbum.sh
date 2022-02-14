@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # photoalbum (c) 2011 - 2014 by Paul C. Buetow
-# http://github.com/snonux/photoalbum
+# https://codeberg.org/foozone/photoalbum
 
 declare -r VERSION='PHOTOALBUMVERSION'
 declare -r DEFAULTRC=/etc/default/photoalbum
