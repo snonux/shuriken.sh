@@ -1,5 +1,8 @@
 NAME=photoalbum
-all: version documentation build
+#DESTDIR=/
+all: version build
+version:
+	cut -d' ' -f2 changelog | head -n 1 | sed 's/(//;s/)//' > .version
 build:
 	test ! -d ./bin && mkdir ./bin || exit 0
 	sed "s/PHOTOALBUMVERSION/$$(cat .version)/" src/$(NAME).sh > ./bin/$(NAME)
@@ -18,20 +21,17 @@ deinstall:
 clean:
 	test -d ./bin && rm -Rf ./bin || exit 0
 	test -d ./debian/photoalbum && rm -Rf ./debian/photoalbum || exit 0
-version:
-	cut -d' ' -f2 changelog | head -n 1 | sed 's/(//;s/)//' > .version
 # Builds the documentation into a manpage
-documentation:
-	pod2man --release="$(NAME) $$(cat .version)" \
-		--center="User Commands" ./docs/$(NAME).pod > ./docs/$(NAME).1
-	pod2text ./docs/$(NAME).pod > ./docs/$(NAME).txt
-	# For github page
-	cp ./docs/$(NAME).pod README.pod
-release: all
-	bash -c "git tag $$(cat .version)"
-	git push --tags
-	git commit -a -m 'New release'
-	git push origin master
-clean-top:
-	rm ../$(NAME)_*.tar.gz
-	rm ../$(NAME)_*.changes
+shellcheck:
+	# SC1090: ShellCheck can't follow non-constant source. Use a directive to specify location.
+  # SC2012: Use find instead of ls to better handle non-alphanumeric filenames.
+  # SC2155: Declare and assign separately to avoid masking return values.
+  # SC2164: Use 'cd ... || exit' or 'cd ... || return' in case cd fails.
+  # SC2207: Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+	shellcheck \
+		--exclude SC1090 \
+    --exclude SC2012 \
+  	--exclude SC2155 \
+    --exclude SC2164 \
+    --exclude SC2207 \
+		./src/photoalbum.sh
