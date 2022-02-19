@@ -21,17 +21,22 @@ deinstall:
 clean:
 	test -d ./bin && rm -Rf ./bin || exit 0
 	test -d ./debian/photoalbum && rm -Rf ./debian/photoalbum || exit 0
-# Builds the documentation into a manpage
 shellcheck:
 	# SC1090: ShellCheck can't follow non-constant source. Use a directive to specify location.
-  # SC2012: Use find instead of ls to better handle non-alphanumeric filenames.
-  # SC2155: Declare and assign separately to avoid masking return values.
-  # SC2164: Use 'cd ... || exit' or 'cd ... || return' in case cd fails.
-  # SC2207: Prefer mapfile or read -a to split command output (or quote to avoid splitting).
+	# SC2001: See if you can use ${variable//search/replace} instead.
+	# SC2010: Don't use ls | grep. Use a glob or a for loop with a condition to allow non-alphanumeric filenames.
+	# SC2012: Use find instead of ls to better handle non-alphanumeric filenames.
+	# SC2103: Use a ( subshell ) to avoid having to cd back.
+	# SC2155: Declare and assign separately to avoid masking return values.
+	# SC2164: Use 'cd ... || exit' or 'cd ... || return' in case cd fails.
+	# SC2207: Prefer mapfile or read -a to split command output (or quote to avoid splitting).
 	shellcheck \
 		--exclude SC1090 \
-    --exclude SC2012 \
-  	--exclude SC2155 \
-    --exclude SC2164 \
-    --exclude SC2207 \
+		--exclude SC2001 \
+		--exclude SC2010 \
+		--exclude SC2012 \
+		--exclude SC2103 \
+		--exclude SC2155 \
+		--exclude SC2164 \
+		--exclude SC2207 \
 		./src/photoalbum.sh
