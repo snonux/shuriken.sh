@@ -73,7 +73,7 @@ albumhtml () {
   declare photos_dir="${1}" ; shift
   declare html_dir="${1}"   ; shift
   declare thumbs_dir="${1}" ; shift
-  declare backhref="${1}"   ; shift
+  export backhref="${1}"   ; shift
 
   declare -i num=1
   declare -i i=0
@@ -122,10 +122,10 @@ albumhtml () {
   template footer \
     "$(cd "${DIST_DIR}/${html_dir}";ls -t page-*.html | head -n 1)"
 
-  cd "${DIST_DIR}/${html_dir}" && ls *.html | grep -v page- | cut -d'-' -f1 | uniq |
+  cd "${DIST_DIR}/${html_dir}" && ls ./*.html | grep -v page- | cut -d'-' -f1 | uniq |
   while read prefix; do 
-    declare page="$(ls -t ${prefix}-*.html | head -n 1 | sed 's#\(.*\)-.*.html#\1#')"
-    declare lastview="$(ls -t ${prefix}-*.html | head -n 1 | sed 's/.*-\(.*\).html/\1/')"
+    declare page="$(ls -t "${prefix}"-*.html | head -n 1 | sed 's#\(.*\)-.*.html#\1#')"
+    declare lastview="$(ls -t "${prefix}"-*.html | head -n 1 | sed 's/.*-\(.*\).html/\1/')"
 
     declare prevredirect="${page}-0"
     declare nextredirect="${page}-$((lastview+1))"
@@ -133,7 +133,7 @@ albumhtml () {
     declare redirect_page="$(( page-1 ))-${MAXPREVIEWS}"
     template redirect "${prevredirect}.html"
 
-    if [ ${lastview} -eq ${MAXPREVIEWS} ]; then
+    if [ "$lastview" -eq "$MAXPREVIEWS" ]; then
       declare redirect_page="$(( page+1 ))-1"
 
     else
@@ -141,6 +141,7 @@ albumhtml () {
       template redirect "0-${MAXPREVIEWS}.html"
       redirect_page='1-1'
     fi
+    export redirect_page
     template redirect "${nextredirect}.html"
   done
 
@@ -160,18 +161,20 @@ albumindexhtml () {
 
   for dir in ${dirs[*]}; do
     declare basename="$(basename "$dir")"
-    declare album="$basename"
+    # TODO: All exported vars in UPPERCASE
+    export album="$basename"
     declare thumbs_dir="${DIST_DIR}/thumbs/${basename}"
     declare pictures="$(ls "${thumbs_dir}" | wc -l)"
-    declare random_num="$(( 1 + $RANDOM % $pictures ))"
-    declare pages="$(( $pictures / $MAXPREVIEWS + 1 ))"
+    declare random_num="$(( 1 + RANDOM % pictures ))"
+    declare pages="$(( pictures / MAXPREVIEWS + 1 ))"
 
-    declare random_thumb="./thumbs/${basename}"/$(find \
+    export random_thumb="./thumbs/${basename}"/$(find \
       "${thumbs_dir}" -type f -printf "%f\n" |
       head -n ${random_num} | tail -n 1)
 
-    [ ${pages} -gt 1 ] && declare s='s' || declare s=''
-    declare description="${pictures} pictures / ${pages} page${s}"
+    declare s=''
+    [ ${pages} -gt 1 ] && s='s'
+    export description="${pictures} pictures / ${pages} page${s}"
     template 'index-preview' 'index.html'
   done
 
@@ -198,11 +201,11 @@ generate () {
 
   # Figure out wether we want sub-albums or not
   if [[ "${SUB_ALBUMS}" != yes || ${#dirs[*]} -eq 0 ]]; then
-    declare is_subalbum='no'
+    export is_subalbum='no'
     albumhtml 'photos' 'html' 'thumbs' '..'
 
   else
-    declare is_subalbum='yes'
+    export is_subalbum='yes'
     for dir in ${dirs[*]}; do
       declare basename="$(basename "${dir}")"
       albumhtml "photos/${basename}" "html/${basename}" "thumbs/${basename}" '../..'
@@ -223,21 +226,25 @@ generate () {
 }
 
 recursive () {
-  local dir="$(cut -d: -f2 <<< $ARG1)"
+  local dir="$(cut -d: -f2 <<< "$ARG1")"
 
   if [ ! -d "$dir" ]; then
     echo "Directory $dir does not exist!"
     exit 1
   fi
 
-  find $dir -type d | grep -v '\.HTML' | while read d; do
+  find "$dir" -type d | grep -v '\.HTML' | while read -r d; do
     test ! -d "$d.HTML" && mkdir "$d.HTML "
     rc_file="$d.HTML/photoalbumrc"
     cd "$d.HTML" && cp "$RC_FILE" "$rc_file" && chmod 644 "$rc_file"
-    echo "INCOMING_DIR=$d" >> "$rc_file"
-    echo "DIST_DIR=$d.HTML" >> "$rc_file"
-    echo "ORIGINAL_BASEPATH=../../$(basename $d)" >> "$rc_file"
-    echo 'FIND_ARGS="-maxdepth 1"' >> "$rc_file"
+
+    {
+        echo "INCOMING_DIR=$d";
+        echo "DIST_DIR=$d.HTML";
+        echo "ORIGINAL_BASEPATH=../../$(basename "$d")";
+        echo 'FIND_ARGS="-maxdepth 1"';
+    } >> "$rc_file"
+
     photoalbum generate "$rc_file"
     cd - &>/dev/null
     test -d "$d.HTML" && test ! -d "$d.HTML/thumbs" && rm -Rf "$d.HTML"
