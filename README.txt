@@ -3,17 +3,17 @@ NAME
     static web photo albums.
 
 SYNOPSIS
-    photoalbum clean|generate|version|recursive:DIR [rcfile] photoalbum
-    makemake
+    photoalbum clean|generate|version [rcfile] photoalbum
+    photoalbum makemake
 
     clean
         Cleans up the working space
 
-    version
-        Prints out the version
-
     generate
         Generates the static photoalbum
+
+    version
+        Prints out the version
 
     makemake
         Creates a Makefile and photoalbumrc in the current working
@@ -41,5 +41,5 @@ LICENSE
     See package description or project website.
 
 AUTHOR
-    Paul Buetow - <http://photoalbum.buetow.org>
+    Paul Buetow - <https://codeberg.org/foozone/photoalbum>
 

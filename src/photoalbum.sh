@@ -11,7 +11,7 @@ declare  RC_FILE="$1" ; shift
 usage () {
     cat - <<USAGE >&2
     Usage: 
-    $0 clean|generate|version|makemake|recursive:DIR [rcfile]
+    $0 clean|generate|version|makemake [rcfile]
 USAGE
 }
 
@@ -227,31 +227,6 @@ generate () {
     fi
 }
 
-recursive () {
-    local dir="$(cut -d: -f2 <<< "$ARG1")"
-
-    if [ ! -d "$dir" ]; then
-        echo "Directory $dir does not exist!"
-        exit 1
-    fi
-
-    find "$dir" -type d | grep -v '\.HTML' |
-    while read -r d; do
-        test ! -d "$d.HTML" && mkdir "$d.HTML "
-        rc_file="$d.HTML/photoalbumrc"
-        cd "$d.HTML" && cp "$RC_FILE" "$rc_file" && chmod 644 "$rc_file"
-        {
-            echo "INCOMING_DIR=$d";
-            echo "DIST_DIR=$d.HTML";
-            echo "ORIGINAL_BASEPATH=../../$(basename "$d")";
-        } >> "$rc_file"
-
-        photoalbum generate "$rc_file"
-        cd - &>/dev/null
-        test -d "$d.HTML" && test ! -d "$d.HTML/thumbs" && rm -Rf "$d.HTML"
-    done
-}
-
 if [ -z "$RC_FILE" ]; then
     if [ -f photoalbumrc ]; then
         RC_FILE=photoalbumrc
@@ -274,7 +249,6 @@ case "$ARG1" in
     generate)   generate;;
     version)    echo "This is Photoalbum Version $VERSION";;
     makemake)   makemake;;
-    recursive*) recursive;;
     *)          usage;;
 esac
 
