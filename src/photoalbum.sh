@@ -82,7 +82,6 @@ albumhtml () {
     declare name="page-$num"
 
     template header "$name.html"
-    template header-first-add "$name.html"
 
     cd "$DIST_DIR/$photos_dir" && find ./ -type f | sort | sed 's;^\./;;' |
     while read -r photo; do 
@@ -160,7 +159,6 @@ albumindexhtml () {
     declare backhref='..'
 
     template 'header' 'index.html'
-    template 'header-first-add' 'index.html'
 
     for dir in ${dirs[*]}; do
         declare basename="$(basename "$dir")"
@@ -177,7 +175,7 @@ albumindexhtml () {
         declare s=''
         [ $pages -gt 1 ] && s='s'
         export description="$pictures pictures / $pages page$s"
-        template 'index-preview' 'index.html'
+        template 'index.html'
     done
 
     template 'footer' 'index.html'
