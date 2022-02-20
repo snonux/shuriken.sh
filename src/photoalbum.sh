@@ -62,8 +62,8 @@ scalephotos () {
         fi
 
         echo "Scaling $photo to $destphoto_nospace"
-        if [ -n "$GEOMETRY" ]; then
-            convert -auto-orient -geometry "$GEOMETRY" "$photo" "$destphoto_nospace"
+        if [ -n "$HEIGHT" ]; then
+            convert -auto-orient -geometry "$HEIGHT" "$photo" "$destphoto_nospace"
         else
             convert -auto-orient "$photo" "$destphoto_nospace"
         fi
@@ -140,7 +140,7 @@ albumhtml () {
             declare dirname="$DIST_DIR/$thumbs_dir"
             test ! -d "$dirname" && mkdir -p "$dirname"
             echo "Creating thumb $DIST_DIR/$thumbs_dir/$photo"
-            convert -geometry "x$THUMBGEOMETRY" "$photo" "$DIST_DIR/$thumbs_dir/$photo"
+            convert -geometry "x$THUMBHEIGHT" "$photo" "$DIST_DIR/$thumbs_dir/$photo"
 
             dirname="$DIST_DIR/$blurs_dir"
             test ! -d "$dirname" && mkdir -p "$dirname"
