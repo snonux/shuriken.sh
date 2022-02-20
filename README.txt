@@ -1,6 +1,8 @@
 NAME
-    photoalbum - photoalbum is a minimal bash script for linux to generate
-    static web photo albums.
+    photoalbum is a minimal bash script for linux to generate static
+    web photo albums.
+
+    Example page: https://sidewalk.ninja
 
 SYNOPSIS
     photoalbum clean|generate|version [rcfile] photoalbum
@@ -19,7 +21,6 @@ SYNOPSIS
         Creates a Makefile and photoalbumrc in the current working
         directory.
 
-  RCFILE
   TUTORIAL
     * See if /etc/default/photoalbum fits your needs. If not, copy
     /etc/default/photoalbum to ~/.photoalbumrc in order to customize it.
