@@ -1,19 +1,16 @@
 cat <<END
-</div>
-END
-
-cat <<END
 <div class="footer">
 END
 
 if [ "${TARBALL_INCLUDE}" = 'yes' ]; then
 cat <<END
-  Download all photos in original size <a href='${backhref}/${tarball_name}'>here</a><br /><br />
+    Download all photos in original size <a href='${backhref}/${tarball_name}'>here</a><br /><br />
 END
 fi
 
 cat <<END
-  Page generated at $(date) using Bash and ImageMagick at $(uname); &lt;photoalbum@dev.buetow.org&gt;
+    Page generated at $(date) using Bash+ImageMagick -
+    <a href="https://codeberg.org/foozone/photoalbum">codeberg.org/foozone/photoalbum</a>
 </div>
 
 </body>

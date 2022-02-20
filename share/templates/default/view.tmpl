@@ -1,13 +1,15 @@
 cat <<END
-<p>
-    <a href="${num}-$((i-1)).html">&lt;&lt;&lt;</a>
+<div class="text">
+    <a href="${num}-$((i-1)).html">&lArr;</a>
     <a href="page-${num}.html#$photo">Thumbnails</a>
-    <a href="${num}-$((i+1)).html">&gt;&gt;&gt;</a>
-</p>
+    <a href="${num}-$((i+1)).html">&rArr;</a>
+</div>
 
-<a href="${num}-$((i+1)).html">
-    <img border='0' src='${backhref}/${photos_dir}/${photo}' />
-</a>
+<div class='view'>
+    <a href="${num}-$((i+1)).html">
+        <img class='view ${animation_class}' border='0' src='${backhref}/${photos_dir}/${photo}' />
+    </a>
+</div>
 
 <p>
     <a href="${backhref}/${photos_dir}/${photo}">Direct link</a>

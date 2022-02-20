@@ -1,5 +1,5 @@
 if [ "${is_subalbum}" = yes ]; then
-  GOTO_OVERVIEW="<a href='${backhref}/index.html'>Go to Album overview</a>"
+    GOTO_OVERVIEW="<a href='${backhref}/index.html'>Go to Album overview</a>"
 fi
 
 cat <<END
@@ -8,19 +8,52 @@ cat <<END
     <title>${TITLE}</title>
     <style type="text/css">
         body {
-            background-color: #000000;
-            color: #FFFFFF;
+            background-color: #ffffff;
+            background-image: url('${backhref}/${blurs_dir}/${background_image}');
+            background-size: cover;
+            background-repeat: no-repeat;
+            text-align: center;
+
+            color: #000000;
             font-family: verdana, sans-serif;
             width: 100%;
         }
+
         a {
-            color: #FFFFFF;
+            color: #000000;
         }
+
+        div.text, div.footer, div.navigator {
+            background-color: #ffffff;
+            width: 1024px;
+            border: 15px solid #000000;
+            padding: 10px;
+            margin-left: auto;
+            margin-right: auto;
+            margin-top: 10;
+            margin-bottom: 10;
+        }
+
+        img {
+            padding: 5px;
+        }
+
+        img.thumb:hover {
+            -webkit-transform: scaleX(-1);
+            transform: scaleX(-1);
+        }
+
+        .animate-none{}
+        .animate-fading{animation:fading 10s}@keyframes fading{0%{opacity:0}50%{opacity:1}100%{opacity:0}}
+        .animate-opacity{animation:opac 0.4s}@keyframes opac{from{opacity:0} to{opacity:1}}
+        .animate-top{position:relative;animation:animatetop 0.4s}@keyframes animatetop{from{top:-300px;opacity:0} to{top:0;opacity:1}}
+        .animate-left{position:relative;animation:animateleft 0.4s}@keyframes animateleft{from{left:-300px;opacity:0} to{left:0;opacity:1}}
+        .animate-right{position:relative;animation:animateright 0.4s}@keyframes animateright{from{right:-300px;opacity:0} to{right:0;opacity:1}}
+        .animate-bottom{position:relative;animation:animatebottom 0.4s}@keyframes animatebottom{from{bottom:-300px;opacity:0} to{bottom:0;opacity:1}}
+        .animate-zoom {animation:animatezoom 0.4s}@keyframes animatezoom{from{transform:scale(0)} to{transform:scale(1)}}
     </style>
 </head>
 
 <body>
-  <h1>${TITLE}</h1>
   <p>${GOTO_OVERVIEW}</p>
-  <div>
 END

@@ -70,10 +70,28 @@ scalephotos () {
     done
 }
 
+randomphoto () {
+    declare photos_dir="$1" ; shift
+    basename $(find "$photos_dir" -type f -maxpdeth 1 -mindepth 1 | sort -R | head -n 1)
+}
+
+random_animation_css_class () {
+    cat <<END | grep -v fading | sort -R | head -n 1
+animate-fading
+animate-opacity
+animate-top
+animate-left
+animate-right
+animate-bottom
+animate-zoom
+END
+}
+
 albumhtml () {
     declare photos_dir="$1" ; shift
     declare html_dir="$1"   ; shift
     declare thumbs_dir="$1" ; shift
+    declare blurs_dir="$1"  ; shift
     export backhref="$1"    ; shift
 
     declare -i num=1
@@ -81,15 +99,17 @@ albumhtml () {
 
     declare name="page-$num"
 
-    template header "$name.html"
+    # Random background image for preview page.
+    export background_image="$(randomphoto $photos_dir)"
+    template 'header' "$name.html"
 
     cd "$DIST_DIR/$photos_dir" && find ./ -type f | sort | sed 's;^\./;;' |
     while read -r photo; do 
-        : $(( i++ ))
+        let i++
 
         if [ "$i" -gt "$MAXPREVIEWS" ]; then
             i=1
-            : $(( num++ ))
+            let num++
 
             declare next="page-$num"
             template next "$name.html"
@@ -97,27 +117,36 @@ albumhtml () {
 
             export prev="$name"
             declare name="$next"
+            export background_image="$(randomphoto $photos_dir)"
             template header "$name.html"
             template prev "$name.html"
         fi
 
         # Preview page
+        export animation_class=$(random_animation_css_class)
         template preview "$name.html"
+
         # View page
+        export background_image="$photo"
         template header "$num-$i.html"
+
+        export animation_class='animate-none'
         template view "$num-$i.html"
         template footer "$num-$i.html"
 
-        if [ -f "$DIST_DIR/$thumbs_dir/$photo" ]; then 
-            echo "Already exists: $DIST_DIR/$thumbs_dir/$photo"
-            continue
+        if [[ -f "$DIST_DIR/$thumbs_dir/$photo" && -f "$DIST_DIR/$blurs_dir/$photo" ]]; then 
+            echo "Already exists: $DIST_DIR/$thumbs_dir/$photo and $DIST_DIR/$blurs_dir/$photo"
+        else
+            declare dirname="$DIST_DIR/$thumbs_dir"
+            test ! -d "$dirname" && mkdir -p "$dirname"
+            echo "Creating thumb $DIST_DIR/$thumbs_dir/$photo"
+            convert -geometry "x$THUMBGEOMETRY" "$photo" "$DIST_DIR/$thumbs_dir/$photo"
+
+            dirname="$DIST_DIR/$blurs_dir"
+            test ! -d "$dirname" && mkdir -p "$dirname"
+            echo "Creating blur $DIST_DIR/$blurs_dir/$photo"
+            convert -blur 0x6 "$DIST_DIR/$thumbs_dir/$photo" "$DIST_DIR/$blurs_dir/$photo"
         fi
-
-        dirname="$(dirname "$DIST_DIR/$thumbs_dir/$photo")"
-        test ! -d "$dirname" && mkdir -p "$dirname"
-
-        echo "Creating thumb $DIST_DIR/$thumbs_dir/$photo"
-        convert -geometry "x$THUMBGEOMETRY" "$photo" "$DIST_DIR/$thumbs_dir/$photo"
     done
 
     template footer "$(cd "$DIST_DIR/$html_dir";ls -t page-*.html | head -n 1)"
@@ -152,33 +181,8 @@ albumhtml () {
     template 'redirect' 'index.html'
 }
 
-albumindexhtml () {
-    declare -a dirs=( "$1" )
-    declare is_subalbum='no'
-    declare html_dir='html'
-    declare backhref='..'
-
-    template 'header' 'index.html'
-
-    for dir in ${dirs[*]}; do
-        declare basename="$(basename "$dir")"
-        export album="$basename"
-        declare thumbs_dir="$DIST_DIR/thumbs/$basename"
-        declare pictures="$(ls "$thumbs_dir" | wc -l)"
-        declare random_num="$(( 1 + RANDOM % pictures ))"
-        declare pages="$(( pictures / MAXPREVIEWS + 1 ))"
-
-        export random_thumb="./thumbs/$basename"/$(find \
-            "$thumbs_dir" -type f -printf "%f\n" |
-            head -n $random_num | tail -n 1)
-
-        declare s=''
-        [ $pages -gt 1 ] && s='s'
-        export description="$pictures pictures / $pages page$s"
-        template 'index.html'
-    done
-
-    template 'footer' 'index.html'
+randomphoto () {
+    ls -f "$DIST_DIR/photos/" | sort -R | head -n 1
 }
 
 generate () {
@@ -199,21 +203,7 @@ generate () {
     find "$DIST_DIR" -type f -name \*.html -delete
     declare -a dirs=( $(find "$DIST_DIR/photos" -mindepth 1 -maxdepth 1 -type d | sort) )
 
-    # Figure out wether we want sub-albums or not
-    if [[ "$SUB_ALBUMS" != yes || ${#dirs[*]} -eq 0 ]]; then
-        export is_subalbum='no'
-        albumhtml 'photos' 'html' 'thumbs' '..'
-
-    else
-        export is_subalbum='yes'
-        for dir in ${dirs[*]}; do
-            declare basename="$(basename "$dir")"
-            albumhtml "photos/$basename" "html/$basename" "thumbs/$basename" '../..'
-        done
-
-        # Create an album selection screen
-        albumindexhtml "${dirs[*]}"
-    fi
+    albumhtml 'photos' 'html' 'thumbs' 'blurs' '..'
 
     # Create top level index/redirect page
     declare html_dir='./'
