@@ -149,7 +149,7 @@ albumhtml () {
             dirname="$DIST_DIR/$blurs_dir"
             test ! -d "$dirname" && mkdir -p "$dirname"
             echo "Creating blur $DIST_DIR/$blurs_dir/$photo"
-            convert -blur 0x6 "$DIST_DIR/$thumbs_dir/$photo" "$DIST_DIR/$blurs_dir/$photo"
+            convert -blur 0x8 "$DIST_DIR/$thumbs_dir/$photo" "$DIST_DIR/$blurs_dir/$photo"
         fi
     done
 
