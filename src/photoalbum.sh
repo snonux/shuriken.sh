@@ -61,10 +61,12 @@ scalephotos () {
             continue
         fi
 
-        echo "Scaling $photo to $destphoto_nospace"
+        echo "Processing $photo to $destphoto_nospace"
         if [ -n "$HEIGHT" ]; then
+            # Scale down size.
             convert -auto-orient -geometry "$HEIGHT" "$photo" "$destphoto_nospace"
         else
+            # Keep original size
             convert -auto-orient "$photo" "$destphoto_nospace"
         fi
     done
@@ -140,7 +142,9 @@ albumhtml () {
             declare dirname="$DIST_DIR/$thumbs_dir"
             test ! -d "$dirname" && mkdir -p "$dirname"
             echo "Creating thumb $DIST_DIR/$thumbs_dir/$photo"
-            convert -geometry "x$THUMBHEIGHT" "$photo" "$DIST_DIR/$thumbs_dir/$photo"
+            # Double the height, as CSS will scale up/down images based on boxing too.
+            declare height=$((THUMBHEIGHT * 2))
+            convert -geometry "x$height" "$photo" "$DIST_DIR/$thumbs_dir/$photo"
 
             dirname="$DIST_DIR/$blurs_dir"
             test ! -d "$dirname" && mkdir -p "$dirname"

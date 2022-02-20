@@ -8,15 +8,12 @@ cat <<END
     <title>${TITLE}</title>
     <style type="text/css">
         body {
-            background-color: #ffffff;
+            background-color: #000000;
             background-image: url('${backhref}/${blurs_dir}/${background_image}');
             background-size: cover;
             background-repeat: no-repeat;
             text-align: center;
-
-            color: #000000;
             font-family: verdana, sans-serif;
-            width: 100%;
         }
 
         a {
@@ -25,13 +22,11 @@ cat <<END
 
         div.text, div.footer, div.navigator {
             background-color: #ffffff;
-            width: 1024px;
             border: 15px solid #000000;
             padding: 10px;
-            margin-left: auto;
-            margin-right: auto;
-            margin-top: 10;
-            margin-bottom: 10;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            width: auto;
         }
 
         img {
@@ -47,6 +42,13 @@ cat <<END
         img.thumb:hover {
             -webkit-transform: scaleX(-1);
             transform: scaleX(-1);
+            object-fit: contain;
+        }
+
+        img.view { 
+            max-height: ${HEIGHT}px;
+            height: 80%;
+            object-fit: contain;
         }
 
         .animate-none{}
