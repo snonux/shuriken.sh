@@ -1,15 +1,10 @@
-cat <<END
-<div class="footer">
-END
-
 if [ "${TARBALL_INCLUDE}" = 'yes' ]; then
 cat <<END
+<div class="footer">
     Download all photos in original size <a href='${backhref}/${tarball_name}'>here</a><br /><br />
+</div>
 END
 fi
-
-cat <<END
-</div>
 
 </body>
 </html>
