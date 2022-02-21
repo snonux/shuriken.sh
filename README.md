@@ -1,9 +1,18 @@
 # photoalbum
 
 photoalbum is a minimal Bash script for Unix like operating systems (such as Linux) to generate static web photo albums.
-As a requirement `convert` from ImageMagick needs to be installed.  
-
 The resulting static photo album is pure HTML+CSS (without any JavaScript!). An example album can be surfed here: https://sidewalk.ninja
+
+## Installation
+
+Run the following commands to install it:
+
+```
+make
+sudo make install
+```
+
+Also, as a requirement, `convert` from ImageMagick needs to be installed.  
 
 ## Usage
 
@@ -24,3 +33,7 @@ The resulting static photo album is pure HTML+CSS (without any JavaScript!). An 
 3. Run `make` (or `photoalbum generate`) to generate it.
 4. Distribute the `./dist` directory to a static web server.
 5. Clean the mess up with `make clean` or `photoalbum clean`
+
+## HTML templates
+
+Poke around in this source directory. You will find a bunch of Bash-HTML template files. You could tweak them to your likings. 
