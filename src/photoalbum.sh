@@ -103,6 +103,7 @@ albumhtml () {
 
     # Random background image for preview page.
     export background_image="$(randomphoto $photos_dir)"
+    export show_header_bar='yes'
     template 'header' "$name.html"
 
     cd "$DIST_DIR/$photos_dir" && find ./ -type f | sort | sed 's;^\./;;' |
@@ -119,7 +120,9 @@ albumhtml () {
 
             export prev="$name"
             declare name="$next"
+
             export background_image="$(randomphoto $photos_dir)"
+            export show_header_bar='yes'
             template header "$name.html"
             template prev "$name.html"
         fi
@@ -130,6 +133,7 @@ albumhtml () {
 
         # View page
         export background_image="$photo"
+        export show_header_bar='no'
         template header "$num-$i.html"
 
         export animation_class='animate-none'
@@ -149,7 +153,7 @@ albumhtml () {
             dirname="$DIST_DIR/$blurs_dir"
             test ! -d "$dirname" && mkdir -p "$dirname"
             echo "Creating blur $DIST_DIR/$blurs_dir/$photo"
-            convert -blur 0x8 "$DIST_DIR/$thumbs_dir/$photo" "$DIST_DIR/$blurs_dir/$photo"
+            convert -flip -blur 0x8 "$DIST_DIR/$thumbs_dir/$photo" "$DIST_DIR/$blurs_dir/$photo"
         fi
     done
 
