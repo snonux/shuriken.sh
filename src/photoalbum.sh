@@ -47,6 +47,21 @@ template () {
     source "$TEMPLATE_DIR/$template.tmpl" >> "$dist_html/$html"
 }
 
+cleanphotos () {
+    find "$DIST_DIR/photos" -maxdepth 1 -type f | while read photo; do
+        local basename=$(basename $photo)
+        if [ -f "$INCOMING_DIR/$basename" ]; then
+            continue
+        fi
+        echo "Cleaning up $photo"
+        for sub in thumbs blurs photos; do
+            if [ -f "$DIST_DIR/$sub/$basename" ]; then
+                rm -v "$DIST_DIR/$sub/$basename"
+            fi
+        done
+    done
+}
+
 scalephotos () {
     cd "$INCOMING_DIR" && find ./ -maxdepth 1 -type f | sort |
     while read -r photo; do
@@ -213,6 +228,7 @@ generate () {
     fi
 
     test ! -d "$DIST_DIR/photos" && mkdir -p "$DIST_DIR/photos"
+    cleanphotos
     scalephotos
 
     find "$DIST_DIR" -type f -name \*.html -delete
