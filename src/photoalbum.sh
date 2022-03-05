@@ -89,6 +89,14 @@ animate-zoom
 END
 }
 
+maybe_shuffle () {
+    if [ "$SHUFFLE" = yes ]; then
+        sort -R
+    else
+        sort
+    fi
+}
+
 albumhtml () {
     declare photos_dir="$1" ; shift
     declare html_dir="$1"   ; shift
@@ -98,7 +106,6 @@ albumhtml () {
 
     declare -i num=1
     declare -i i=0
-
     declare name="page-$num"
 
     # Random background image for preview page.
@@ -106,7 +113,7 @@ albumhtml () {
     export show_header_bar='yes'
     template 'header' "$name.html"
 
-    cd "$DIST_DIR/$photos_dir" && find ./ -type f | sort | sed 's;^\./;;' |
+    cd "$DIST_DIR/$photos_dir" && find ./ -type f | maybe_shuffle | sed 's;^\./;;' |
     while read -r photo; do 
         let i++
 

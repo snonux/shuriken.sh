@@ -60,12 +60,14 @@ cat <<END
 </head>
 
 <body>
+END
+
+if [ "${show_header_bar}" = 'yes' ]; then
+cat <<END
 <div class="header">
-    <div>
-        Site generated at $(date) with <a href="https://codeberg.org/foozone/photoalbum">codeberg.org/foozone/photoalbum</a>
-        -
-        &copy; by Paul Buetow
-    </div>
-    <div>${GOTO_OVERVIEW}</div>
+    Site generated at $(date) with <a href="https://codeberg.org/foozone/photoalbum">codeberg.org/foozone/photoalbum</a>
+    -
+    &copy; by Paul Buetow
 </div>
 END
+fi

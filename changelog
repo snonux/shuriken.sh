@@ -1,3 +1,9 @@
+photoalbum (0.5.1) unstable; urgency=low
+
+  * Minor changes
+
+ -- Paul Buetow <paul@buetow.org>  Tue, 22 Feb 2022 14:37:01 +0000
+
 photoalbum (0.5.0) stable; urgency=low
 
   * Major code refactoring
