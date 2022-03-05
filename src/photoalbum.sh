@@ -93,14 +93,15 @@ randomphoto () {
 }
 
 random_animation_css_class () {
+    local -r speed="$1"; shift
     cat <<END | grep -v fading | sort -R | head -n 1
-animate-fading
-animate-opacity
-animate-top
-animate-left
-animate-right
-animate-bottom
-animate-zoom
+animate-fading-$speed
+animate-opacity-$speed
+animate-top-$speed
+animate-left-$speed
+animate-right-$speed
+animate-bottom-$speed
+animate-zoom-$speed
 END
 }
 
@@ -150,7 +151,7 @@ albumhtml () {
         fi
 
         # Preview page
-        export animation_class=$(random_animation_css_class)
+        export animation_class=$(random_animation_css_class slow)
         template preview "$name.html"
 
         # View page
@@ -158,7 +159,7 @@ albumhtml () {
         export show_header_bar='no'
         template header "$num-$i.html"
 
-        export animation_class='animate-none'
+        export animation_class=$(random_animation_css_class fast)
         template view "$num-$i.html"
         template footer "$num-$i.html"
 

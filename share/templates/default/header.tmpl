@@ -22,7 +22,6 @@ cat <<END
             padding: 10px;
             margin-top: 10px;
             margin-bottom: 10px;
-            width: auto;
         }
 
         img {
@@ -49,13 +48,21 @@ cat <<END
         }
 
         .animate-none{}
-        .animate-fading{animation:fading 10s}@keyframes fading{0%{opacity:0}50%{opacity:1}100%{opacity:0}}
-        .animate-opacity{animation:opac 2.0s}@keyframes opac{from{opacity:0} to{opacity:1}}
-        .animate-top{position:relative;animation:animatetop 3.0s}@keyframes animatetop{from{top:-300px;opacity:0} to{top:0;opacity:1}}
-        .animate-left{position:relative;animation:animateleft 3.0s}@keyframes animateleft{from{left:-300px;opacity:0} to{left:0;opacity:1}}
-        .animate-right{position:relative;animation:animateright 3.0s}@keyframes animateright{from{right:-300px;opacity:0} to{right:0;opacity:1}}
-        .animate-bottom{position:relative;animation:animatebottom 3.0s}@keyframes animatebottom{from{bottom:-300px;opacity:0} to{bottom:0;opacity:1}}
-        .animate-zoom {animation:animatezoom 3.0s}@keyframes animatezoom{from{transform:scale(0)} to{transform:scale(1)}}
+        .animate-fading {animation:fading 10s}@keyframes fading{0%{opacity:0}50%{opacity:1}100%{opacity:0}}
+
+        .animate-opacity-slow {animation:opac 3.0s}@keyframes opac{from{opacity:0} to{opacity:1}}
+        .animate-top-slow {position:relative;animation:animatetop 3.0s}@keyframes animatetop{from{top:-300px;opacity:0} to{top:0;opacity:1}}
+        .animate-left-slow {position:relative;animation:animateleft 3.0s}@keyframes animateleft{from{left:-300px;opacity:0} to{left:0;opacity:1}}
+        .animate-right-slow {position:relative;animation:animateright 3.0s}@keyframes animateright{from{right:-300px;opacity:0} to{right:0;opacity:1}}
+        .animate-bottom-slow {position:relative;animation:animatebottom 3.0s}@keyframes animatebottom{from{bottom:-300px;opacity:0} to{bottom:0;opacity:1}}
+        .animate-zoom-slow {animation:animatezoom 3.0s}@keyframes animatezoom{from{transform:scale(0)} to{transform:scale(1)}}
+
+        .animate-opacity-fast {animation:opac 0.5s}@keyframes opac{from{opacity:0} to{opacity:1}}
+        .animate-top-fast {position:relative;animation:animatetop 0.5s}@keyframes animatetop{from{top:-300px;opacity:0} to{top:0;opacity:1}}
+        .animate-left-fast {position:relative;animation:animateleft 0.5s}@keyframes animateleft{from{left:-300px;opacity:0} to{left:0;opacity:1}}
+        .animate-right-fast {position:relative;animation:animateright 0.5s}@keyframes animateright{from{right:-300px;opacity:0} to{right:0;opacity:1}}
+        .animate-bottom-fast {position:relative;animation:animatebottom 0.5s}@keyframes animatebottom{from{bottom:-300px;opacity:0} to{bottom:0;opacity:1}}
+        .animate-zoom-fast {animation:animatezoom 0.5s}@keyframes animatezoom{from{transform:scale(0)} to{transform:scale(1)}}
     </style>
 </head>
 
@@ -64,7 +71,7 @@ END
 
 if [ "${show_header_bar}" = 'yes' ]; then
 cat <<END
-<div class="header">
+<div class="header animate-opacity">
     Site generated at $(date) with <a href="https://codeberg.org/foozone/photoalbum">codeberg.org/foozone/photoalbum</a>
     -
     &copy; by Paul Buetow
