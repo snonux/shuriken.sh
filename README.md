@@ -1,7 +1,7 @@
 # photoalbum
 
 photoalbum is a minimal Bash script for Unix like operating systems (such as Linux) to generate static web photo albums.
-The resulting static photo album is pure HTML+CSS (without any JavaScript!). An example album can be surfed here: https://sidewalk.ninja
+The resulting static photo album is pure HTML+CSS (without any JavaScript!).
 
 ## Installation
 
