@@ -1,14 +1,14 @@
 cat <<END
-<div class="text">
-    <a href="${num}-$((i-1)).html">&lArr;</a>
-    <a href="page-${num}.html#$photo">Thumbnails</a>
-    <a href="${num}-$((i+1)).html">&rArr;</a>
-</div>
-
 <div class='view'>
     <a href="${num}-$((i+1)).html">
         <img class='view ${animation_class}' border='0' src='${backhref}/${photos_dir}/${photo}' />
     </a>
+    <div class="navigator">
+        <a href="${num}-$((i-1)).html" class="arrow">&lArr;</a>
+        <a href="page-${num}.html#$photo">Thumbnails</a> |
+        <a href ='${backhref}/${photos_dir}/${photo}'>Direct link</a>
+        <a href="${num}-$((i+1)).html" class="arrow">&rArr;</a>
+    </div>
 </div>
 END
 

@@ -5,6 +5,7 @@ cat <<END
     <style type="text/css">
         body {
             background-color: #000000;
+            color: #ffffff;
             background-image: url('${backhref}/${blurs_dir}/${background_image}');
             background-size: cover;
             background-repeat: no-repeat;
@@ -13,15 +14,28 @@ cat <<END
         }
 
         a {
-            color: #000000;
+            color: #ffffff;
         }
 
-        div.text, div.header, div.footer, div.navigator {
-            background-color: #ffffff;
-            border: 15px solid #000000;
-            padding: 10px;
-            margin-top: 10px;
-            margin-bottom: 10px;
+        a.arrow {
+            text-decoration: none;
+            font-weight: bolder;
+        }
+
+        div.header {
+            background-color: #000000;
+            border: 3px solid #ffffff;
+            padding: 3px;
+            margin-top: 2px;
+            margin-bottom: 2px;
+        }
+
+        div.footer, div.navigator {
+            background-color: #000000;
+            border: 3px solid #ffffff;
+            padding: 3px;
+            max-width: 400px;
+            margin: 2 auto;
         }
 
         img {

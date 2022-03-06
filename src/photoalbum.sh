@@ -136,7 +136,6 @@ albumhtml () {
         if [ "$i" -gt "$MAXPREVIEWS" ]; then
             i=1
             let num++
-
             declare next="page-$num"
             template next "$name.html"
             template footer "$name.html"
@@ -145,7 +144,7 @@ albumhtml () {
             declare name="$next"
 
             export background_image="$(randomphoto $photos_dir)"
-            export show_header_bar='yes'
+            export show_header_bar='no'
             template header "$name.html"
             template prev "$name.html"
         fi
