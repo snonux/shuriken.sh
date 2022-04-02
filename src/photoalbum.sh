@@ -1,7 +1,7 @@
 #!/bin/env bash
 
 # photoalbum (c) 2011 - 2014, 2022 by Paul Buetow
-# https://codeberg.org/foozone/photoalbum
+# https://codeberg.org/snonux/photoalbum
 
 readonly VERSION='PHOTOALBUMVERSION'
 readonly DEFAULTRC='/etc/default/photoalbum'
