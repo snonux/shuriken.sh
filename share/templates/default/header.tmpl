@@ -49,8 +49,10 @@ cat <<END
         }
 
         img.thumb:hover {
+            outline: 4px solid #ffffff;
             -webkit-transform: scaleX(-1);
-            transform: scaleX(-1);
+            transform: scaleX(-1) scale(1.08) rotate(2deg);
+            filter: contrast(1.6) saturate(1.8);
             object-fit: contain;
         }
 
@@ -77,6 +79,50 @@ cat <<END
         .animate-right-fast {position:relative;animation:animateright 0.5s}@keyframes animateright{from{right:-300px;opacity:0} to{right:0;opacity:1}}
         .animate-bottom-fast {position:relative;animation:animatebottom 0.5s}@keyframes animatebottom{from{bottom:-300px;opacity:0} to{bottom:0;opacity:1}}
         .animate-zoom-fast {animation:animatezoom 0.5s}@keyframes animatezoom{from{transform:scale(0)} to{transform:scale(1)}}
+
+        .animate-snap-rotate-slow {animation:snaprotate 0.65s steps(2,end)}
+        .animate-snap-rotate-fast {animation:snaprotate 0.22s steps(2,end)}
+        @keyframes snaprotate{0%{opacity:0;transform:rotate(-32deg) scale(.6)}50%{opacity:1;transform:rotate(18deg) scale(1.15)}100%{transform:rotate(0) scale(1)}}
+
+        .animate-hard-zoom-slow {animation:hardzoom 0.55s steps(3,end)}
+        .animate-hard-zoom-fast {animation:hardzoom 0.18s steps(2,end)}
+        @keyframes hardzoom{0%{opacity:0;transform:scale(.15)}65%{opacity:1;transform:scale(1.35)}100%{transform:scale(1)}}
+
+        .animate-slam-left-slow {animation:slamleft 0.55s steps(3,end)}
+        .animate-slam-left-fast {animation:slamleft 0.18s steps(2,end)}
+        @keyframes slamleft{0%{opacity:0;transform:translateX(-80vw)}70%{opacity:1;transform:translateX(24px)}100%{transform:translateX(0)}}
+
+        .animate-slam-right-slow {animation:slamright 0.55s steps(3,end)}
+        .animate-slam-right-fast {animation:slamright 0.18s steps(2,end)}
+        @keyframes slamright{0%{opacity:0;transform:translateX(80vw)}70%{opacity:1;transform:translateX(-24px)}100%{transform:translateX(0)}}
+
+        .animate-flash-in-slow {animation:flashin 0.5s steps(2,end)}
+        .animate-flash-in-fast {animation:flashin 0.16s steps(2,end)}
+        @keyframes flashin{0%{opacity:0;filter:brightness(5) contrast(3)}40%{opacity:1;filter:brightness(7) contrast(4)}100%{filter:none}}
+
+        .animate-invert-pop-slow {animation:invertpop 0.55s steps(3,end)}
+        .animate-invert-pop-fast {animation:invertpop 0.18s steps(2,end)}
+        @keyframes invertpop{0%{opacity:0;filter:invert(1)}50%{opacity:1;filter:invert(1) saturate(2)}100%{filter:none}}
+
+        .animate-posterize-pop-slow {animation:posterizepop 0.55s steps(3,end)}
+        .animate-posterize-pop-fast {animation:posterizepop 0.18s steps(2,end)}
+        @keyframes posterizepop{0%{opacity:0;filter:contrast(5) saturate(0)}55%{opacity:1;filter:contrast(4) saturate(4)}100%{filter:none}}
+
+        .animate-skew-snap-slow {animation:skewsnap 0.55s steps(3,end)}
+        .animate-skew-snap-fast {animation:skewsnap 0.18s steps(2,end)}
+        @keyframes skewsnap{0%{opacity:0;transform:skewX(-24deg) translateY(-40px)}65%{opacity:1;transform:skewX(18deg) translateY(18px)}100%{transform:skewX(0) translateY(0)}}
+
+        .animate-glitch-step-slow {animation:glitchstep 0.65s steps(4,end)}
+        .animate-glitch-step-fast {animation:glitchstep 0.2s steps(4,end)}
+        @keyframes glitchstep{0%{opacity:0;transform:translate(-22px,12px);filter:hue-rotate(90deg)}25%{opacity:1;transform:translate(18px,-10px);filter:invert(1)}50%{transform:translate(-12px,-8px);filter:contrast(4)}75%{transform:translate(8px,6px);filter:saturate(4)}100%{transform:translate(0,0);filter:none}}
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 

@@ -105,15 +105,15 @@ scalephotos() {
         if [ -n "${HEIGHT:-}" ]; then
             # Scale down size.
             imagemagick \
+                "$INCOMING_DIR/$photo" \
                 -auto-orient \
                 -geometry "$HEIGHT" \
-                "$INCOMING_DIR/$photo" \
                 "$destphoto_nospace"
         else
             # Keep original size.
             imagemagick \
-                -auto-orient \
                 "$INCOMING_DIR/$photo" \
+                -auto-orient \
                 "$destphoto_nospace"
         fi
     done < <(
@@ -131,6 +131,15 @@ random_animation_css_class() {
         "animate-right-$speed"
         "animate-bottom-$speed"
         "animate-zoom-$speed"
+        "animate-snap-rotate-$speed"
+        "animate-hard-zoom-$speed"
+        "animate-slam-left-$speed"
+        "animate-slam-right-$speed"
+        "animate-flash-in-$speed"
+        "animate-invert-pop-$speed"
+        "animate-posterize-pop-$speed"
+        "animate-skew-snap-$speed"
+        "animate-glitch-step-$speed"
     )
 
     printf '%s\n' "${classes[@]}" | sort -R | sed -n '1p'
@@ -238,17 +247,17 @@ albumhtml() {
             # Double the height, as CSS scales images based on boxing too.
             height=$(( THUMBHEIGHT * 2 ))
             imagemagick \
-                -geometry "x$height" \
                 "$DIST_DIR/$photos_dir/$photo" \
+                -geometry "x$height" \
                 "$DIST_DIR/$thumbs_dir/$photo"
 
             dirname="$DIST_DIR/$blurs_dir"
             mkdir -p "$dirname"
             echo "Creating blur $DIST_DIR/$blurs_dir/$photo"
             imagemagick \
+                "$DIST_DIR/$thumbs_dir/$photo" \
                 -flip \
                 -blur 0x8 \
-                "$DIST_DIR/$thumbs_dir/$photo" \
                 "$DIST_DIR/$blurs_dir/$photo"
         fi
     done < <(
