@@ -12,7 +12,8 @@ make
 sudo make install
 ```
 
-Also, as a requirement, `convert` from ImageMagick needs to be installed.  
+Also, as a requirement, ImageMagick needs to be installed. The script prefers the
+modern `magick` command and falls back to `convert` when needed.
 
 ## Usage
 
