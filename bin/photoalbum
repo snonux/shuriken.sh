@@ -221,35 +221,33 @@ cleanphotos() {
 
 scalephotos() {
     local destphoto
-    local destphoto_nospace
     local dirname
     local photo
 
     while IFS= read -r photo; do
         destphoto="$DIST_DIR/photos/$photo"
-        destphoto_nospace="${destphoto// /_}"
         dirname=$(dirname "$destphoto")
         mkdir -p "$dirname"
 
-        if [ -f "$destphoto_nospace" ]; then
-            echo "Already exists: $destphoto_nospace"
+        if [ -f "$destphoto" ]; then
+            echo "Already exists: $destphoto"
             continue
         fi
 
-        echo "Processing $photo to $destphoto_nospace"
+        echo "Processing $photo to $destphoto"
         if [ -n "${HEIGHT:-}" ]; then
             # Scale down size.
             imagemagick \
                 "$INCOMING_DIR/$photo" \
                 -auto-orient \
                 -geometry "$HEIGHT" \
-                "$destphoto_nospace"
+                "$destphoto"
         else
             # Keep original size.
             imagemagick \
                 "$INCOMING_DIR/$photo" \
                 -auto-orient \
-                "$destphoto_nospace"
+                "$destphoto"
         fi
     done < <(
         find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n' \

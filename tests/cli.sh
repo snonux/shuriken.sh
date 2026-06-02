@@ -286,6 +286,110 @@ MAGICK
     teardown
 }
 
+test_generate_preserves_space_filename_without_reprocessing() {
+    local config_file
+    local fake_bin
+    local first_output
+    local photo_name
+    local second_output
+
+    setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    photo_name='a b.jpg'
+
+    mkdir -p "$fake_bin" "$TEST_TMPDIR/incoming"
+    cat > "$fake_bin/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+dest="${@: -1}"
+mkdir -p "$(dirname "$dest")"
+printf 'fake image\n' > "$dest"
+MAGICK
+    chmod 0755 "$fake_bin/magick"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/$photo_name"
+
+    {
+        printf 'TITLE=%q\n' 'Space test'
+        printf 'THUMBHEIGHT=30\n'
+        printf 'HEIGHT=120\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'INCOMING_DIR=%q/incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$REPO_ROOT"
+        printf 'TARBALL_INCLUDE=no\n'
+    } > "$config_file"
+
+    first_output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$PHOTOALBUM" --generate
+    )
+    second_output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$PHOTOALBUM" --generate
+    )
+
+    test -f "$TEST_TMPDIR/dist/photos/$photo_name"
+    test ! -e "$TEST_TMPDIR/dist/photos/a_b.jpg"
+    assert_contains "Processing $photo_name to" "$first_output"
+    assert_contains "Already exists: $TEST_TMPDIR/dist/photos/$photo_name" \
+        "$second_output"
+    assert_not_contains "Processing $photo_name to" "$second_output"
+
+    teardown
+}
+
+test_generate_handles_space_and_underscore_names_distinctly() {
+    local config_file
+    local fake_bin
+    local page_html
+
+    setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    mkdir -p "$fake_bin" "$TEST_TMPDIR/incoming"
+    cat > "$fake_bin/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+dest="${@: -1}"
+mkdir -p "$(dirname "$dest")"
+printf 'fake image\n' > "$dest"
+MAGICK
+    chmod 0755 "$fake_bin/magick"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/a b.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/a_b.jpg"
+
+    {
+        printf 'TITLE=%q\n' 'Collision test'
+        printf 'THUMBHEIGHT=30\n'
+        printf 'HEIGHT=120\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'INCOMING_DIR=%q/incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$REPO_ROOT"
+        printf 'TARBALL_INCLUDE=no\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$PHOTOALBUM" --generate
+    )
+
+    page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
+
+    test -f "$TEST_TMPDIR/dist/photos/a b.jpg"
+    test -f "$TEST_TMPDIR/dist/photos/a_b.jpg"
+    test -f "$TEST_TMPDIR/dist/thumbs/a b.jpg"
+    test -f "$TEST_TMPDIR/dist/thumbs/a_b.jpg"
+    assert_contains "src='../thumbs/a b.jpg'" "$page_html"
+    assert_contains "src='../thumbs/a_b.jpg'" "$page_html"
+
+    teardown
+}
+
 test_positional_commands_fail() {
     assert_failure 'positional clean is rejected' "$PHOTOALBUM" clean
     assert_failure 'positional generate is rejected' "$PHOTOALBUM" generate
@@ -318,6 +422,12 @@ main() {
     run_test \
         '--generate escapes generated HTML values' \
         test_generate_escapes_html_values
+    run_test \
+        '--generate preserves filenames with spaces without reprocessing' \
+        test_generate_preserves_space_filename_without_reprocessing
+    run_test \
+        '--generate handles spaces and underscores distinctly' \
+        test_generate_handles_space_and_underscore_names_distinctly
     run_test 'positional commands fail' test_positional_commands_fail
     run_test 'extra args fail' test_extra_args_fail
 }
