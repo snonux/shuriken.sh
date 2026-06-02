@@ -18,21 +18,22 @@ modern `magick` command and falls back to `convert` when needed.
 ## Usage
 
 ```
-    photoalbum --generate
-    photoalbum --clean
+    photoalbum --generate [--config PATH]
+    photoalbum --clean [--config PATH]
     photoalbum --version
     photoalbum --init
 ```
 
 * `--generate`: Generates the static photo album
 * `--clean`: Cleans up the workspace
+* `--config PATH`: Selects the config file for `--generate` or `--clean`
 * `--version`: Prints out the version
-* `--init`: Creates a `photoalbumrc` in the current working directory
+* `--init`: Creates a `photoalbum.conf` in the current working directory
 
 ## Example usage
 
-1. See if `/etc/default/photoalbum` fits your needs. If not, run `photoalbum --init`, which will create a `photoalbumrc` file in the current directory.
-2. Adjust the `INCOMING_DIR` path in `photoalbumrc`. Point it to a directory with all the pictures in it.
+1. Run `photoalbum --init`, which creates a `photoalbum.conf` file in the current directory from the installed/default config template.
+2. Adjust the `INCOMING_DIR` path in `photoalbum.conf`. Point it to a directory with all the pictures in it.
 3. Run `photoalbum --generate` to generate it.
 4. Distribute the `./dist` directory to a static web server.
 5. Clean the mess up with `photoalbum --clean`

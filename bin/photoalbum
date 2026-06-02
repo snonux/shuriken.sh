@@ -10,8 +10,8 @@ declare -r DEFAULTRC="${PHOTOALBUM_DEFAULT_RC:-/etc/default/photoalbum}"
 usage() {
     cat - <<USAGE >&2
     Usage:
-    $0 --generate
-    $0 --clean
+    $0 --generate [--config PATH]
+    $0 --clean [--config PATH]
     $0 --version
     $0 --init
 USAGE
@@ -49,7 +49,7 @@ resolve_source_root() {
 }
 
 init_config() {
-    local -r rc_file=photoalbumrc
+    local -r rc_file=photoalbum.conf
     local default_rc_file
     local source_root
     local source_template_dir
@@ -415,14 +415,22 @@ generate() {
     fi
 }
 
-resolve_rc_file() {
-    if [ -f photoalbumrc ]; then
-        printf '%s\n' photoalbumrc
-    elif [ -f ~/.photoalbumrc ]; then
-        printf '%s\n' ~/.photoalbumrc
+resolve_config_file() {
+    local -r config_file="${1:-}"
+
+    if [ -n "$config_file" ]; then
+        printf '%s\n' "$config_file"
     else
-        printf '%s\n' "$DEFAULTRC"
+        printf '%s\n' ./photoalbum.conf
     fi
+}
+
+missing_config() {
+    local -r config_file="$1"; shift
+
+    echo "Error: Can not find config file $config_file" >&2
+    echo 'Run photoalbum --init to create ./photoalbum.conf.' >&2
+    exit 1
 }
 
 apply_config_defaults() {
@@ -435,33 +443,73 @@ apply_config_defaults() {
 }
 
 main() {
-    local -r option="${1:-}"
+    local action=''
+    local config_file=''
+    local option
     local rc_file
 
-    if (( $# != 1 )); then
+    if (( $# == 0 )); then
         usage
         exit 1
     fi
 
-    case "$option" in
+    while (( $# > 0 )); do
+        option="$1"
+        shift
+
+        case "$option" in
+            --config)
+                if (( $# == 0 )) || [ -z "$1" ]; then
+                    echo 'Error: --config requires a path' >&2
+                    usage
+                    exit 1
+                fi
+
+                config_file="$1"
+                shift
+                ;;
+            --version|--init|--clean|--generate)
+                if [ -n "$action" ]; then
+                    usage
+                    exit 1
+                fi
+
+                action="$option"
+                ;;
+            *)
+                usage
+                exit 1
+                ;;
+        esac
+    done
+
+    case "$action" in
         --version)
+            if [ -n "$config_file" ]; then
+                usage
+                exit 1
+            fi
+
             echo "This is Photoalbum Version $VERSION"
             ;;
         --init)
+            if [ -n "$config_file" ]; then
+                usage
+                exit 1
+            fi
+
             init_config
             ;;
         --clean|--generate)
-            rc_file="$(resolve_rc_file)"
+            rc_file="$(resolve_config_file "$config_file")"
 
             if [ ! -f "$rc_file" ]; then
-                echo "Error: Can not find config file $rc_file" >&2
-                exit 1
+                missing_config "$rc_file"
             fi
 
             source "$rc_file"
             apply_config_defaults
-
-            case "$option" in
+            case "$action" in
                 --clean)
                     if [ -d "$DIST_DIR" ]; then
                         rm -rf "$DIST_DIR"
