@@ -8,6 +8,8 @@ build:
 	test ! -d ./bin && mkdir ./bin || exit 0
 	sed "s/PHOTOALBUMVERSION/$(VERSION)/" src/$(NAME).sh > ./bin/$(NAME)
 	chmod 0755 ./bin/$(NAME)
+test: build
+	bash ./tests/cli.sh
 install:
 	test ! -d $(DESTDIR)/usr/bin && mkdir -p $(DESTDIR)/usr/bin || exit 0
 	cp ./bin/* $(DESTDIR)/usr/bin
@@ -39,4 +41,5 @@ shellcheck:
 		--exclude SC2155 \
 		--exclude SC2164 \
 		--exclude SC2207 \
-		./src/photoalbum.sh
+		./src/photoalbum.sh \
+		./tests/cli.sh

@@ -18,22 +18,24 @@ modern `magick` command and falls back to `convert` when needed.
 ## Usage
 
 ```
-    photoalbum clean|generate|version [rcfile] photoalbum
-    photoalbum makemake
+    photoalbum --generate
+    photoalbum --clean
+    photoalbum --version
+    photoalbum --init
 ```
 
-* `clean`: Cleans up the workspace
-* `generate`: Generates the static photo album
-* `version`: Prints out the version
-* `makemake`: Creates a Makefile and photoalbumrc in the current working directory.
+* `--generate`: Generates the static photo album
+* `--clean`: Cleans up the workspace
+* `--version`: Prints out the version
+* `--init`: Creates a `photoalbumrc` in the current working directory
 
 ## Example usage
 
-1. See if /etc/default/photoalbum fits your needs. If not, run `photoalbum makemake`, which will create a `photoalbumrc` file in the current directory.
-2. Adjust the `incoming` path in `photoalbum`. Point to a directory with all the pictures in it. 
-3. Run `make` (or `photoalbum generate`) to generate it.
+1. See if `/etc/default/photoalbum` fits your needs. If not, run `photoalbum --init`, which will create a `photoalbumrc` file in the current directory.
+2. Adjust the `INCOMING_DIR` path in `photoalbumrc`. Point it to a directory with all the pictures in it.
+3. Run `photoalbum --generate` to generate it.
 4. Distribute the `./dist` directory to a static web server.
-5. Clean the mess up with `make clean` or `photoalbum clean`
+5. Clean the mess up with `photoalbum --clean`
 
 ## HTML templates
 
