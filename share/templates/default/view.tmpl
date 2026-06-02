@@ -1,12 +1,12 @@
 cat <<END
 <div class='view'>
     <a href="${num}-$((i+1)).html">
-        <img class='view ${animation_class}' border='0' src='${backhref}/${photos_dir}/${photo}' />
+        <img class='view ${animation_class_html}' border='0' src='${backhref_html}/${photos_dir_html}/${photo_html}' />
     </a>
     <div class="navigator">
         <a href="${num}-$((i-1)).html" class="arrow">&lArr;</a>
-        <a href="page-${num}.html#$photo">Thumbnails</a> |
-        <a href ='${backhref}/${photos_dir}/${photo}'>Direct link</a>
+        <a href="page-${num}.html#${photo_html}">Thumbnails</a> |
+        <a href ='${backhref_html}/${photos_dir_html}/${photo_html}'>Direct link</a>
         <a href="${num}-$((i+1)).html" class="arrow">&rArr;</a>
     </div>
 </div>
@@ -15,7 +15,7 @@ END
 if [ "${ORIGINAL_BASEPATH}x" != x ]; then
     cat <<END
 <p>
-    <a href="${ORIGINAL_BASEPATH}/${photo}">Original</a>
+    <a href="${original_basepath_html}/${photo_html}">Original</a>
 </p>
 END
 fi

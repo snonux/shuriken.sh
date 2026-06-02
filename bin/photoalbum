@@ -106,14 +106,95 @@ tarball() {
     )
 }
 
+_html_escape() {
+    local text="$1"; shift
+
+    text=${text//&/\&amp;}
+    text=${text//</\&lt;}
+    text=${text//>/\&gt;}
+    text=${text//\"/\&quot;}
+    text=${text//\'/\&#39;}
+
+    printf '%s\n' "$text"
+}
+
+_css_string_escape() {
+    local text="$1"; shift
+
+    text=${text//\\/\\\\}
+    text=${text//&/\\000026}
+    text=${text//</\\00003c}
+    text=${text//>/\\00003e}
+    text=${text//\"/\\000022}
+    text=${text//\'/\\000027}
+
+    printf '%s\n' "$text"
+}
+
 template() {
     local -r template_name="$1"; shift
     local -r html="$1"; shift
     local -r dist_html="$DIST_DIR/$html_dir"
+    local animation_class_html
+    local backhref_css
+    local backhref_html
+    local background_image_css
+    local blurs_dir_css
+    local height_html
+    local html_dir_html
+    local maxpreviews_html
+    local next_html
+    local original_basepath_html
+    local photo_html
+    local photos_dir_html
+    local prev_html
+    local redirect_page_html
+    local tarball_name_html
+    local thumbheight_html
+    local thumbs_dir_html
+    local title_html
 
     echo "Generating $dist_html/$html"
 
     mkdir -p "$dist_html"
+    animation_class_html=$(_html_escape "${animation_class:-}")
+    backhref_css=$(_css_string_escape "${backhref:-}")
+    backhref_html=$(_html_escape "${backhref:-}")
+    background_image_css=$(_css_string_escape "${background_image:-}")
+    blurs_dir_css=$(_css_string_escape "${blurs_dir:-}")
+    height_html=$(_html_escape "${HEIGHT:-}")
+    html_dir_html=$(_html_escape "${html_dir:-}")
+    maxpreviews_html=$(_html_escape "${MAXPREVIEWS:-}")
+    next_html=$(_html_escape "${next:-}")
+    original_basepath_html=$(_html_escape "${ORIGINAL_BASEPATH:-}")
+    photo_html=$(_html_escape "${photo:-}")
+    photos_dir_html=$(_html_escape "${photos_dir:-}")
+    prev_html=$(_html_escape "${prev:-}")
+    redirect_page_html=$(_html_escape "${redirect_page:-}")
+    tarball_name_html=$(_html_escape "${tarball_name:-}")
+    thumbheight_html=$(_html_escape "${THUMBHEIGHT:-}")
+    thumbs_dir_html=$(_html_escape "${thumbs_dir:-}")
+    title_html=$(_html_escape "${TITLE:-}")
+    export \
+        animation_class_html \
+        backhref_css \
+        backhref_html \
+        background_image_css \
+        blurs_dir_css \
+        height_html \
+        html_dir_html \
+        maxpreviews_html \
+        next_html \
+        original_basepath_html \
+        photo_html \
+        photos_dir_html \
+        prev_html \
+        redirect_page_html \
+        tarball_name_html \
+        thumbheight_html \
+        thumbs_dir_html \
+        title_html
+
     source "$TEMPLATE_DIR/$template_name.tmpl" >> "$dist_html/$html"
 }
 

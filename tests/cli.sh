@@ -92,6 +92,17 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local -r needle="$1"; shift
+    local -r haystack="$1"; shift
+
+    if [[ "$haystack" == *"$needle"* ]]; then
+        echo "FAIL: expected output not to contain $needle" >&2
+        echo "$haystack" >&2
+        exit 1
+    fi
+}
+
 run_photoalbum() {
     "$PHOTOALBUM" "$@" 2>&1
 }
@@ -200,6 +211,81 @@ test_generate_missing_incoming_fails() {
     teardown
 }
 
+test_generate_escapes_html_values() {
+    local config_file
+    local css_photo
+    local fake_bin
+    local original_basepath
+    local original_basepath_html
+    local page_html
+    local photo_html
+    local photo_name
+    local title
+    local title_html
+    local view_html
+
+    setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    photo_name="kid's_\"<tag>&.jpg"
+    photo_html='kid&#39;s_&quot;&lt;tag&gt;&amp;.jpg'
+    css_photo='kid\000027s_\000022\00003ctag\00003e\000026.jpg'
+    title="A & \"quoted\" <title> 'ok'"
+    title_html='A &amp; &quot;quoted&quot; &lt;title&gt; &#39;ok&#39;'
+    original_basepath="https://example.test/original?album=\"<x>&owner=O'Neil"
+    original_basepath_html='https://example.test/original?album=&quot;&lt;x&gt;&amp;owner=O&#39;Neil'
+
+    mkdir -p "$fake_bin" "$TEST_TMPDIR/incoming"
+    cat > "$fake_bin/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+dest="${@: -1}"
+mkdir -p "$(dirname "$dest")"
+printf 'fake image\n' > "$dest"
+MAGICK
+    chmod 0755 "$fake_bin/magick"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/$photo_name"
+
+    {
+        printf 'TITLE=%q\n' "$title"
+        printf 'THUMBHEIGHT=30\n'
+        printf 'HEIGHT=120\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'INCOMING_DIR=%q/incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$REPO_ROOT"
+        printf 'ORIGINAL_BASEPATH=%q\n' "$original_basepath"
+        printf 'TARBALL_INCLUDE=yes\n'
+        printf 'TARBALL_SUFFIX=%q\n' '&"'\''.tar'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$PHOTOALBUM" --generate
+    )
+
+    page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
+    view_html=$(<"$TEST_TMPDIR/dist/html/1-1.html")
+
+    assert_contains "<title>$title_html</title>" "$page_html"
+    assert_contains \
+        "background-image: url(\"../blurs/$css_photo\");" \
+        "$page_html"
+    assert_contains "name='$photo_html'" "$page_html"
+    assert_contains "src='../thumbs/$photo_html'" "$page_html"
+    assert_contains '&amp;&quot;&#39;.tar' "$page_html"
+    assert_contains "href=\"page-1.html#$photo_html\"" "$view_html"
+    assert_contains "href ='../photos/$photo_html'" "$view_html"
+    assert_contains \
+        "href=\"$original_basepath_html/$photo_html\"" \
+        "$view_html"
+    assert_not_contains '<title>A & "quoted" <title>' "$page_html"
+    assert_not_contains "$photo_name" "$view_html"
+
+    teardown
+}
+
 test_positional_commands_fail() {
     assert_failure 'positional clean is rejected' "$PHOTOALBUM" clean
     assert_failure 'positional generate is rejected' "$PHOTOALBUM" generate
@@ -229,6 +315,9 @@ main() {
     run_test \
         '--generate missing incoming fails' \
         test_generate_missing_incoming_fails
+    run_test \
+        '--generate escapes generated HTML values' \
+        test_generate_escapes_html_values
     run_test 'positional commands fail' test_positional_commands_fail
     run_test 'extra args fail' test_extra_args_fail
 }

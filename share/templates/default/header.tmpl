@@ -1,12 +1,12 @@
 cat <<END
 <html>
 <head>
-    <title>${TITLE}</title>
+    <title>${title_html}</title>
     <style type="text/css">
         body {
             background-color: #000000;
             color: #ffffff;
-            background-image: url('${backhref}/${blurs_dir}/${background_image}');
+            background-image: url("${backhref_css}/${blurs_dir_css}/${background_image_css}");
             background-size: cover;
             background-repeat: no-repeat;
             text-align: center;
@@ -43,8 +43,8 @@ cat <<END
         }
 
         img.thumb { 
-            height: ${THUMBHEIGHT}px;
-            width: ${THUMBHEIGHT}px;
+            height: ${thumbheight_html}px;
+            width: ${thumbheight_html}px;
             object-fit: cover;
         }
 
@@ -57,7 +57,7 @@ cat <<END
         }
 
         img.view { 
-            max-height: ${HEIGHT}px;
+            max-height: ${height_html}px;
             width: 95%;
             height: 80%;
             object-fit: contain;
