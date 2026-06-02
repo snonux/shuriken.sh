@@ -42,4 +42,5 @@ shellcheck:
 		--exclude SC2164 \
 		--exclude SC2207 \
 		./src/photoalbum.sh \
-		./tests/cli.sh
+		./tests/cli.sh \
+		./tests/helpers.sh
