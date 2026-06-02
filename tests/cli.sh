@@ -159,6 +159,23 @@ test_clean_with_config() {
     teardown
 }
 
+test_clean_cli_dist_overrides_config() {
+    local config_file
+
+    setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    printf 'DIST_DIR=%q/config-dist\n' "$TEST_TMPDIR" > "$config_file"
+    mkdir -p "$TEST_TMPDIR/config-dist" "$TEST_TMPDIR/cli-dist"
+
+    (
+        cd "$TEST_TMPDIR"
+        "$PHOTOALBUM" --clean --dist "$TEST_TMPDIR/cli-dist"
+        test -d "$TEST_TMPDIR/config-dist"
+        test ! -e "$TEST_TMPDIR/cli-dist"
+    )
+    teardown
+}
+
 test_clean_missing_config_fails() {
     local output
 
@@ -192,6 +209,116 @@ test_generate_with_config_missing_incoming_fails() {
 
     assert_contains "ERROR: You have to create $TEST_TMPDIR/missing first" \
         "$output"
+    teardown
+}
+
+test_generate_cli_overrides_config_values() {
+    local config_file
+    local fake_bin
+    local page_html
+    local view_html
+
+    setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    mkdir -p "$fake_bin" "$TEST_TMPDIR/cli-incoming"
+    cat > "$fake_bin/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+dest="${@: -1}"
+mkdir -p "$(dirname "$dest")"
+printf 'fake image\n' > "$dest"
+MAGICK
+    chmod 0755 "$fake_bin/magick"
+    printf 'fake image\n' > "$TEST_TMPDIR/cli-incoming/01.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/cli-incoming/02.jpg"
+
+    {
+        printf 'TITLE=%q\n' 'Config title'
+        printf 'THUMBHEIGHT=10\n'
+        printf 'HEIGHT=20\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'SHUFFLE=yes\n'
+        printf 'INCOMING_DIR=%q/config-incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/config-dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/config-template\n' "$TEST_TMPDIR"
+        printf 'TARBALL_INCLUDE=yes\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$PHOTOALBUM" \
+            --generate \
+            --incoming "$TEST_TMPDIR/cli-incoming" \
+            --dist "$TEST_TMPDIR/cli-dist" \
+            --template "$REPO_ROOT/share/templates/default" \
+            --title 'CLI title' \
+            --height 456 \
+            --thumbheight 45 \
+            --maxpreviews 1 \
+            --no-shuffle \
+            --no-tarball
+    )
+
+    page_html=$(<"$TEST_TMPDIR/cli-dist/html/page-1.html")
+    view_html=$(<"$TEST_TMPDIR/cli-dist/html/1-1.html")
+
+    test -f "$TEST_TMPDIR/cli-dist/photos/01.jpg"
+    test -f "$TEST_TMPDIR/cli-dist/photos/02.jpg"
+    test ! -e "$TEST_TMPDIR/config-dist"
+    test ! -e "$TEST_TMPDIR/cli-dist/cli-incoming-"*.tar
+    assert_contains '<title>CLI title</title>' "$page_html"
+    assert_contains 'height: 45px;' "$page_html"
+    assert_contains 'max-height: 456px;' "$view_html"
+    assert_contains 'Next 1 pictures' "$page_html"
+    assert_not_contains 'Config title' "$page_html"
+
+    teardown
+}
+
+test_generate_cli_tarball_overrides_config() {
+    local config_file
+    local fake_bin
+    local tarball_count
+
+    setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    mkdir -p "$fake_bin" "$TEST_TMPDIR/incoming"
+    cat > "$fake_bin/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+dest="${@: -1}"
+mkdir -p "$(dirname "$dest")"
+printf 'fake image\n' > "$dest"
+MAGICK
+    chmod 0755 "$fake_bin/magick"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+
+    {
+        printf 'TITLE=%q\n' 'Tarball override'
+        printf 'THUMBHEIGHT=30\n'
+        printf 'HEIGHT=120\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'INCOMING_DIR=%q/incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$REPO_ROOT"
+        printf 'TARBALL_INCLUDE=no\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$PHOTOALBUM" --generate --tarball
+    )
+
+    tarball_count=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tar' \
+        | wc -l)
+    test "$tarball_count" -eq 1
+
     teardown
 }
 
@@ -400,6 +527,11 @@ test_extra_args_fail() {
     assert_failure 'extra operand is rejected' "$PHOTOALBUM" --version extra
     assert_failure 'unsupported option is rejected' "$PHOTOALBUM" --unknown
     assert_failure 'missing config value is rejected' "$PHOTOALBUM" --config
+    assert_failure 'missing incoming value is rejected' "$PHOTOALBUM" --incoming
+    assert_failure 'missing title value is rejected' "$PHOTOALBUM" --title
+    assert_failure \
+        '--incoming is rejected with --version' \
+        "$PHOTOALBUM" --version --incoming /tmp/incoming
     assert_failure \
         '--config is rejected with --init' \
         "$PHOTOALBUM" --init --config custom.conf
@@ -412,10 +544,17 @@ main() {
     run_test '--init succeeds' test_init
     run_test '--clean succeeds' test_clean
     run_test '--clean --config succeeds' test_clean_with_config
+    run_test '--clean --dist overrides config' test_clean_cli_dist_overrides_config
     run_test '--clean missing config fails clearly' test_clean_missing_config_fails
     run_test \
         '--generate --config reads selected config' \
         test_generate_with_config_missing_incoming_fails
+    run_test \
+        '--generate CLI options override config' \
+        test_generate_cli_overrides_config_values
+    run_test \
+        '--generate --tarball overrides config' \
+        test_generate_cli_tarball_overrides_config
     run_test \
         '--generate missing incoming fails' \
         test_generate_missing_incoming_fails

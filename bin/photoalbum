@@ -10,10 +10,23 @@ declare -r DEFAULTRC="${PHOTOALBUM_DEFAULT_RC:-/etc/default/photoalbum}"
 usage() {
     cat - <<USAGE >&2
     Usage:
-    $0 --generate [--config PATH]
-    $0 --clean [--config PATH]
+    $0 --generate [--config PATH] [OPTIONS]
+    $0 --clean [--config PATH] [OPTIONS]
     $0 --version
     $0 --init
+
+    Options:
+    --incoming PATH
+    --dist PATH
+    --template PATH
+    --title TEXT
+    --height VALUE
+    --thumbheight VALUE
+    --maxpreviews N
+    --shuffle
+    --no-shuffle
+    --tarball
+    --no-tarball
 USAGE
 }
 
@@ -521,9 +534,61 @@ apply_config_defaults() {
     TAR_OPTS="${TAR_OPTS:--c}"
 }
 
+option_value() {
+    local -r option="$1"; shift
+
+    if (( $# == 0 )) || [ -z "$1" ]; then
+        echo "Error: $option requires a value" >&2
+        usage
+        exit 1
+    fi
+
+    printf '%s\n' "$1"
+}
+
+apply_cli_overrides() {
+    if [ -n "$cli_incoming_dir" ]; then
+        INCOMING_DIR="$cli_incoming_dir"
+    fi
+    if [ -n "$cli_dist_dir" ]; then
+        DIST_DIR="$cli_dist_dir"
+    fi
+    if [ -n "$cli_template_dir" ]; then
+        TEMPLATE_DIR="$cli_template_dir"
+    fi
+    if [ -n "$cli_title" ]; then
+        TITLE="$cli_title"
+    fi
+    if [ -n "$cli_height" ]; then
+        HEIGHT="$cli_height"
+    fi
+    if [ -n "$cli_thumbheight" ]; then
+        THUMBHEIGHT="$cli_thumbheight"
+    fi
+    if [ -n "$cli_maxpreviews" ]; then
+        MAXPREVIEWS="$cli_maxpreviews"
+    fi
+    if [ -n "$cli_shuffle" ]; then
+        SHUFFLE="$cli_shuffle"
+    fi
+    if [ -n "$cli_tarball_include" ]; then
+        TARBALL_INCLUDE="$cli_tarball_include"
+    fi
+}
+
 main() {
     local action=''
     local config_file=''
+    local has_config_overrides='no'
+    local cli_dist_dir=''
+    local cli_height=''
+    local cli_incoming_dir=''
+    local cli_maxpreviews=''
+    local cli_shuffle=''
+    local cli_tarball_include=''
+    local cli_template_dir=''
+    local cli_thumbheight=''
+    local cli_title=''
     local option
     local rc_file
 
@@ -547,6 +612,57 @@ main() {
                 config_file="$1"
                 shift
                 ;;
+            --incoming)
+                cli_incoming_dir=$(option_value "$option" "$@")
+                has_config_overrides='yes'
+                shift
+                ;;
+            --dist)
+                cli_dist_dir=$(option_value "$option" "$@")
+                has_config_overrides='yes'
+                shift
+                ;;
+            --template)
+                cli_template_dir=$(option_value "$option" "$@")
+                has_config_overrides='yes'
+                shift
+                ;;
+            --title)
+                cli_title=$(option_value "$option" "$@")
+                has_config_overrides='yes'
+                shift
+                ;;
+            --height)
+                cli_height=$(option_value "$option" "$@")
+                has_config_overrides='yes'
+                shift
+                ;;
+            --thumbheight)
+                cli_thumbheight=$(option_value "$option" "$@")
+                has_config_overrides='yes'
+                shift
+                ;;
+            --maxpreviews)
+                cli_maxpreviews=$(option_value "$option" "$@")
+                has_config_overrides='yes'
+                shift
+                ;;
+            --shuffle)
+                cli_shuffle='yes'
+                has_config_overrides='yes'
+                ;;
+            --no-shuffle)
+                cli_shuffle='no'
+                has_config_overrides='yes'
+                ;;
+            --tarball)
+                cli_tarball_include='yes'
+                has_config_overrides='yes'
+                ;;
+            --no-tarball)
+                cli_tarball_include='no'
+                has_config_overrides='yes'
+                ;;
             --version|--init|--clean|--generate)
                 if [ -n "$action" ]; then
                     usage
@@ -564,7 +680,7 @@ main() {
 
     case "$action" in
         --version)
-            if [ -n "$config_file" ]; then
+            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' ]]; then
                 usage
                 exit 1
             fi
@@ -572,7 +688,7 @@ main() {
             echo "This is Photoalbum Version $VERSION"
             ;;
         --init)
-            if [ -n "$config_file" ]; then
+            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' ]]; then
                 usage
                 exit 1
             fi
@@ -588,6 +704,8 @@ main() {
 
             source "$rc_file"
             apply_config_defaults
+            apply_cli_overrides
+
             case "$action" in
                 --clean)
                     if [ -d "$DIST_DIR" ]; then

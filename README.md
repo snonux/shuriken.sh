@@ -18,8 +18,8 @@ modern `magick` command and falls back to `convert` when needed.
 ## Usage
 
 ```
-    photoalbum --generate [--config PATH]
-    photoalbum --clean [--config PATH]
+    photoalbum --generate [--config PATH] [OPTIONS]
+    photoalbum --clean [--config PATH] [OPTIONS]
     photoalbum --version
     photoalbum --init
 ```
@@ -29,6 +29,21 @@ modern `magick` command and falls back to `convert` when needed.
 * `--config PATH`: Selects the config file for `--generate` or `--clean`
 * `--version`: Prints out the version
 * `--init`: Creates a `photoalbum.conf` in the current working directory
+
+The following long options can be used with `--generate` or `--clean` to
+override values loaded from `photoalbum.conf`:
+
+* `--incoming PATH`: Overrides `INCOMING_DIR`
+* `--dist PATH`: Overrides `DIST_DIR`
+* `--template PATH`: Overrides `TEMPLATE_DIR`
+* `--title TEXT`: Overrides `TITLE`
+* `--height VALUE`: Overrides `HEIGHT`
+* `--thumbheight VALUE`: Overrides `THUMBHEIGHT`
+* `--maxpreviews N`: Overrides `MAXPREVIEWS`
+* `--shuffle`: Sets `SHUFFLE=yes`
+* `--no-shuffle`: Sets `SHUFFLE=no`
+* `--tarball`: Sets `TARBALL_INCLUDE=yes`
+* `--no-tarball`: Sets `TARBALL_INCLUDE=no`
 
 ## Example usage
 
