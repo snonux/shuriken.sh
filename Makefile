@@ -1,11 +1,12 @@
 NAME=photoalbum
+VERSION=0.6.0
 #DESTDIR=/
-all: version build
+all: build
 version:
-	cut -d' ' -f2 changelog | head -n 1 | sed 's/(//;s/)//' > .version
+	printf '%s\n' "$(VERSION)"
 build:
 	test ! -d ./bin && mkdir ./bin || exit 0
-	sed "s/PHOTOALBUMVERSION/$$(cat .version)/" src/$(NAME).sh > ./bin/$(NAME)
+	sed "s/PHOTOALBUMVERSION/$(VERSION)/" src/$(NAME).sh > ./bin/$(NAME)
 	chmod 0755 ./bin/$(NAME)
 install:
 	test ! -d $(DESTDIR)/usr/bin && mkdir -p $(DESTDIR)/usr/bin || exit 0
