@@ -20,7 +20,6 @@ deinstall:
 	test ! -z "$(DESTDIR)" && test -f $(DESTDIR)/etc/default/photoalbum && rm $(DESTDIR)/etc/default/photoalbum || exit 0
 clean:
 	test -d ./bin && rm -Rf ./bin || exit 0
-	test -d ./debian/photoalbum && rm -Rf ./debian/photoalbum || exit 0
 shellcheck:
 	# SC1090: ShellCheck can't follow non-constant source. Use a directive to specify location.
 	# SC2001: See if you can use ${variable//search/replace} instead.
