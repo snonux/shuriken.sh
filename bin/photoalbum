@@ -30,6 +30,7 @@ usage() {
     --height VALUE
     --thumbheight VALUE
     --maxpreviews N
+    --random-seed VALUE
     --shuffle
     --no-shuffle
     --tarball
@@ -323,6 +324,30 @@ _display_path() {
     fi
 }
 
+current_date_text() {
+    if random_seed_is_set; then
+        printf 'Thu Jan  1 00:00:00 UTC 1970\n'
+    else
+        command date
+    fi
+}
+
+current_timestamp_slug() {
+    if random_seed_is_set; then
+        printf '1970-01-01-000000\n'
+    else
+        command date +'%Y-%m-%d-%H%M%S'
+    fi
+}
+
+current_timestamp_iso() {
+    if random_seed_is_set; then
+        printf '1970-01-01T00:00:00Z\n'
+    else
+        command date -u +'%Y-%m-%dT%H:%M:%SZ'
+    fi
+}
+
 template() {
     local -r template_name="$1"; shift
     local -r html="$1"; shift
@@ -387,7 +412,20 @@ template() {
         thumbs_dir_html \
         title_html
 
-    source "$TEMPLATE_DIR/$template_name.tmpl" >> "$dist_html/$html"
+    if random_seed_is_set; then
+        # shellcheck disable=SC2329
+        date() {
+            if (( $# == 0 )); then
+                current_date_text
+            else
+                command date "$@"
+            fi
+        }
+        source "$TEMPLATE_DIR/$template_name.tmpl" >> "$dist_html/$html"
+        unset -f date
+    else
+        source "$TEMPLATE_DIR/$template_name.tmpl" >> "$dist_html/$html"
+    fi
 }
 
 cleanphotos() {
@@ -488,8 +526,36 @@ scalephotos() {
     done < <(incoming_image_files)
 }
 
+random_seed_is_set() {
+    [ -n "${RANDOM_SEED:-}" ]
+}
+
+deterministic_index() {
+    local -r namespace="$1"; shift
+    local -r count="$1"; shift
+    local checksum
+
+    checksum=$(printf '%s' "${RANDOM_SEED}:$namespace" | cksum)
+    checksum=${checksum%% *}
+
+    printf '%s\n' $(( checksum % count ))
+}
+
+random_index() {
+    local -r namespace="$1"; shift
+    local -r count="$1"; shift
+
+    if random_seed_is_set; then
+        deterministic_index "$namespace" "$count"
+    else
+        printf '%s\n' $(( RANDOM % count ))
+    fi
+}
+
 random_animation_css_class() {
     local -r speed="$1"; shift
+    local -r context="${1:-$speed}"
+    local -i index
     local -a classes=(
         "animate-opacity-$speed"
         "animate-top-$speed"
@@ -508,12 +574,28 @@ random_animation_css_class() {
         "animate-glitch-step-$speed"
     )
 
-    printf '%s\n' "${classes[@]}" | sort -R | sed -n '1p'
+    index=$(random_index "animation:$speed:$context" "${#classes[@]}")
+    printf '%s\n' "${classes[index]}"
+}
+
+deterministic_shuffle() {
+    local checksum
+    local line
+
+    while IFS= read -r line; do
+        checksum=$(printf '%s' "${RANDOM_SEED}:shuffle:$line" | cksum)
+        checksum=${checksum%% *}
+        printf '%010u\t%s\n' "$checksum" "$line"
+    done | sort -n -k1,1 -k2,2 | cut -f2-
 }
 
 maybe_shuffle() {
     if [ "${SHUFFLE:-no}" = yes ]; then
-        sort -R
+        if random_seed_is_set; then
+            deterministic_shuffle
+        else
+            sort -R
+        fi
     else
         sort
     fi
@@ -559,7 +641,7 @@ albumhtml() {
     name="page-$num"
 
     # Random background image for preview page.
-    background_image=$(randomphoto "$photos_dir")
+    background_image=$(randomphoto "$photos_dir" "$name")
     show_header_bar='yes'
     export background_image show_header_bar
     template 'header' "$name.html"
@@ -579,7 +661,7 @@ albumhtml() {
             prev="$name"
             name="$next"
 
-            background_image=$(randomphoto "$photos_dir")
+            background_image=$(randomphoto "$photos_dir" "$name")
             show_header_bar='no'
             export background_image prev show_header_bar
             template header "$name.html"
@@ -587,7 +669,7 @@ albumhtml() {
         fi
 
         # Preview page.
-        animation_class=$(random_animation_css_class slow)
+        animation_class=$(random_animation_css_class slow "$photo")
         export animation_class
         template preview "$name.html"
 
@@ -597,7 +679,7 @@ albumhtml() {
         export background_image show_header_bar
         template header "$num-$i.html"
 
-        animation_class=$(random_animation_css_class fast)
+        animation_class=$(random_animation_css_class fast "$photo")
         export animation_class
         template view "$num-$i.html"
         template footer "$num-$i.html"
@@ -674,6 +756,8 @@ albumhtml() {
 
 randomphoto() {
     local -r photos_dir="$1"; shift
+    local -r context="${1:-$photos_dir}"
+    local -i index
     local photo
     local -a photos=()
 
@@ -690,7 +774,8 @@ randomphoto() {
         return 1
     fi
 
-    printf '%s\n' "${photos[RANDOM % ${#photos[@]}]}"
+    index=$(random_index "photo:$photos_dir:$context" "${#photos[@]}")
+    printf '%s\n' "${photos[index]}"
 }
 
 count_files() {
@@ -722,11 +807,11 @@ tarball_name_plan() {
 
 generated_tarball_name() {
     local base
-    local now
+    local timestamp
 
     base=$(basename "$INCOMING_DIR")
-    now=$(date +'%Y-%m-%d-%H%M%S')
-    printf '%s-%s%s\n' "$base" "$now" "${TARBALL_SUFFIX:-.tar}"
+    timestamp=$(current_timestamp_slug)
+    printf '%s-%s%s\n' "$base" "$timestamp" "${TARBALL_SUFFIX:-.tar}"
 }
 
 count_tree_files() {
@@ -743,7 +828,7 @@ count_tree_files() {
 
 write_generation_metadata() {
     local -r tarball_file="$1"; shift
-    local -r generated_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+    local -r generated_at=$(current_timestamp_iso)
     local -r config_source="${PHOTOALBUM_CONFIG_SOURCE:-}"
     local -r template_name=$(basename "$TEMPLATE_DIR")
     local -r source_image_count=$(count_incoming_images)
@@ -781,6 +866,7 @@ write_generation_metadata() {
         printf '    "height": %s,\n' "$(_json_string "${HEIGHT:-}")"
         printf '    "thumbheight": %s,\n' "$(_json_string "${THUMBHEIGHT:-}")"
         printf '    "maxpreviews": %s,\n' "$(_json_string "${MAXPREVIEWS:-}")"
+        printf '    "random_seed": %s,\n' "$(_json_string "${RANDOM_SEED:-}")"
         printf '    "shuffle": %s,\n' "$(_json_bool "${SHUFFLE:-no}")"
         printf '    "original_basepath": %s\n' \
             "$(_json_string "${ORIGINAL_BASEPATH:-}")"
@@ -848,6 +934,7 @@ dry_run() {
     printf 'Height: %s\n' "${HEIGHT:-}"
     printf 'Thumb height: %s\n' "$THUMBHEIGHT"
     printf 'Max previews per page: %s\n' "$MAXPREVIEWS"
+    printf 'Random seed: %s\n' "${RANDOM_SEED:-}"
     printf 'Shuffle: %s\n' "${SHUFFLE:-no}"
     printf 'Image count: %s\n' "$image_count"
     printf 'Tarball setting: %s\n' "${TARBALL_INCLUDE:-no}"
@@ -914,6 +1001,7 @@ print_config() {
     print_shell_assignment HEIGHT "${HEIGHT:-}"
     print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
     print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
+    print_shell_assignment RANDOM_SEED "${RANDOM_SEED:-}"
     print_shell_assignment SHUFFLE "${SHUFFLE:-no}"
     print_shell_assignment TARBALL_INCLUDE "${TARBALL_INCLUDE:-no}"
     print_shell_assignment TARBALL_SUFFIX "${TARBALL_SUFFIX:-.tar}"
@@ -1106,6 +1194,7 @@ missing_config() {
 apply_config_defaults() {
     HEIGHT="${HEIGHT:-}"
     ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
+    RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
@@ -1147,6 +1236,9 @@ apply_cli_overrides() {
     fi
     if [ -n "$cli_maxpreviews" ]; then
         MAXPREVIEWS="$cli_maxpreviews"
+    fi
+    if [ -n "$cli_random_seed" ]; then
+        RANDOM_SEED="$cli_random_seed"
     fi
     if [ -n "$cli_shuffle" ]; then
         SHUFFLE="$cli_shuffle"
@@ -1329,6 +1421,7 @@ main() {
     local cli_height=''
     local cli_incoming_dir=''
     local cli_maxpreviews=''
+    local cli_random_seed=''
     local cli_shuffle=''
     local cli_tarball_include=''
     local cli_template_dir=''
@@ -1389,6 +1482,11 @@ main() {
                 ;;
             --maxpreviews)
                 cli_maxpreviews=$(option_value "$option" "$@")
+                has_config_overrides='yes'
+                shift
+                ;;
+            --random-seed)
+                cli_random_seed=$(option_value "$option" "$@")
                 has_config_overrides='yes'
                 shift
                 ;;

@@ -447,6 +447,54 @@ test_generate_no_shuffle_override_uses_sorted_order() {
     test::teardown
 }
 
+test_generate_random_seed_repeats_html_with_shuffle() {
+    local config_file
+    local fake_bin
+    local sort_log
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    sort_log="$TEST_TMPDIR/sort.log"
+
+    test::install_fake_imagemagick "$fake_bin"
+    test::install_sort_spy "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist-one" \
+        'Seeded shuffle album' 2
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_SORT_LOG="$sort_log" \
+            "$TEST_PHOTOALBUM" \
+                --generate \
+                --shuffle \
+                --random-seed stable-seed \
+                --dist "$TEST_TMPDIR/dist-one"
+        PATH="$fake_bin:$PATH" TEST_SORT_LOG="$sort_log" \
+            "$TEST_PHOTOALBUM" \
+                --generate \
+                --shuffle \
+                --random-seed stable-seed \
+                --dist "$TEST_TMPDIR/dist-two"
+    )
+
+    if ! diff -ru "$TEST_TMPDIR/dist-one/html" "$TEST_TMPDIR/dist-two/html"; then
+        echo 'FAIL: seeded generation should produce identical HTML' >&2
+        exit 1
+    fi
+    if ! cmp -s "$TEST_TMPDIR/dist-one/index.html" \
+        "$TEST_TMPDIR/dist-two/index.html"; then
+        echo 'FAIL: seeded generation should produce identical top-level HTML' >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$sort_log"
+    test::teardown
+}
+
 test_generate_cli_tarball_overrides_config() {
     local config_file
     local fake_bin
@@ -774,6 +822,7 @@ TITLE=A\\ simple\\ Photoalbum
 HEIGHT=1200
 THUMBHEIGHT=300
 MAXPREVIEWS=40
+RANDOM_SEED=''
 SHUFFLE=no
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
@@ -906,6 +955,7 @@ TITLE=Selected\\ config
 HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=7
+RANDOM_SEED=''
 SHUFFLE=yes
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
@@ -940,6 +990,7 @@ TITLE=Current\\ directory\\ config
 HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=8
+RANDOM_SEED=''
 SHUFFLE=no
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
@@ -984,6 +1035,7 @@ test_print_config_applies_cli_overrides_without_writes() {
                 --height 456 \
                 --thumbheight 45 \
                 --maxpreviews 9 \
+                --random-seed cli-seed \
                 --shuffle \
                 --tarball
     )
@@ -996,6 +1048,7 @@ TITLE=CLI\\ title
 HEIGHT=456
 THUMBHEIGHT=45
 MAXPREVIEWS=9
+RANDOM_SEED=cli-seed
 SHUFFLE=yes
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
@@ -1174,6 +1227,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
                 --height 456 \
                 --thumbheight 45 \
                 --maxpreviews 2 \
+                --random-seed dry-seed \
                 --shuffle \
                 --tarball
     )
@@ -1189,6 +1243,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains 'Height: 456' "$output"
     test::assert_contains 'Thumb height: 45' "$output"
     test::assert_contains 'Max previews per page: 2' "$output"
+    test::assert_contains 'Random seed: dry-seed' "$output"
     test::assert_contains 'Shuffle: yes' "$output"
     test::assert_contains 'Image count: 6' "$output"
     test::assert_contains 'Tarball setting: yes' "$output"
@@ -2130,6 +2185,7 @@ test_missing_option_values_fail() {
         --height
         --thumbheight
         --maxpreviews
+        --random-seed
     )
 
     for option in "${value_options[@]}"; do
@@ -2167,6 +2223,9 @@ main() {
     test::run_case \
         '--generate --no-shuffle overrides config' \
         test_generate_no_shuffle_override_uses_sorted_order
+    test::run_case \
+        '--generate --random-seed repeats HTML with shuffle' \
+        test_generate_random_seed_repeats_html_with_shuffle
     test::run_case \
         '--generate --tarball overrides config' \
         test_generate_cli_tarball_overrides_config
