@@ -502,6 +502,81 @@ test_generate_cli_no_tarball_overrides_config() {
     test::teardown
 }
 
+test_generate_default_tar_opts_create_archive() {
+    local config_file
+    local fake_bin
+    local tar_log
+    local tarball
+    local tarball_listing
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    tar_log="$TEST_TMPDIR/tar.log"
+
+    test::install_fake_imagemagick "$fake_bin"
+    test::install_tar_spy "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Default tar opts' 40
+    printf 'TARBALL_INCLUDE=yes\n' >> "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_TAR_LOG="$tar_log" \
+            "$TEST_PHOTOALBUM" --generate
+    )
+
+    tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tar' -print)
+    test::assert_contains "$TEST_TMPDIR/dist/incoming-" "$tarball"
+    tarball_listing=$(tar -tf "$tarball")
+    test::assert_contains 'incoming/01-landscape.jpg' "$tarball_listing"
+    test::assert_contains $'arg0=-c\narg1=-f' "$(<"$tar_log")"
+    test::teardown
+}
+
+test_generate_scalar_multi_tar_opts_create_archive() {
+    local config_file
+    local fake_bin
+    local tar_log
+    local tarball
+    local tarball_listing
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    tar_log="$TEST_TMPDIR/tar.log"
+
+    test::install_fake_imagemagick "$fake_bin"
+    test::install_tar_spy "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Scalar multi tar opts' 40
+    {
+        printf 'TARBALL_INCLUDE=yes\n'
+        printf 'TAR_OPTS=%q\n' '--sort=name --mtime=@0 -c'
+    } >> "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_TAR_LOG="$tar_log" \
+            "$TEST_PHOTOALBUM" --generate
+    )
+
+    tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tar' -print)
+    test::assert_contains "$TEST_TMPDIR/dist/incoming-" "$tarball"
+    tarball_listing=$(tar -tf "$tarball")
+    test::assert_contains 'incoming/01-landscape.jpg' "$tarball_listing"
+    test::assert_contains \
+        $'arg0=--sort=name\narg1=--mtime=@0\narg2=-c\narg3=-f' \
+        "$(<"$tar_log")"
+    test::teardown
+}
+
 test_default_output_reports_routine_progress() {
     local config_file
     local fake_bin
@@ -1684,6 +1759,12 @@ main() {
     test::run_case \
         '--generate --no-tarball overrides config' \
         test_generate_cli_no_tarball_overrides_config
+    test::run_case \
+        '--generate default TAR_OPTS creates archive' \
+        test_generate_default_tar_opts_create_archive
+    test::run_case \
+        '--generate scalar multi-option TAR_OPTS creates archive' \
+        test_generate_scalar_multi_tar_opts_create_archive
     test::run_case \
         'default output reports routine progress' \
         test_default_output_reports_routine_progress

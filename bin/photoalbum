@@ -134,19 +134,47 @@ imagemagick() {
 
 tarball() {
     local -r tarball_name="$1"; shift
-    local -r tar_opts="${TAR_OPTS:--c}"
     local base
+    local -a tar_opts=()
 
     # Cleanup tarball from prev run if any
     find "$DIST_DIR" -maxdepth 1 -type f -name '*.tar' -delete
     base=$(basename "$INCOMING_DIR")
+    resolve_tar_opts tar_opts
 
     log_info "Creating tarball $(_display_path "$DIST_DIR/$tarball_name")" \
         "from $INCOMING_DIR"
     (
         cd "$(dirname "$INCOMING_DIR")"
-        tar "$tar_opts" -f "$DIST_DIR/$tarball_name" "$base"
+        tar "${tar_opts[@]}" -f "$DIST_DIR/$tarball_name" "$base"
     )
+}
+
+resolve_tar_opts() {
+    local -n options_ref="$1"; shift
+    local tar_opts_decl
+
+    options_ref=()
+
+    if ! tar_opts_decl=$(declare -p TAR_OPTS 2>/dev/null); then
+        options_ref=(-c)
+        return
+    fi
+
+    case "$tar_opts_decl" in
+        declare\ -a*\ TAR_OPTS=*)
+            options_ref=("${TAR_OPTS[@]}")
+            ;;
+        *)
+            if [ -n "${TAR_OPTS:-}" ]; then
+                read -r -a options_ref <<< "$TAR_OPTS"
+            fi
+            ;;
+    esac
+
+    if (( ${#options_ref[@]} == 0 )); then
+        options_ref=(-c)
+    fi
 }
 
 _html_escape() {
@@ -1000,7 +1028,9 @@ apply_config_defaults() {
     SHUFFLE="${SHUFFLE:-no}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
-    TAR_OPTS="${TAR_OPTS:--c}"
+    if ! declare -p TAR_OPTS >/dev/null 2>&1; then
+        TAR_OPTS=(-c)
+    fi
 }
 
 option_value() {

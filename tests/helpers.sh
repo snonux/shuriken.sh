@@ -299,6 +299,31 @@ SORT
     chmod 0755 "$bin_dir/sort"
 }
 
+test::install_tar_spy() {
+    local -r bin_dir="$1"; shift
+    local real_tar
+
+    mkdir -p "$bin_dir"
+    real_tar=$(command -v tar)
+
+    cat > "$bin_dir/tar" <<TAR
+#!/usr/bin/env bash
+set -euo pipefail
+
+{
+    printf 'argc=%s\n' "\$#"
+    i=0
+    for arg in "\$@"; do
+        printf 'arg%s=%q\n' "\$i" "\$arg"
+        i=\$(( i + 1 ))
+    done
+} >> "\$TEST_TAR_LOG"
+
+"$real_tar" "\$@"
+TAR
+    chmod 0755 "$bin_dir/tar"
+}
+
 test::install_coreutils_without_imagemagick() {
     local -r bin_dir="$1"; shift
     local command_path
