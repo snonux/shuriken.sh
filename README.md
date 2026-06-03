@@ -5,54 +5,76 @@ The resulting static photo album is pure HTML+CSS (without any JavaScript!).
 
 ## Installation
 
-Run the following commands to install it:
+Build and install the command, templates, and default config from a source
+checkout with:
 
 ```
 make
 sudo make install
 ```
 
-Also, as a requirement, ImageMagick needs to be installed. The script prefers the
+ImageMagick must also be installed. The script prefers the
 modern `magick` command and falls back to `convert` when needed.
 
 ## Usage
 
 ```
-    photoalbum --generate [--config PATH] [OPTIONS]
-    photoalbum --clean [--config PATH] [OPTIONS]
-    photoalbum --version
-    photoalbum --init
+photoalbum --init
+photoalbum --generate [--config PATH] [OPTIONS]
+photoalbum --clean [--config PATH] [OPTIONS]
+photoalbum --version
 ```
 
-* `--generate`: Generates the static photo album
-* `--clean`: Cleans up the workspace
-* `--config PATH`: Selects the config file for `--generate` or `--clean`
-* `--version`: Prints out the version
-* `--init`: Creates a `photoalbum.conf` in the current working directory
+* `--init` creates `./photoalbum.conf` in the current working directory from the
+  default config. It refuses to overwrite an existing file.
+* `--generate` builds the static album.
+* `--clean` removes the configured output directory.
+* `--version` prints the program version.
+* `--config PATH` selects the config file for `--generate` or `--clean`.
 
-The following long options can be used with `--generate` or `--clean` to
-override values loaded from `photoalbum.conf`:
+When `--config PATH` is not provided, `--generate` and `--clean` read
+`./photoalbum.conf`. If the file is missing, run `photoalbum --init` first.
 
-* `--incoming PATH`: Overrides `INCOMING_DIR`
-* `--dist PATH`: Overrides `DIST_DIR`
-* `--template PATH`: Overrides `TEMPLATE_DIR`
-* `--title TEXT`: Overrides `TITLE`
-* `--height VALUE`: Overrides `HEIGHT`
-* `--thumbheight VALUE`: Overrides `THUMBHEIGHT`
-* `--maxpreviews N`: Overrides `MAXPREVIEWS`
-* `--shuffle`: Sets `SHUFFLE=yes`
-* `--no-shuffle`: Sets `SHUFFLE=no`
-* `--tarball`: Sets `TARBALL_INCLUDE=yes`
-* `--no-tarball`: Sets `TARBALL_INCLUDE=no`
+The config file is a Bash file with assignments such as `INCOMING_DIR`,
+`DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
+`SHUFFLE`, and `TARBALL_INCLUDE`.
+
+Before generating, `photoalbum` validates the loaded config and command-line
+overrides. It checks required values, positive integer settings, `yes`/`no`
+settings, readable input and template directories, a writable output location,
+and ImageMagick availability. Generation stops before writing album output when
+validation fails.
+
+The following long options override config values:
+
+| Option | Config value |
+| --- | --- |
+| `--incoming PATH` | `INCOMING_DIR` |
+| `--dist PATH` | `DIST_DIR` |
+| `--template PATH` | `TEMPLATE_DIR` |
+| `--title TEXT` | `TITLE` |
+| `--height VALUE` | `HEIGHT` |
+| `--thumbheight VALUE` | `THUMBHEIGHT` |
+| `--maxpreviews N` | `MAXPREVIEWS` |
+| `--shuffle` | `SHUFFLE=yes` |
+| `--no-shuffle` | `SHUFFLE=no` |
+| `--tarball` | `TARBALL_INCLUDE=yes` |
+| `--no-tarball` | `TARBALL_INCLUDE=no` |
+
+`--clean` accepts the same override options, but only `--dist` changes what it
+removes.
 
 ## Example usage
 
-1. Run `photoalbum --init`, which creates a `photoalbum.conf` file in the current directory from the installed/default config template.
-2. Adjust the `INCOMING_DIR` path in `photoalbum.conf`. Point it to a directory with all the pictures in it.
-3. Run `photoalbum --generate` to generate it.
+1. Run `photoalbum --init`.
+2. Edit `photoalbum.conf`. Set `INCOMING_DIR` to the directory containing the
+   pictures and adjust `DIST_DIR`, `TITLE`, or template settings as needed.
+3. Run `photoalbum --generate` to generate the album.
 4. Distribute the `./dist` directory to a static web server.
-5. Clean the mess up with `photoalbum --clean`
+5. Run `photoalbum --clean` to remove the generated output.
 
 ## HTML templates
 
-Poke around in this source directory. You will find a bunch of Bash-HTML template files. You could tweak them to your likings. 
+Templates live under `share/templates/default` in the source tree and under the
+installed template directory after installation. Copy and edit them, then point
+`TEMPLATE_DIR` or `--template PATH` at the customized directory.

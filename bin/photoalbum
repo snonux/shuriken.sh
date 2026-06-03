@@ -16,6 +16,7 @@ usage() {
     $0 --init
 
     Options:
+    --config PATH
     --incoming PATH
     --dist PATH
     --template PATH
