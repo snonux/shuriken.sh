@@ -11,6 +11,7 @@ usage() {
     cat - <<USAGE >&2
     Usage:
     $0 --generate [--config PATH] [OPTIONS]
+    $0 --dry-run [--config PATH] [OPTIONS]
     $0 --clean [--config PATH] [OPTIONS]
     $0 --version
     $0 --init
@@ -612,6 +613,22 @@ count_incoming_images() {
     incoming_image_files | wc -l
 }
 
+tarball_name_plan() {
+    local base
+
+    base=$(basename "$INCOMING_DIR")
+    printf '%s-<timestamp>%s\n' "$base" "${TARBALL_SUFFIX:-.tar}"
+}
+
+generated_tarball_name() {
+    local base
+    local now
+
+    base=$(basename "$INCOMING_DIR")
+    now=$(date +'%Y-%m-%d-%H%M%S')
+    printf '%s-%s%s\n' "$base" "$now" "${TARBALL_SUFFIX:-.tar}"
+}
+
 count_tree_files() {
     local -r dir="$1"; shift
     local -r name="$1"; shift
@@ -673,16 +690,12 @@ write_generation_metadata() {
 }
 
 generate() {
-    local base
     local html_dir
-    local now
     local redirect_page
     local tarball_name=''
 
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
-        base=$(basename "$INCOMING_DIR")
-        now=$(date +'%Y-%m-%d-%H%M%S')
-        tarball_name="${base}-${now}${TARBALL_SUFFIX:-.tar}"
+        tarball_name=$(generated_tarball_name)
     fi
 
     warn_unsupported_incoming_files
@@ -704,6 +717,66 @@ generate() {
     fi
 
     write_generation_metadata "$tarball_name"
+}
+
+dry_run() {
+    local -i image_count=0
+    local -i html_index_count=1
+    local -i page_count=0
+    local -i redirect_count=0
+
+    image_count=$(count_incoming_images)
+
+    if (( image_count > 0 )); then
+        page_count=$(( (image_count + MAXPREVIEWS - 1) / MAXPREVIEWS ))
+        redirect_count=$(( page_count * 2 ))
+        if (( image_count % MAXPREVIEWS != 0 )); then
+            (( ++redirect_count ))
+        fi
+    fi
+
+    printf 'Dry run: no files will be written.\n'
+    printf 'Config source: %s\n' "${PHOTOALBUM_CONFIG_SOURCE:-}"
+    printf 'Incoming directory: %s\n' "$INCOMING_DIR"
+    printf 'Output directory: %s\n' "$DIST_DIR"
+    printf 'Template directory: %s\n' "$TEMPLATE_DIR"
+    printf 'Title: %s\n' "$TITLE"
+    printf 'Height: %s\n' "${HEIGHT:-}"
+    printf 'Thumb height: %s\n' "$THUMBHEIGHT"
+    printf 'Max previews per page: %s\n' "$MAXPREVIEWS"
+    printf 'Shuffle: %s\n' "${SHUFFLE:-no}"
+    printf 'Image count: %s\n' "$image_count"
+    printf 'Tarball setting: %s\n' "${TARBALL_INCLUDE:-no}"
+    if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
+        printf 'Tarball name plan: %s\n' "$(tarball_name_plan)"
+    else
+        printf 'Tarball name plan: not planned\n'
+    fi
+
+    printf 'Planned directories:\n'
+    printf '  %s\n' "$DIST_DIR"
+    printf '  %s/photos\n' "$DIST_DIR"
+    printf '  %s/thumbs\n' "$DIST_DIR"
+    printf '  %s/blurs\n' "$DIST_DIR"
+    printf '  %s/html\n' "$DIST_DIR"
+
+    printf 'Planned generated files:\n'
+    printf '  %s/index.html\n' "$DIST_DIR"
+    printf '  %s/photoalbum.json\n' "$DIST_DIR"
+    printf '  %s/photos/* (%s image files)\n' "$DIST_DIR" "$image_count"
+    printf '  %s/thumbs/* (%s image files)\n' "$DIST_DIR" "$image_count"
+    printf '  %s/blurs/* (%s image files)\n' "$DIST_DIR" "$image_count"
+    printf '  %s/html/page-*.html (%s preview pages)\n' \
+        "$DIST_DIR" "$page_count"
+    printf '  %s/html/[page]-[image].html (%s view pages)\n' \
+        "$DIST_DIR" "$image_count"
+    printf '  %s/html/[redirect].html (%s navigation redirects)\n' \
+        "$DIST_DIR" "$redirect_count"
+    printf '  %s/html/index.html (%s album index redirect)\n' \
+        "$DIST_DIR" "$html_index_count"
+    if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
+        printf '  %s/%s\n' "$DIST_DIR" "$(tarball_name_plan)"
+    fi
 }
 
 existing_parent_dir() {
@@ -1043,6 +1116,7 @@ validate_imagemagick() {
 }
 
 validate_generation_config() {
+    local -r require_imagemagick="${1:-yes}"
     local required_var
     local -a required_vars=(
         TITLE
@@ -1072,7 +1146,9 @@ validate_generation_config() {
 
     validate_dist_dir
     validate_template_dir
-    validate_imagemagick
+    if [ "$require_imagemagick" = yes ]; then
+        validate_imagemagick
+    fi
 }
 
 main() {
@@ -1162,7 +1238,7 @@ main() {
                 cli_tarball_include='no'
                 has_config_overrides='yes'
                 ;;
-            --version|--init|--clean|--generate)
+            --version|--init|--clean|--generate|--dry-run)
                 if [ -n "$action" ]; then
                     usage
                     exit 1
@@ -1194,7 +1270,7 @@ main() {
 
             init_config
             ;;
-        --clean|--generate)
+        --clean|--generate|--dry-run)
             rc_file="$(resolve_config_file "$config_file")"
 
             if [ ! -f "$rc_file" ]; then
@@ -1216,6 +1292,10 @@ main() {
                 --generate)
                     validate_generation_config
                     generate_staged
+                    ;;
+                --dry-run)
+                    validate_generation_config no
+                    dry_run
                     ;;
             esac
             ;;

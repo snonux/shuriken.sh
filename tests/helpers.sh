@@ -220,6 +220,27 @@ MAGICK
     cp "$bin_dir/magick" "$bin_dir/convert"
 }
 
+test::install_failing_generation_tools() {
+    local -r bin_dir="$1"; shift
+    local name
+
+    mkdir -p "$bin_dir"
+
+    for name in magick convert tar; do
+        cat > "$bin_dir/$name" <<'TOOL'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "${TEST_FORBIDDEN_TOOL_LOG:-}" ]; then
+    printf 'called %s\n' "$(basename "$0")" >> "$TEST_FORBIDDEN_TOOL_LOG"
+fi
+echo "unexpected generation tool invocation: $(basename "$0")" >&2
+exit 97
+TOOL
+        chmod 0755 "$bin_dir/$name"
+    done
+}
+
 test::install_mv_spy() {
     local -r bin_dir="$1"; shift
     local real_mv

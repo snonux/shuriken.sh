@@ -21,6 +21,7 @@ modern `magick` command and falls back to `convert` when needed.
 ```
 photoalbum --init
 photoalbum --generate [--config PATH] [OPTIONS]
+photoalbum --dry-run [--config PATH] [OPTIONS]
 photoalbum --clean [--config PATH] [OPTIONS]
 photoalbum --version
 ```
@@ -28,12 +29,17 @@ photoalbum --version
 * `--init` creates `./photoalbum.conf` in the current working directory from the
   default config. It refuses to overwrite an existing file.
 * `--generate` builds the static album.
+* `--dry-run` loads the config and overrides, validates the planned generation,
+  and prints the effective paths, image count, tarball plan, and generated file
+  plan without writing output or running ImageMagick or tar.
 * `--clean` removes the configured output directory.
 * `--version` prints the program version.
-* `--config PATH` selects the config file for `--generate` or `--clean`.
+* `--config PATH` selects the config file for `--generate`, `--dry-run`, or
+  `--clean`.
 
-When `--config PATH` is not provided, `--generate` and `--clean` read
-`./photoalbum.conf`. If the file is missing, run `photoalbum --init` first.
+When `--config PATH` is not provided, `--generate`, `--dry-run`, and `--clean`
+read `./photoalbum.conf`. If the file is missing, run `photoalbum --init`
+first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
@@ -49,6 +55,10 @@ Only regular files in `INCOMING_DIR` with supported image extensions are
 processed as album images. Supported extensions are `jpg`, `jpeg`, `png`, `webp`,
 and `gif`, matched case-insensitively. Other files, such as `.txt` or `.md`
 notes, are ignored with a warning so generation can continue.
+
+`--dry-run` reports the same `INCOMING_DIR`, `DIST_DIR`, and `TEMPLATE_DIR`
+values that generation would use after applying command-line overrides. Its
+tarball filename uses `<timestamp>` as a placeholder so the output is stable.
 
 Successful generation writes `photoalbum.json` into the output directory. This
 metadata records the generator version and timestamp, config source, template
@@ -71,17 +81,18 @@ The following long options override config values:
 | `--tarball` | `TARBALL_INCLUDE=yes` |
 | `--no-tarball` | `TARBALL_INCLUDE=no` |
 
-`--clean` accepts the same override options, but only `--dist` changes what it
-removes.
+`--dry-run` accepts the same override options as `--generate`. `--clean` accepts
+the same override options, but only `--dist` changes what it removes.
 
 ## Example usage
 
 1. Run `photoalbum --init`.
 2. Edit `photoalbum.conf`. Set `INCOMING_DIR` to the directory containing the
    pictures and adjust `DIST_DIR`, `TITLE`, or template settings as needed.
-3. Run `photoalbum --generate` to generate the album.
-4. Distribute the `./dist` directory to a static web server.
-5. Run `photoalbum --clean` to remove the generated output.
+3. Run `photoalbum --dry-run` to inspect the planned generation.
+4. Run `photoalbum --generate` to generate the album.
+5. Distribute the `./dist` directory to a static web server.
+6. Run `photoalbum --clean` to remove the generated output.
 
 ## HTML templates
 

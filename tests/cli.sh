@@ -502,6 +502,141 @@ test_generate_cli_no_tarball_overrides_config() {
     test::teardown
 }
 
+test_dry_run_reports_cli_overrides_without_writes() {
+    local config_file
+    local dist_dir
+    local fake_bin
+    local forbidden_log
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/custom.conf"
+    dist_dir="$TEST_TMPDIR/dry-dist"
+    forbidden_log="$TEST_TMPDIR/forbidden-tools.log"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::install_failing_generation_tools "$fake_bin"
+
+    {
+        printf 'TITLE=%q\n' 'Config dry title'
+        printf 'THUMBHEIGHT=10\n'
+        printf 'HEIGHT=20\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'SHUFFLE=no\n'
+        printf 'INCOMING_DIR=%q/config-incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/config-dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/config-template\n' "$TEST_TMPDIR"
+        printf 'TARBALL_INCLUDE=no\n'
+    } > "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_FORBIDDEN_TOOL_LOG="$forbidden_log" \
+            "$TEST_PHOTOALBUM" \
+                --dry-run \
+                --config "$config_file" \
+                --incoming "$TEST_TMPDIR/incoming" \
+                --dist "$dist_dir" \
+                --template "$TEST_REPO_ROOT/share/templates/default" \
+                --title 'CLI dry title' \
+                --height 456 \
+                --thumbheight 45 \
+                --maxpreviews 2 \
+                --shuffle \
+                --tarball
+    )
+
+    test::assert_contains 'Dry run: no files will be written.' "$output"
+    test::assert_contains "Config source: $config_file" "$output"
+    test::assert_contains "Incoming directory: $TEST_TMPDIR/incoming" "$output"
+    test::assert_contains "Output directory: $dist_dir" "$output"
+    test::assert_contains \
+        "Template directory: $TEST_REPO_ROOT/share/templates/default" \
+        "$output"
+    test::assert_contains 'Title: CLI dry title' "$output"
+    test::assert_contains 'Height: 456' "$output"
+    test::assert_contains 'Thumb height: 45' "$output"
+    test::assert_contains 'Max previews per page: 2' "$output"
+    test::assert_contains 'Shuffle: yes' "$output"
+    test::assert_contains 'Image count: 6' "$output"
+    test::assert_contains 'Tarball setting: yes' "$output"
+    test::assert_contains 'Tarball name plan: incoming-<timestamp>.tar' \
+        "$output"
+    test::assert_contains 'Planned directories:' "$output"
+    test::assert_contains "  $dist_dir/photos" "$output"
+    test::assert_contains 'Planned generated files:' "$output"
+    test::assert_contains "  $dist_dir/index.html" "$output"
+    test::assert_contains "  $dist_dir/photoalbum.json" "$output"
+    test::assert_contains "  $dist_dir/photos/* (6 image files)" "$output"
+    test::assert_contains "  $dist_dir/thumbs/* (6 image files)" "$output"
+    test::assert_contains "  $dist_dir/blurs/* (6 image files)" "$output"
+    test::assert_contains "  $dist_dir/html/page-*.html (3 preview pages)" \
+        "$output"
+    test::assert_contains \
+        "  $dist_dir/html/[page]-[image].html (6 view pages)" \
+        "$output"
+    test::assert_contains \
+        "  $dist_dir/html/[redirect].html (6 navigation redirects)" \
+        "$output"
+    test::assert_contains \
+        "  $dist_dir/html/index.html (1 album index redirect)" \
+        "$output"
+    test::assert_contains "  $dist_dir/incoming-<timestamp>.tar" "$output"
+    test::assert_not_contains 'Processing ' "$output"
+    test::assert_not_contains 'Creating tarball ' "$output"
+    test::assert_path_absent "$dist_dir"
+    test::assert_path_absent "$TEST_TMPDIR/config-dist"
+    test::assert_path_absent "$forbidden_log"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
+test_dry_run_rejects_invalid_config_and_input() {
+    local config_file
+    local dist_dir
+    local incoming_dir
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    incoming_dir="$TEST_TMPDIR/incoming"
+    dist_dir="$TEST_TMPDIR/dist"
+    mkdir -p "$incoming_dir"
+    test::write_preflight_config \
+        "$config_file" "$incoming_dir" "$dist_dir" \
+        "$TEST_REPO_ROOT/share/templates/default"
+    printf 'MAXPREVIEWS=not-a-number\n' >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output \
+            "$TEST_PHOTOALBUM" --dry-run --config "$config_file"
+    )
+
+    test::assert_contains 'ERROR: MAXPREVIEWS must be a positive integer' \
+        "$output"
+    test::assert_path_absent "$dist_dir"
+
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/missing" "$dist_dir" \
+        "$TEST_REPO_ROOT/share/templates/default"
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output \
+            "$TEST_PHOTOALBUM" --dry-run --config "$config_file"
+    )
+
+    test::assert_contains \
+        "ERROR: You have to create $TEST_TMPDIR/missing first" \
+        "$output"
+    test::assert_path_absent "$dist_dir"
+    test::teardown
+}
+
 test_generate_ignores_unsupported_incoming_files_with_warning() {
     local config_file
     local fake_bin
@@ -1374,6 +1509,12 @@ main() {
     test::run_case \
         '--generate --no-tarball overrides config' \
         test_generate_cli_no_tarball_overrides_config
+    test::run_case \
+        '--dry-run reports CLI overrides without writes' \
+        test_dry_run_reports_cli_overrides_without_writes
+    test::run_case \
+        '--dry-run rejects invalid config and input' \
+        test_dry_run_rejects_invalid_config_and_input
     test::run_case \
         '--generate ignores unsupported incoming files with warning' \
         test_generate_ignores_unsupported_incoming_files_with_warning
