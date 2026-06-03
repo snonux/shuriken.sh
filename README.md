@@ -22,6 +22,7 @@ modern `magick` command and falls back to `convert` when needed.
 photoalbum --init
 photoalbum --generate [--config PATH] [OPTIONS]
 photoalbum --dry-run [--config PATH] [OPTIONS]
+photoalbum --print-config [--config PATH] [OPTIONS]
 photoalbum --clean [--config PATH] [OPTIONS]
 photoalbum --version
 ```
@@ -32,14 +33,17 @@ photoalbum --version
 * `--dry-run` loads the config and overrides, validates the planned generation,
   and prints the effective paths, image count, tarball plan, and generated file
   plan without writing output or running ImageMagick or tar.
+* `--print-config` loads the config and overrides, validates basic config values,
+  and prints the effective configuration without writing output, running
+  ImageMagick, running tar, cleaning, or initializing.
 * `--clean` removes the configured output directory.
 * `--version` prints the program version.
-* `--config PATH` selects the config file for `--generate`, `--dry-run`, or
-  `--clean`.
+* `--config PATH` selects the config file for `--generate`, `--dry-run`,
+  `--print-config`, or `--clean`.
 
-When `--config PATH` is not provided, `--generate`, `--dry-run`, and `--clean`
-read `./photoalbum.conf`. If the file is missing, run `photoalbum --init`
-first.
+When `--config PATH` is not provided, `--generate`, `--dry-run`,
+`--print-config`, and `--clean` read `./photoalbum.conf`. If the file is
+missing, run `photoalbum --init` first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
@@ -59,6 +63,14 @@ notes, are ignored with a warning so generation can continue.
 `--dry-run` reports the same `INCOMING_DIR`, `DIST_DIR`, and `TEMPLATE_DIR`
 values that generation would use after applying command-line overrides. Its
 tarball filename uses `<timestamp>` as a placeholder so the output is stable.
+
+`--print-config` writes stable shell-style assignments to stdout in this order:
+`CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`,
+`THUMBHEIGHT`, `MAXPREVIEWS`, `SHUFFLE`, `TARBALL_INCLUDE`, `TARBALL_SUFFIX`,
+`TAR_OPTS`, and `ORIGINAL_BASEPATH`. Scalar values use Bash `%q` quoting and
+`TAR_OPTS` is normalized to a Bash array assignment, so the output can be parsed
+by shell tooling. `--quiet` does not suppress this output, and `--verbose` does
+not add human-readable diagnostics to it.
 
 Successful generation writes `photoalbum.json` into the output directory. This
 metadata records the generator version and timestamp, config source, template
@@ -81,8 +93,9 @@ The following long options override config values:
 | `--tarball` | `TARBALL_INCLUDE=yes` |
 | `--no-tarball` | `TARBALL_INCLUDE=no` |
 
-`--dry-run` accepts the same override options as `--generate`. `--clean` accepts
-the same override options, but only `--dist` changes what it removes.
+`--dry-run` and `--print-config` accept the same override options as
+`--generate`. `--clean` accepts the same override options, but only `--dist`
+changes what it removes.
 
 Output is human-readable by default and reports routine generation progress.
 Use `--quiet` to suppress routine progress while still writing errors to stderr.

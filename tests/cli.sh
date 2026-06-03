@@ -752,6 +752,288 @@ test_repeated_output_flags_use_last_value() {
     test::teardown
 }
 
+test_print_config_reflects_defaults() {
+    local expected
+    local output
+
+    test::setup
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" \
+            --print-config \
+            --config "$TEST_REPO_ROOT/src/photoalbum.default.conf"
+    )
+    expected=$(cat <<EOF
+CONFIG_SOURCE=$TEST_REPO_ROOT/src/photoalbum.default.conf
+INCOMING_DIR=$TEST_TMPDIR/incoming
+DIST_DIR=$TEST_TMPDIR/dist
+TEMPLATE_DIR=/usr/share/photoalbum/templates/default
+TITLE=A\\ simple\\ Photoalbum
+HEIGHT=1200
+THUMBHEIGHT=300
+MAXPREVIEWS=40
+SHUFFLE=no
+TARBALL_INCLUDE=yes
+TARBALL_SUFFIX=.tar
+TAR_OPTS=( -c )
+ORIGINAL_BASEPATH=''
+EOF
+)
+
+    test "$output" = "$expected"
+    test::teardown
+}
+
+test_print_config_reads_selected_config() {
+    local config_file
+    local expected
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/custom.conf"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/custom-incoming" \
+        "$TEST_TMPDIR/custom-dist" 'Selected config' 7
+    printf 'SHUFFLE=yes\n' >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --print-config --config "$config_file"
+    )
+    expected=$(cat <<EOF
+CONFIG_SOURCE=$config_file
+INCOMING_DIR=$TEST_TMPDIR/custom-incoming
+DIST_DIR=$TEST_TMPDIR/custom-dist
+TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
+TITLE=Selected\\ config
+HEIGHT=120
+THUMBHEIGHT=30
+MAXPREVIEWS=7
+SHUFFLE=yes
+TARBALL_INCLUDE=no
+TARBALL_SUFFIX=.tar
+TAR_OPTS=( -c )
+ORIGINAL_BASEPATH=''
+EOF
+)
+
+    test "$output" = "$expected"
+    test::teardown
+}
+
+test_print_config_reads_current_directory_config() {
+    local expected
+    local output
+
+    test::setup
+    test::write_album_config \
+        "$TEST_TMPDIR/photoalbum.conf" "$TEST_TMPDIR/incoming" \
+        "$TEST_TMPDIR/dist" 'Current directory config' 8
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --print-config
+    )
+    expected=$(cat <<EOF
+CONFIG_SOURCE=./photoalbum.conf
+INCOMING_DIR=$TEST_TMPDIR/incoming
+DIST_DIR=$TEST_TMPDIR/dist
+TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
+TITLE=Current\\ directory\\ config
+HEIGHT=120
+THUMBHEIGHT=30
+MAXPREVIEWS=8
+SHUFFLE=no
+TARBALL_INCLUDE=no
+TARBALL_SUFFIX=.tar
+TAR_OPTS=( -c )
+ORIGINAL_BASEPATH=''
+EOF
+)
+
+    test "$output" = "$expected"
+    test::teardown
+}
+
+test_print_config_applies_cli_overrides_without_writes() {
+    local config_file
+    local dist_dir
+    local expected
+    local fake_bin
+    local forbidden_log
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    dist_dir="$TEST_TMPDIR/cli-dist"
+    forbidden_log="$TEST_TMPDIR/forbidden-tools.log"
+
+    test::install_failing_generation_tools "$fake_bin"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/config-incoming" \
+        "$TEST_TMPDIR/config-dist" 'Config title' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_FORBIDDEN_TOOL_LOG="$forbidden_log" \
+            "$TEST_PHOTOALBUM" \
+                --print-config \
+                --incoming "$TEST_TMPDIR/cli-incoming" \
+                --dist "$dist_dir" \
+                --template "$TEST_TMPDIR/cli-template" \
+                --title 'CLI title' \
+                --height 456 \
+                --thumbheight 45 \
+                --maxpreviews 9 \
+                --shuffle \
+                --tarball
+    )
+    expected=$(cat <<EOF
+CONFIG_SOURCE=./photoalbum.conf
+INCOMING_DIR=$TEST_TMPDIR/cli-incoming
+DIST_DIR=$dist_dir
+TEMPLATE_DIR=$TEST_TMPDIR/cli-template
+TITLE=CLI\\ title
+HEIGHT=456
+THUMBHEIGHT=45
+MAXPREVIEWS=9
+SHUFFLE=yes
+TARBALL_INCLUDE=yes
+TARBALL_SUFFIX=.tar
+TAR_OPTS=( -c )
+ORIGINAL_BASEPATH=''
+EOF
+)
+
+    test "$output" = "$expected"
+    test::assert_path_absent "$dist_dir"
+    test::assert_path_absent "$TEST_TMPDIR/config-dist"
+    test::assert_path_absent "$forbidden_log"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
+test_print_config_applies_negative_cli_overrides() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Negative overrides' 40
+    {
+        printf 'SHUFFLE=yes\n'
+        printf 'TARBALL_INCLUDE=yes\n'
+    } >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --print-config --no-shuffle --no-tarball
+    )
+
+    test::assert_contains 'SHUFFLE=no' "$output"
+    test::assert_contains 'TARBALL_INCLUDE=no' "$output"
+    test::teardown
+}
+
+test_print_config_normalizes_scalar_and_array_tar_opts() {
+    local array_config
+    local array_output
+    local scalar_config
+    local scalar_output
+
+    test::setup
+    scalar_config="$TEST_TMPDIR/scalar.conf"
+    array_config="$TEST_TMPDIR/array.conf"
+    test::write_album_config \
+        "$scalar_config" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Scalar tar opts' 40
+    {
+        printf 'TARBALL_INCLUDE=yes\n'
+        printf 'TAR_OPTS=%q\n' '--sort=name --mtime=@0 -c'
+    } >> "$scalar_config"
+    test::write_album_config \
+        "$array_config" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Array tar opts' 40
+    printf 'TAR_OPTS=(--sort=name --mtime=@0 -c)\n' >> "$array_config"
+
+    scalar_output=$("$TEST_PHOTOALBUM" --print-config --config "$scalar_config")
+    array_output=$("$TEST_PHOTOALBUM" --print-config --config "$array_config")
+
+    test::assert_contains \
+        'TAR_OPTS=( --sort=name --mtime=@0 -c )' \
+        "$scalar_output"
+    test::assert_contains \
+        'TAR_OPTS=( --sort=name --mtime=@0 -c )' \
+        "$array_output"
+    test::teardown
+}
+
+test_print_config_quiet_and_verbose_keep_machine_output() {
+    local config_file
+    local plain_output
+    local quiet_output
+    local verbose_output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Output mode config' 40
+
+    plain_output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --print-config
+    )
+    quiet_output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --quiet --print-config
+    )
+    verbose_output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --verbose --print-config
+    )
+
+    test "$quiet_output" = "$plain_output"
+    test "$verbose_output" = "$plain_output"
+    test::assert_not_contains 'Verbose:' "$verbose_output"
+    test::teardown
+}
+
+test_print_config_validates_basic_values_without_generation_preflight() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/missing-incoming" \
+        "$TEST_TMPDIR/missing-parent/dist" 'Printable missing paths' 40
+    printf 'TEMPLATE_DIR=%q\n' "$TEST_TMPDIR/missing-template" >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --print-config
+    )
+    test::assert_contains "INCOMING_DIR=$TEST_TMPDIR/missing-incoming" "$output"
+    test::assert_contains "DIST_DIR=$TEST_TMPDIR/missing-parent/dist" "$output"
+    test::assert_contains "TEMPLATE_DIR=$TEST_TMPDIR/missing-template" "$output"
+
+    printf 'MAXPREVIEWS=not-a-number\n' >> "$config_file"
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output "$TEST_PHOTOALBUM" --print-config
+    )
+    test::assert_contains 'ERROR: MAXPREVIEWS must be a positive integer' \
+        "$output"
+    test::assert_path_absent "$TEST_TMPDIR/missing-parent"
+    test::teardown
+}
+
 test_dry_run_reports_cli_overrides_without_writes() {
     local config_file
     local dist_dir
@@ -1686,6 +1968,8 @@ test_unknown_options_and_conflicting_actions_fail() {
         "$TEST_PHOTOALBUM" --generate --init
     test::assert_failure 'clean/version conflict is rejected' \
         "$TEST_PHOTOALBUM" --clean --version
+    test::assert_failure 'print-config/dry-run conflict is rejected' \
+        "$TEST_PHOTOALBUM" --print-config --dry-run
 }
 
 test_empty_args_fail() {
@@ -1780,6 +2064,30 @@ main() {
     test::run_case \
         'repeated output flags use last value' \
         test_repeated_output_flags_use_last_value
+    test::run_case \
+        '--print-config reflects defaults' \
+        test_print_config_reflects_defaults
+    test::run_case \
+        '--print-config reads selected config' \
+        test_print_config_reads_selected_config
+    test::run_case \
+        '--print-config reads current directory config' \
+        test_print_config_reads_current_directory_config
+    test::run_case \
+        '--print-config applies CLI overrides without writes' \
+        test_print_config_applies_cli_overrides_without_writes
+    test::run_case \
+        '--print-config applies negative CLI overrides' \
+        test_print_config_applies_negative_cli_overrides
+    test::run_case \
+        '--print-config normalizes scalar and array TAR_OPTS' \
+        test_print_config_normalizes_scalar_and_array_tar_opts
+    test::run_case \
+        '--print-config quiet and verbose keep machine output' \
+        test_print_config_quiet_and_verbose_keep_machine_output
+    test::run_case \
+        '--print-config validates values without generation preflight' \
+        test_print_config_validates_basic_values_without_generation_preflight
     test::run_case \
         '--dry-run reports CLI overrides without writes' \
         test_dry_run_reports_cli_overrides_without_writes

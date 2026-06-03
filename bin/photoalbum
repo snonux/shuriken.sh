@@ -13,6 +13,7 @@ usage() {
     Usage:
     $0 --generate [--config PATH] [OPTIONS]
     $0 --dry-run [--config PATH] [OPTIONS]
+    $0 --print-config [--config PATH] [OPTIONS]
     $0 --clean [--config PATH] [OPTIONS]
     $0 --version
     $0 --init
@@ -840,6 +841,44 @@ dry_run() {
     fi
 }
 
+print_shell_assignment() {
+    local -r name="$1"; shift
+    local -r value="$1"; shift
+
+    printf '%s=%q\n' "$name" "$value"
+}
+
+print_shell_array_assignment() {
+    local -r name="$1"; shift
+    local value
+
+    printf '%s=(' "$name"
+    for value in "$@"; do
+        printf ' %q' "$value"
+    done
+    printf ' )\n'
+}
+
+print_config() {
+    local -a tar_opts=()
+
+    resolve_tar_opts tar_opts
+
+    print_shell_assignment CONFIG_SOURCE "${PHOTOALBUM_CONFIG_SOURCE:-}"
+    print_shell_assignment INCOMING_DIR "$INCOMING_DIR"
+    print_shell_assignment DIST_DIR "$DIST_DIR"
+    print_shell_assignment TEMPLATE_DIR "$TEMPLATE_DIR"
+    print_shell_assignment TITLE "$TITLE"
+    print_shell_assignment HEIGHT "${HEIGHT:-}"
+    print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
+    print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
+    print_shell_assignment SHUFFLE "${SHUFFLE:-no}"
+    print_shell_assignment TARBALL_INCLUDE "${TARBALL_INCLUDE:-no}"
+    print_shell_assignment TARBALL_SUFFIX "${TARBALL_SUFFIX:-.tar}"
+    print_shell_array_assignment TAR_OPTS "${tar_opts[@]}"
+    print_shell_assignment ORIGINAL_BASEPATH "${ORIGINAL_BASEPATH:-}"
+}
+
 existing_parent_dir() {
     local -r path="$1"; shift
     local existing_parent
@@ -1216,6 +1255,30 @@ validate_generation_config() {
     fi
 }
 
+validate_print_config() {
+    local required_var
+    local -a required_vars=(
+        TITLE
+        THUMBHEIGHT
+        MAXPREVIEWS
+        INCOMING_DIR
+        DIST_DIR
+        TEMPLATE_DIR
+    )
+    local -a tar_opts=()
+
+    for required_var in "${required_vars[@]}"; do
+        require_config_var "$required_var"
+    done
+
+    validate_optional_positive_integer_config_var HEIGHT
+    validate_positive_integer_config_var THUMBHEIGHT
+    validate_positive_integer_config_var MAXPREVIEWS
+    validate_yes_no_config_var SHUFFLE
+    validate_yes_no_config_var TARBALL_INCLUDE
+    resolve_tar_opts tar_opts
+}
+
 main() {
     local action=''
     local config_file=''
@@ -1309,7 +1372,7 @@ main() {
             --quiet)
                 PHOTOALBUM_OUTPUT_MODE=quiet
                 ;;
-            --version|--init|--clean|--generate|--dry-run)
+            --version|--init|--clean|--generate|--dry-run|--print-config)
                 if [ -n "$action" ]; then
                     usage
                     exit 1
@@ -1341,7 +1404,7 @@ main() {
 
             init_config
             ;;
-        --clean|--generate|--dry-run)
+        --clean|--generate|--dry-run|--print-config)
             rc_file="$(resolve_config_file "$config_file")"
 
             if [ ! -f "$rc_file" ]; then
@@ -1353,11 +1416,13 @@ main() {
             apply_cli_overrides
             PHOTOALBUM_CONFIG_SOURCE="$rc_file"
             export PHOTOALBUM_CONFIG_SOURCE
-            log_verbose "Selected config file: $rc_file"
-            log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
-            log_verbose "Effective output directory: ${DIST_DIR:-}"
-            log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
-            log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
+            if [ "$action" != --print-config ]; then
+                log_verbose "Selected config file: $rc_file"
+                log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
+                log_verbose "Effective output directory: ${DIST_DIR:-}"
+                log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
+                log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
+            fi
 
             case "$action" in
                 --clean)
@@ -1375,6 +1440,10 @@ main() {
                 --dry-run)
                     validate_generation_config no
                     dry_run
+                    ;;
+                --print-config)
+                    validate_print_config
+                    print_config
                     ;;
             esac
             ;;
