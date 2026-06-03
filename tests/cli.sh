@@ -87,15 +87,20 @@ test_init_existing_config_fails_without_overwrite() {
 }
 
 test_clean() {
+    local staging_dir
+
     test::setup
     printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR" \
         > "$TEST_TMPDIR/photoalbum.conf"
     mkdir -p "$TEST_TMPDIR/dist"
+    staging_dir="$TEST_TMPDIR/.photoalbum.dist.staging.manual"
+    mkdir -p "$staging_dir"
 
     (
         cd "$TEST_TMPDIR"
         "$TEST_PHOTOALBUM" --clean
         test::assert_path_absent "$TEST_TMPDIR/dist"
+        test::assert_dir_exists "$staging_dir"
     )
     test::teardown
 }
@@ -727,6 +732,145 @@ test_integration_generates_album_outputs_and_cleans() {
     test::teardown
 }
 
+test_generate_replaces_dist_after_success() {
+    local config_file
+    local fake_bin
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Replace album' 40
+    mkdir -p "$TEST_TMPDIR/dist/html" "$TEST_TMPDIR/dist/photos"
+    printf 'stale\n' > "$TEST_TMPDIR/dist/stale-root-file"
+    printf 'stale\n' > "$TEST_TMPDIR/dist/html/stale.html"
+    printf 'stale\n' > "$TEST_TMPDIR/dist/photos/stale.jpg"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+    test::assert_file_exists "$TEST_TMPDIR/dist/html/page-1.html"
+    test::assert_path_absent "$TEST_TMPDIR/dist/stale-root-file"
+    test::assert_path_absent "$TEST_TMPDIR/dist/html/stale.html"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/stale.jpg"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
+test_generate_imagemagick_failure_preserves_dist() {
+    local config_file
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_failing_imagemagick "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'old dist\n' > "$TEST_TMPDIR/dist/index.html"
+    printf 'keep me\n' > "$TEST_TMPDIR/dist/sentinel"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Failing ImageMagick album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_contains 'simulated ImageMagick failure' "$output"
+    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old dist'
+    test "$(cat "$TEST_TMPDIR/dist/sentinel")" = 'keep me'
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/01.jpg"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
+test_generate_template_failure_preserves_dist() {
+    local config_file
+    local fake_bin
+    local output
+    local template_dir
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    template_dir="$TEST_TMPDIR/templates"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
+    printf 'return 42\n' > "$template_dir/preview.tmpl"
+    mkdir -p "$TEST_TMPDIR/dist"
+    printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Failing template album' 40
+    printf 'TEMPLATE_DIR=%q\n' "$template_dir" >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_contains 'Generating' "$output"
+    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
+test_generate_swap_failure_restores_dist() {
+    local config_file
+    local fake_bin
+    local mv_count_file
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    mv_count_file="$TEST_TMPDIR/mv-count"
+
+    test::install_fake_imagemagick "$fake_bin"
+    test::install_mv_spy "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    mkdir -p "$TEST_TMPDIR/dist"
+    printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
+    printf 'old sentinel\n' > "$TEST_TMPDIR/dist/sentinel"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Swap failure album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_MV_COUNT_FILE="$mv_count_file" \
+            TEST_FAIL_MV_ON=2 \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_contains 'simulated mv failure' "$output"
+    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test "$(cat "$TEST_TMPDIR/dist/sentinel")" = 'old sentinel'
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
 test_generate_missing_imagemagick_fails() {
     local config_file
     local output
@@ -1018,6 +1162,18 @@ main() {
     test::run_case \
         '--generate creates output structure and --clean removes it' \
         test_integration_generates_album_outputs_and_cleans
+    test::run_case \
+        '--generate replaces final dist after success' \
+        test_generate_replaces_dist_after_success
+    test::run_case \
+        '--generate ImageMagick failure preserves final dist' \
+        test_generate_imagemagick_failure_preserves_dist
+    test::run_case \
+        '--generate template failure preserves final dist' \
+        test_generate_template_failure_preserves_dist
+    test::run_case \
+        '--generate swap failure restores final dist' \
+        test_generate_swap_failure_restores_dist
     test::run_case \
         '--generate fails when ImageMagick is missing' \
         test_generate_missing_imagemagick_fails

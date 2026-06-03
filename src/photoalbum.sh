@@ -113,7 +113,8 @@ tarball() {
     find "$DIST_DIR" -maxdepth 1 -type f -name '*.tar' -delete
     base=$(basename "$INCOMING_DIR")
 
-    echo "Creating tarball $DIST_DIR/$tarball_name from $INCOMING_DIR"
+    echo "Creating tarball $(_display_path "$DIST_DIR/$tarball_name")" \
+        "from $INCOMING_DIR"
     (
         cd "$(dirname "$INCOMING_DIR")"
         tar "$tar_opts" -f "$DIST_DIR/$tarball_name" "$base"
@@ -145,6 +146,17 @@ _css_string_escape() {
     printf '%s\n' "$text"
 }
 
+_display_path() {
+    local -r path="$1"; shift
+    local -r final_dist="${PHOTOALBUM_FINAL_DIST_DIR:-}"
+
+    if [[ -n "$final_dist" && "$path" == "$DIST_DIR"* ]]; then
+        printf '%s%s\n' "$final_dist" "${path#"$DIST_DIR"}"
+    else
+        printf '%s\n' "$path"
+    fi
+}
+
 template() {
     local -r template_name="$1"; shift
     local -r html="$1"; shift
@@ -168,7 +180,7 @@ template() {
     local thumbs_dir_html
     local title_html
 
-    echo "Generating $dist_html/$html"
+    echo "Generating $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
     animation_class_html=$(_html_escape "${animation_class:-}")
@@ -224,7 +236,7 @@ cleanphotos() {
             continue
         fi
 
-        echo "Cleaning up $photo"
+        echo "Cleaning up $(_display_path "$photo")"
         for sub in thumbs blurs photos; do
             if [ -f "$DIST_DIR/$sub/$basename" ]; then
                 rm -v "$DIST_DIR/$sub/$basename"
@@ -244,11 +256,11 @@ scalephotos() {
         mkdir -p "$dirname"
 
         if [ -f "$destphoto" ]; then
-            echo "Already exists: $destphoto"
+            echo "Already exists: $(_display_path "$destphoto")"
             continue
         fi
 
-        echo "Processing $photo to $destphoto"
+        echo "Processing $photo to $(_display_path "$destphoto")"
         if [ -n "${HEIGHT:-}" ]; then
             # Scale down size.
             imagemagick \
@@ -385,12 +397,12 @@ albumhtml() {
 
         if [[ -f "$DIST_DIR/$thumbs_dir/$photo" \
             && -f "$DIST_DIR/$blurs_dir/$photo" ]]; then
-            echo "Already exists: $DIST_DIR/$thumbs_dir/$photo and" \
-                "$DIST_DIR/$blurs_dir/$photo"
+            echo "Already exists: $(_display_path "$DIST_DIR/$thumbs_dir/$photo") and" \
+                "$(_display_path "$DIST_DIR/$blurs_dir/$photo")"
         else
             dirname="$DIST_DIR/$thumbs_dir"
             mkdir -p "$dirname"
-            echo "Creating thumb $DIST_DIR/$thumbs_dir/$photo"
+            echo "Creating thumb $(_display_path "$DIST_DIR/$thumbs_dir/$photo")"
             # Double the height, as CSS scales images based on boxing too.
             height=$(( THUMBHEIGHT * 2 ))
             imagemagick \
@@ -400,7 +412,7 @@ albumhtml() {
 
             dirname="$DIST_DIR/$blurs_dir"
             mkdir -p "$dirname"
-            echo "Creating blur $DIST_DIR/$blurs_dir/$photo"
+            echo "Creating blur $(_display_path "$DIST_DIR/$blurs_dir/$photo")"
             imagemagick \
                 "$DIST_DIR/$thumbs_dir/$photo" \
                 -flip \
@@ -465,7 +477,8 @@ randomphoto() {
     )
 
     if (( ${#photos[@]} == 0 )); then
-        echo "ERROR: No photos found in $DIST_DIR/$photos_dir" >&2
+        echo "ERROR: No photos found in" \
+            "$(_display_path "$DIST_DIR/$photos_dir")" >&2
         return 1
     fi
 
@@ -501,6 +514,168 @@ generate() {
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
         tarball "$tarball_name"
     fi
+}
+
+existing_parent_dir() {
+    local -r path="$1"; shift
+    local existing_parent
+
+    existing_parent=$(dirname "$path")
+
+    while [ ! -e "$existing_parent" ]; do
+        existing_parent=$(dirname "$existing_parent")
+    done
+
+    printf '%s\n' "$existing_parent"
+}
+
+generation_staging_dir() {
+    local -r final_dist="$1"; shift
+    local final_base
+    local staging_parent
+
+    final_base=$(basename "$final_dist")
+    staging_parent=$(existing_parent_dir "$final_dist")
+
+    mktemp -d "$staging_parent/.photoalbum.$final_base.staging.XXXXXX"
+}
+
+prepare_generation_staging_dir() {
+    local -r final_dist="$1"; shift
+    local -r staging_dir="$1"; shift
+    local cache_dir
+
+    for cache_dir in photos thumbs blurs; do
+        if [ -d "$final_dist/$cache_dir" ]; then
+            if ! mkdir -p "$staging_dir/$cache_dir"; then
+                return 1
+            fi
+            if ! cp -a "$final_dist/$cache_dir/." "$staging_dir/$cache_dir/"; then
+                return 1
+            fi
+        fi
+    done
+}
+
+cleanup_generation_staging_dir() {
+    if [ -n "${PHOTOALBUM_ACTIVE_STAGING_DIR:-}" ]; then
+        rm -rf "$PHOTOALBUM_ACTIVE_STAGING_DIR"
+        PHOTOALBUM_ACTIVE_STAGING_DIR=''
+    fi
+}
+
+clear_generation_staging_traps() {
+    trap - EXIT INT TERM
+}
+
+ignore_generation_staging_interrupts() {
+    trap '' INT TERM
+}
+
+replace_dist_with_staging() {
+    local -r staging_dir="$1"; shift
+    local -r final_dist="$1"; shift
+    local backup_dist=''
+    local backup_parent=''
+    local final_base
+    local final_parent
+    local staging_parent
+    local -i status=0
+
+    final_base=$(basename "$final_dist")
+    final_parent=$(dirname "$final_dist")
+    staging_parent=$(existing_parent_dir "$final_dist")
+
+    if ! mkdir -p "$final_parent"; then
+        return 1
+    fi
+
+    if [ -e "$final_dist" ]; then
+        if ! backup_parent=$(
+            mktemp -d "$staging_parent/.photoalbum.$final_base.backup.XXXXXX"
+        ); then
+            return 1
+        fi
+        backup_dist="$backup_parent/dist"
+
+        if ! mv "$final_dist" "$backup_dist"; then
+            rm -rf "$backup_parent"
+            return 1
+        fi
+    fi
+
+    if mv "$staging_dir" "$final_dist"; then
+        if [ -n "$backup_parent" ]; then
+            rm -rf "$backup_parent"
+        fi
+        return 0
+    else
+        status=$?
+    fi
+
+    if [ -n "$backup_dist" ] && [ -e "$backup_dist" ]; then
+        if [ -e "$final_dist" ] && ! rm -rf "$final_dist"; then
+            echo "ERROR: Failed to restore $final_dist from $backup_dist" >&2
+            return "$status"
+        fi
+        if ! mv "$backup_dist" "$final_dist"; then
+            echo "ERROR: Failed to restore $final_dist from $backup_dist" >&2
+            return "$status"
+        fi
+        rm -rf "$backup_parent"
+    fi
+
+    return "$status"
+}
+
+generate_staged() {
+    local -r final_dist="$DIST_DIR"
+    local staging_dir
+    local -i status=0
+
+    staging_dir=$(generation_staging_dir "$final_dist")
+    PHOTOALBUM_ACTIVE_STAGING_DIR="$staging_dir"
+    trap cleanup_generation_staging_dir EXIT
+    trap 'cleanup_generation_staging_dir; exit 130' INT
+    trap 'cleanup_generation_staging_dir; exit 143' TERM
+
+    if ! prepare_generation_staging_dir "$final_dist" "$staging_dir"; then
+        cleanup_generation_staging_dir
+        clear_generation_staging_traps
+        return 1
+    fi
+
+    set +e
+    (
+        set -e
+        PHOTOALBUM_FINAL_DIST_DIR="$final_dist"
+        export PHOTOALBUM_FINAL_DIST_DIR
+        DIST_DIR="$staging_dir"
+        generate
+    )
+    status=$?
+    set -e
+
+    if (( status != 0 )); then
+        cleanup_generation_staging_dir
+        clear_generation_staging_traps
+        return "$status"
+    fi
+
+    ignore_generation_staging_interrupts
+    set +e
+    replace_dist_with_staging "$staging_dir" "$final_dist"
+    status=$?
+    set -e
+
+    if (( status != 0 )); then
+        cleanup_generation_staging_dir
+        clear_generation_staging_traps
+        return "$status"
+    fi
+
+    PHOTOALBUM_ACTIVE_STAGING_DIR=''
+    clear_generation_staging_traps
 }
 
 resolve_config_file() {
@@ -619,7 +794,6 @@ validate_yes_no_config_var() {
 
 validate_dist_dir() {
     local existing_parent
-    local parent_dir
 
     if [ -e "$DIST_DIR" ]; then
         if [ ! -d "$DIST_DIR" ]; then
@@ -632,12 +806,7 @@ validate_dist_dir() {
         return
     fi
 
-    parent_dir=$(dirname "$DIST_DIR")
-    existing_parent="$parent_dir"
-
-    while [ ! -e "$existing_parent" ]; do
-        existing_parent=$(dirname "$existing_parent")
-    done
+    existing_parent=$(existing_parent_dir "$DIST_DIR")
 
     if [ ! -d "$existing_parent" ]; then
         config_error "DIST_DIR parent $existing_parent must be a directory"
@@ -854,7 +1023,7 @@ main() {
                     ;;
                 --generate)
                     validate_generation_config
-                    generate
+                    generate_staged
                     ;;
             esac
             ;;

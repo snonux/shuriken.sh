@@ -164,6 +164,19 @@ test::assert_find_count() {
     fi
 }
 
+test::assert_no_staging_dirs() {
+    local -r dir="$1"; shift
+    local found
+
+    found=$(find "$dir" -type d -name '.photoalbum.*' -print -quit)
+
+    if [ -n "$found" ]; then
+        echo "FAIL: expected no staging directories under $dir" >&2
+        echo "found $found" >&2
+        exit 1
+    fi
+}
+
 test::run_photoalbum() {
     "$TEST_PHOTOALBUM" "$@" 2>&1
 }
@@ -189,6 +202,52 @@ mkdir -p "$(dirname "$dest")"
 MAGICK
     chmod 0755 "$bin_dir/magick"
     cp "$bin_dir/magick" "$bin_dir/convert"
+}
+
+test::install_failing_imagemagick() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo 'simulated ImageMagick failure' >&2
+exit 42
+MAGICK
+    chmod 0755 "$bin_dir/magick"
+    cp "$bin_dir/magick" "$bin_dir/convert"
+}
+
+test::install_mv_spy() {
+    local -r bin_dir="$1"; shift
+    local real_mv
+
+    mkdir -p "$bin_dir"
+    real_mv=$(command -v mv)
+
+    cat > "$bin_dir/mv" <<MV
+#!/usr/bin/env bash
+set -euo pipefail
+
+count=0
+if [ -n "\${TEST_MV_COUNT_FILE:-}" ] && [ -f "\$TEST_MV_COUNT_FILE" ]; then
+    count=\$(<"\$TEST_MV_COUNT_FILE")
+fi
+count=\$(( count + 1 ))
+if [ -n "\${TEST_MV_COUNT_FILE:-}" ]; then
+    printf '%s\n' "\$count" > "\$TEST_MV_COUNT_FILE"
+fi
+
+if [[ -n "\${TEST_FAIL_MV_ON:-}" && "\$count" = "\$TEST_FAIL_MV_ON" ]]; then
+    echo 'simulated mv failure' >&2
+    exit 42
+fi
+
+"$real_mv" "\$@"
+MV
+    chmod 0755 "$bin_dir/mv"
 }
 
 test::install_sort_spy() {
