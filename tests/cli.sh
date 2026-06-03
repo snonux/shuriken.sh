@@ -7,6 +7,44 @@ declare -r TEST_PHOTOALBUM="${PHOTOALBUM:-$TEST_REPO_ROOT/bin/photoalbum}"
 # shellcheck source=tests/helpers.sh
 source "$TEST_REPO_ROOT/tests/helpers.sh"
 
+test::write_preflight_config() {
+    local -r config_file="$1"; shift
+    local -r incoming_dir="$1"; shift
+    local -r dist_dir="$1"; shift
+    local -r template_dir="$1"; shift
+    local -r omitted_var="${1:-}"
+
+    {
+        if [ "$omitted_var" != TITLE ]; then
+            printf 'TITLE=%q\n' 'Preflight album'
+        fi
+        if [ "$omitted_var" != THUMBHEIGHT ]; then
+            printf 'THUMBHEIGHT=30\n'
+        fi
+        if [ "$omitted_var" != HEIGHT ]; then
+            printf 'HEIGHT=120\n'
+        fi
+        if [ "$omitted_var" != MAXPREVIEWS ]; then
+            printf 'MAXPREVIEWS=40\n'
+        fi
+        if [ "$omitted_var" != INCOMING_DIR ]; then
+            printf 'INCOMING_DIR=%q\n' "$incoming_dir"
+        fi
+        if [ "$omitted_var" != DIST_DIR ]; then
+            printf 'DIST_DIR=%q\n' "$dist_dir"
+        fi
+        if [ "$omitted_var" != TEMPLATE_DIR ]; then
+            printf 'TEMPLATE_DIR=%q\n' "$template_dir"
+        fi
+        if [ "$omitted_var" != SHUFFLE ]; then
+            printf 'SHUFFLE=no\n'
+        fi
+        if [ "$omitted_var" != TARBALL_INCLUDE ]; then
+            printf 'TARBALL_INCLUDE=no\n'
+        fi
+    } > "$config_file"
+}
+
 test_version() {
     local output
 
@@ -142,10 +180,9 @@ test_generate_with_config_missing_incoming_fails() {
 
     test::setup
     config_file="$TEST_TMPDIR/custom.conf"
-    {
-        printf 'INCOMING_DIR=%q/missing\n' "$TEST_TMPDIR"
-        printf 'DIST_DIR=%q/custom-dist\n' "$TEST_TMPDIR"
-    } > "$config_file"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/missing" "$TEST_TMPDIR/custom-dist" \
+        'Missing incoming config' 40
 
     output=$(
         cd "$TEST_TMPDIR"
@@ -156,6 +193,7 @@ test_generate_with_config_missing_incoming_fails() {
     test::assert_contains \
         "ERROR: You have to create $TEST_TMPDIR/missing first" \
         "$output"
+    test::assert_path_absent "$TEST_TMPDIR/custom-dist"
     test::teardown
 }
 
@@ -371,10 +409,9 @@ test_generate_missing_incoming_fails() {
     local output
 
     test::setup
-    {
-        printf 'INCOMING_DIR=%q/missing\n' "$TEST_TMPDIR"
-        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
-    } > "$TEST_TMPDIR/photoalbum.conf"
+    test::write_album_config \
+        "$TEST_TMPDIR/photoalbum.conf" "$TEST_TMPDIR/missing" \
+        "$TEST_TMPDIR/dist" 'Missing incoming' 40
 
     output=$(
         cd "$TEST_TMPDIR"
@@ -384,6 +421,243 @@ test_generate_missing_incoming_fails() {
     test::assert_contains \
         "ERROR: You have to create $TEST_TMPDIR/missing first" \
         "$output"
+    test::assert_path_absent "$TEST_TMPDIR/dist"
+    test::teardown
+}
+
+test_generate_preflight_rejects_missing_required_vars() {
+    local case_dir
+    local config_file
+    local dist_dir
+    local incoming_dir
+    local output
+    local required_var
+    local -a required_vars=(
+        TITLE
+        THUMBHEIGHT
+        MAXPREVIEWS
+        INCOMING_DIR
+        DIST_DIR
+        TEMPLATE_DIR
+    )
+
+    test::setup
+    for required_var in "${required_vars[@]}"; do
+        case_dir="$TEST_TMPDIR/missing-$required_var"
+        incoming_dir="$case_dir/incoming"
+        dist_dir="$case_dir/dist"
+        config_file="$case_dir/photoalbum.conf"
+        mkdir -p "$incoming_dir"
+        test::write_preflight_config \
+            "$config_file" "$incoming_dir" "$dist_dir" \
+            "$TEST_REPO_ROOT/share/templates/default" "$required_var"
+
+        output=$(
+            cd "$case_dir"
+            test::capture_failure_output \
+                "$TEST_PHOTOALBUM" --generate --config "$config_file"
+        )
+
+        test::assert_contains \
+            "ERROR: $required_var must be set in photoalbum configuration" \
+            "$output"
+        test::assert_path_absent "$dist_dir"
+    done
+    test::teardown
+}
+
+test_generate_preflight_rejects_invalid_numbers() {
+    local case_dir
+    local config_file
+    local dist_dir
+    local incoming_dir
+    local numeric_var
+    local output
+    local -a numeric_vars=(
+        HEIGHT
+        THUMBHEIGHT
+        MAXPREVIEWS
+    )
+
+    test::setup
+    for numeric_var in "${numeric_vars[@]}"; do
+        case_dir="$TEST_TMPDIR/invalid-$numeric_var"
+        incoming_dir="$case_dir/incoming"
+        dist_dir="$case_dir/dist"
+        config_file="$case_dir/photoalbum.conf"
+        mkdir -p "$incoming_dir"
+        test::write_preflight_config \
+            "$config_file" "$incoming_dir" "$dist_dir" \
+            "$TEST_REPO_ROOT/share/templates/default"
+        printf '%s=not-a-number\n' "$numeric_var" >> "$config_file"
+
+        output=$(
+            cd "$case_dir"
+            test::capture_failure_output \
+                "$TEST_PHOTOALBUM" --generate --config "$config_file"
+        )
+
+        test::assert_contains \
+            "ERROR: $numeric_var must be a positive integer" \
+            "$output"
+        test::assert_path_absent "$dist_dir"
+    done
+    test::teardown
+}
+
+test_generate_preflight_accepts_empty_height() {
+    local config_file
+    local fake_bin
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        "$TEST_REPO_ROOT/share/templates/default" HEIGHT
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+    test::teardown
+}
+
+test_generate_preflight_rejects_invalid_yes_no_values() {
+    local bool_var
+    local case_dir
+    local config_file
+    local dist_dir
+    local incoming_dir
+    local output
+    local -a bool_vars=(
+        SHUFFLE
+        TARBALL_INCLUDE
+    )
+
+    test::setup
+    for bool_var in "${bool_vars[@]}"; do
+        case_dir="$TEST_TMPDIR/invalid-$bool_var"
+        incoming_dir="$case_dir/incoming"
+        dist_dir="$case_dir/dist"
+        config_file="$case_dir/photoalbum.conf"
+        mkdir -p "$incoming_dir"
+        test::write_preflight_config \
+            "$config_file" "$incoming_dir" "$dist_dir" \
+            "$TEST_REPO_ROOT/share/templates/default"
+        printf '%s=maybe\n' "$bool_var" >> "$config_file"
+
+        output=$(
+            cd "$case_dir"
+            test::capture_failure_output \
+                "$TEST_PHOTOALBUM" --generate --config "$config_file"
+        )
+
+        test::assert_contains "ERROR: $bool_var must be yes or no" "$output"
+        test::assert_path_absent "$dist_dir"
+    done
+    test::teardown
+}
+
+test_generate_preflight_rejects_unwritable_dist_parent() {
+    local config_file
+    local dist_dir
+    local dist_parent
+    local incoming_dir
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    dist_parent="$TEST_TMPDIR/unwritable"
+    dist_dir="$dist_parent/dist"
+    incoming_dir="$TEST_TMPDIR/incoming"
+    mkdir -p "$incoming_dir" "$dist_parent"
+    chmod 0555 "$dist_parent"
+
+    if [ -w "$dist_parent" ]; then
+        chmod 0755 "$dist_parent"
+        test::teardown
+        return
+    fi
+
+    test::write_preflight_config \
+        "$config_file" "$incoming_dir" "$dist_dir" \
+        "$TEST_REPO_ROOT/share/templates/default"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output \
+            "$TEST_PHOTOALBUM" --generate --config "$config_file"
+    )
+    chmod 0755 "$dist_parent"
+
+    test::assert_contains \
+        "ERROR: DIST_DIR parent $dist_parent must be writable" \
+        "$output"
+    test::assert_path_absent "$dist_dir"
+    test::teardown
+}
+
+test_generate_preflight_accepts_nested_new_dist_dir() {
+    local config_file
+    local dist_dir
+    local fake_bin
+    local incoming_dir
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    incoming_dir="$TEST_TMPDIR/incoming"
+    dist_dir="$TEST_TMPDIR/site/albums/out"
+    mkdir -p "$TEST_TMPDIR/site"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" test::generate_fixture_images "$incoming_dir"
+    test::write_preflight_config \
+        "$config_file" "$incoming_dir" "$dist_dir" \
+        "$TEST_REPO_ROOT/share/templates/default"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_file_exists "$dist_dir/photos/01-landscape.jpg"
+    test::teardown
+}
+
+test_generate_preflight_rejects_missing_templates() {
+    local config_file
+    local dist_dir
+    local incoming_dir
+    local output
+    local template_dir
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    incoming_dir="$TEST_TMPDIR/incoming"
+    template_dir="$TEST_TMPDIR/templates"
+    mkdir -p "$incoming_dir" "$template_dir"
+    test::write_preflight_config \
+        "$config_file" "$incoming_dir" "$dist_dir" "$template_dir"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output \
+            "$TEST_PHOTOALBUM" --generate --config "$config_file"
+    )
+
+    test::assert_contains \
+        "ERROR: template file $template_dir/footer.tmpl must be readable" \
+        "$output"
+    test::assert_path_absent "$dist_dir"
     test::teardown
 }
 
@@ -478,6 +752,7 @@ test_generate_missing_imagemagick_fails() {
     test::assert_contains \
         'ERROR: ImageMagick is required; install magick or convert' \
         "$output"
+    test::assert_path_absent "$TEST_TMPDIR/dist"
     test::teardown
 }
 
@@ -719,6 +994,27 @@ main() {
     test::run_case \
         '--generate missing incoming fails' \
         test_generate_missing_incoming_fails
+    test::run_case \
+        '--generate preflight rejects missing required vars' \
+        test_generate_preflight_rejects_missing_required_vars
+    test::run_case \
+        '--generate preflight rejects invalid numbers' \
+        test_generate_preflight_rejects_invalid_numbers
+    test::run_case \
+        '--generate preflight accepts empty HEIGHT' \
+        test_generate_preflight_accepts_empty_height
+    test::run_case \
+        '--generate preflight rejects invalid yes/no values' \
+        test_generate_preflight_rejects_invalid_yes_no_values
+    test::run_case \
+        '--generate preflight rejects unwritable dist parent' \
+        test_generate_preflight_rejects_unwritable_dist_parent
+    test::run_case \
+        '--generate preflight accepts nested new dist dir' \
+        test_generate_preflight_accepts_nested_new_dist_dir
+    test::run_case \
+        '--generate preflight rejects missing templates' \
+        test_generate_preflight_rejects_missing_templates
     test::run_case \
         '--generate creates output structure and --clean removes it' \
         test_integration_generates_album_outputs_and_cleans

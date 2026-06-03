@@ -478,11 +478,6 @@ generate() {
     local redirect_page
     local tarball_name=''
 
-    if [ ! -d "$INCOMING_DIR" ]; then
-        echo "ERROR: You have to create $INCOMING_DIR first" >&2
-        exit 1
-    fi
-
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
         base=$(basename "$INCOMING_DIR")
         now=$(date +'%Y-%m-%d-%H%M%S')
@@ -574,6 +569,150 @@ apply_cli_overrides() {
     if [ -n "$cli_tarball_include" ]; then
         TARBALL_INCLUDE="$cli_tarball_include"
     fi
+}
+
+config_error() {
+    local -r message="$1"; shift
+
+    echo "ERROR: $message" >&2
+    return 1
+}
+
+require_config_var() {
+    local -r name="$1"; shift
+
+    if [ -z "${!name+x}" ] || [ -z "${!name}" ]; then
+        config_error "$name must be set in photoalbum configuration"
+    fi
+}
+
+validate_positive_integer_config_var() {
+    local -r name="$1"; shift
+    local -r value="${!name}"
+
+    if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value < 1 )); then
+        config_error "$name must be a positive integer"
+    fi
+}
+
+validate_optional_positive_integer_config_var() {
+    local -r name="$1"; shift
+
+    if [ -n "${!name}" ]; then
+        validate_positive_integer_config_var "$name"
+    fi
+}
+
+validate_yes_no_config_var() {
+    local -r name="$1"; shift
+    local -r value="${!name}"
+
+    case "$value" in
+        yes|no)
+            ;;
+        *)
+            config_error "$name must be yes or no"
+            ;;
+    esac
+}
+
+validate_dist_dir() {
+    local existing_parent
+    local parent_dir
+
+    if [ -e "$DIST_DIR" ]; then
+        if [ ! -d "$DIST_DIR" ]; then
+            config_error "DIST_DIR $DIST_DIR must be a directory"
+        fi
+        if [[ ! -w "$DIST_DIR" || ! -x "$DIST_DIR" ]]; then
+            config_error "DIST_DIR $DIST_DIR must be writable"
+        fi
+
+        return
+    fi
+
+    parent_dir=$(dirname "$DIST_DIR")
+    existing_parent="$parent_dir"
+
+    while [ ! -e "$existing_parent" ]; do
+        existing_parent=$(dirname "$existing_parent")
+    done
+
+    if [ ! -d "$existing_parent" ]; then
+        config_error "DIST_DIR parent $existing_parent must be a directory"
+    fi
+    if [[ ! -w "$existing_parent" || ! -x "$existing_parent" ]]; then
+        config_error "DIST_DIR parent $existing_parent must be writable"
+    fi
+}
+
+validate_template_dir() {
+    local template_name
+    local -a required_templates=(
+        footer
+        header
+        next
+        prev
+        preview
+        redirect
+        view
+    )
+
+    if [[ ! -d "$TEMPLATE_DIR" || ! -r "$TEMPLATE_DIR" \
+        || ! -x "$TEMPLATE_DIR" ]]; then
+        config_error "TEMPLATE_DIR $TEMPLATE_DIR must be a readable directory"
+    fi
+
+    for template_name in "${required_templates[@]}"; do
+        if [ ! -r "$TEMPLATE_DIR/$template_name.tmpl" ]; then
+            config_error \
+                "template file $TEMPLATE_DIR/$template_name.tmpl must be readable"
+        fi
+    done
+}
+
+validate_imagemagick() {
+    if command -v magick >/dev/null 2>&1; then
+        return
+    fi
+    if command -v convert >/dev/null 2>&1; then
+        return
+    fi
+
+    config_error 'ImageMagick is required; install magick or convert'
+}
+
+validate_generation_config() {
+    local required_var
+    local -a required_vars=(
+        TITLE
+        THUMBHEIGHT
+        MAXPREVIEWS
+        INCOMING_DIR
+        DIST_DIR
+        TEMPLATE_DIR
+    )
+
+    for required_var in "${required_vars[@]}"; do
+        require_config_var "$required_var"
+    done
+
+    validate_optional_positive_integer_config_var HEIGHT
+    validate_positive_integer_config_var THUMBHEIGHT
+    validate_positive_integer_config_var MAXPREVIEWS
+    validate_yes_no_config_var SHUFFLE
+    validate_yes_no_config_var TARBALL_INCLUDE
+
+    if [ ! -d "$INCOMING_DIR" ]; then
+        config_error "You have to create $INCOMING_DIR first"
+    fi
+    if [[ ! -r "$INCOMING_DIR" || ! -x "$INCOMING_DIR" ]]; then
+        config_error "INCOMING_DIR $INCOMING_DIR must be readable"
+    fi
+
+    validate_dist_dir
+    validate_template_dir
+    validate_imagemagick
 }
 
 main() {
@@ -713,6 +852,7 @@ main() {
                     fi
                     ;;
                 --generate)
+                    validate_generation_config
                     generate
                     ;;
             esac
