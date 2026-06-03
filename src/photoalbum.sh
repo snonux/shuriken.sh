@@ -146,6 +146,73 @@ _css_string_escape() {
     printf '%s\n' "$text"
 }
 
+_json_string_escape() {
+    local text="$1"; shift
+    local char
+    local escaped=''
+    local escaped_char
+    local -i code
+    local -i i
+    local LC_ALL=C
+
+    for (( i = 0; i < ${#text}; i++ )); do
+        char="${text:i:1}"
+        case "$char" in
+            $'\\')
+                escaped+=$'\\\\'
+                ;;
+            '"')
+                escaped+='\"'
+                ;;
+            $'\b')
+                escaped+='\b'
+                ;;
+            $'\f')
+                escaped+='\f'
+                ;;
+            $'\n')
+                escaped+='\n'
+                ;;
+            $'\r')
+                escaped+='\r'
+                ;;
+            $'\t')
+                escaped+='\t'
+                ;;
+            *)
+                code=$(printf '%d' "'$char")
+                if (( code < 32 )); then
+                    printf -v escaped_char '\\u%04x' "$code"
+                    escaped+="$escaped_char"
+                else
+                    escaped+="$char"
+                fi
+                ;;
+        esac
+    done
+
+    printf '%s\n' "$escaped"
+}
+
+_json_string() {
+    local -r text="$1"; shift
+
+    printf '"%s"' "$(_json_string_escape "$text")"
+}
+
+_json_bool() {
+    local -r value="$1"; shift
+
+    case "$value" in
+        yes)
+            printf 'true'
+            ;;
+        *)
+            printf 'false'
+            ;;
+    esac
+}
+
 _display_path() {
     local -r path="$1"; shift
     local -r final_dist="${PHOTOALBUM_FINAL_DIST_DIR:-}"
@@ -485,6 +552,82 @@ randomphoto() {
     printf '%s\n' "${photos[RANDOM % ${#photos[@]}]}"
 }
 
+count_files() {
+    local -r dir="$1"; shift
+    local -r name="${1:-}"; shift || true
+
+    if [ ! -d "$dir" ]; then
+        printf '0\n'
+        return
+    fi
+
+    if [ -n "$name" ]; then
+        find "$dir" -maxdepth 1 -type f -name "$name" | wc -l
+    else
+        find "$dir" -maxdepth 1 -type f | wc -l
+    fi
+}
+
+count_tree_files() {
+    local -r dir="$1"; shift
+    local -r name="$1"; shift
+
+    if [ ! -d "$dir" ]; then
+        printf '0\n'
+        return
+    fi
+
+    find "$dir" -type f -name "$name" | wc -l
+}
+
+write_generation_metadata() {
+    local -r tarball_file="$1"; shift
+    local -r generated_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+    local -r config_source="${PHOTOALBUM_CONFIG_SOURCE:-}"
+    local -r template_name=$(basename "$TEMPLATE_DIR")
+    local -r source_image_count=$(count_files "$INCOMING_DIR")
+    local -r generated_photo_count=$(count_files "$DIST_DIR/photos")
+    local -r generated_thumb_count=$(count_files "$DIST_DIR/thumbs")
+    local -r generated_html_count=$(count_tree_files "$DIST_DIR" '*.html')
+
+    {
+        printf '{\n'
+        printf '  "generator": {\n'
+        printf '    "name": "photoalbum",\n'
+        printf '    "version": %s\n' "$(_json_string "$VERSION")"
+        printf '  },\n'
+        printf '  "generated_at": %s,\n' "$(_json_string "$generated_at")"
+        printf '  "config_source": %s,\n' "$(_json_string "$config_source")"
+        printf '  "template": {\n'
+        printf '    "name": %s,\n' "$(_json_string "$template_name")"
+        printf '    "directory": %s\n' "$(_json_string "$TEMPLATE_DIR")"
+        printf '  },\n'
+        printf '  "source": {\n'
+        printf '    "incoming_dir": %s,\n' "$(_json_string "$INCOMING_DIR")"
+        printf '    "image_count": %s\n' "$source_image_count"
+        printf '  },\n'
+        printf '  "generated": {\n'
+        printf '    "photo_count": %s,\n' "$generated_photo_count"
+        printf '    "thumb_count": %s,\n' "$generated_thumb_count"
+        printf '    "html_count": %s\n' "$generated_html_count"
+        printf '  },\n'
+        printf '  "tarball": {\n'
+        printf '    "included": %s,\n' "$(_json_bool "${TARBALL_INCLUDE:-no}")"
+        printf '    "file": %s\n' "$(_json_string "$tarball_file")"
+        printf '  },\n'
+        printf '  "settings": {\n'
+        printf '    "title": %s,\n' "$(_json_string "${TITLE:-}")"
+        printf '    "height": %s,\n' "$(_json_string "${HEIGHT:-}")"
+        printf '    "thumbheight": %s,\n' "$(_json_string "${THUMBHEIGHT:-}")"
+        printf '    "maxpreviews": %s,\n' "$(_json_string "${MAXPREVIEWS:-}")"
+        printf '    "shuffle": %s,\n' "$(_json_bool "${SHUFFLE:-no}")"
+        printf '    "original_basepath": %s\n' \
+            "$(_json_string "${ORIGINAL_BASEPATH:-}")"
+        printf '  }\n'
+        printf '}\n'
+    } > "$DIST_DIR/photoalbum.json"
+}
+
 generate() {
     local base
     local html_dir
@@ -514,6 +657,8 @@ generate() {
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
         tarball "$tarball_name"
     fi
+
+    write_generation_metadata "$tarball_name"
 }
 
 existing_parent_dir() {
@@ -1014,6 +1159,8 @@ main() {
             source "$rc_file"
             apply_config_defaults
             apply_cli_overrides
+            PHOTOALBUM_CONFIG_SOURCE="$rc_file"
+            export PHOTOALBUM_CONFIG_SOURCE
 
             case "$action" in
                 --clean)

@@ -45,6 +45,95 @@ test::write_preflight_config() {
     } > "$config_file"
 }
 
+test::assert_generation_metadata() {
+    local -r metadata_file="$1"; shift
+    local -r config_source="$1"; shift
+    local -r incoming_dir="$1"; shift
+    local -r dist_dir="$1"; shift
+    local -r template_dir="$1"; shift
+    local -r tarball_included="$1"; shift
+    local -r title="$1"; shift
+    local -r maxpreviews="$1"; shift
+
+    python3 - \
+        "$metadata_file" \
+        "$config_source" \
+        "$incoming_dir" \
+        "$dist_dir" \
+        "$template_dir" \
+        "$tarball_included" \
+        "$title" \
+        "$maxpreviews" <<'PY'
+import datetime
+import json
+import pathlib
+import re
+import sys
+
+(
+    metadata_file,
+    config_source,
+    incoming_dir,
+    dist_dir,
+    template_dir,
+    tarball_included,
+    title,
+    maxpreviews,
+) = sys.argv[1:]
+
+metadata = json.loads(pathlib.Path(metadata_file).read_text())
+required = {
+    "generator",
+    "generated_at",
+    "config_source",
+    "template",
+    "source",
+    "generated",
+    "tarball",
+    "settings",
+}
+missing = sorted(required - set(metadata))
+assert not missing, f"missing metadata keys: {missing}"
+
+timestamp = metadata["generated_at"]
+assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", timestamp)
+datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+
+incoming_path = pathlib.Path(incoming_dir)
+dist_path = pathlib.Path(dist_dir)
+template_path = pathlib.Path(template_dir)
+tarball_expected = tarball_included == "yes"
+tarball_files = sorted(path.name for path in dist_path.glob("*.tar"))
+
+assert metadata["generator"]["name"] == "photoalbum"
+assert re.fullmatch(r"\d+\.\d+\.\d+", metadata["generator"]["version"])
+assert metadata["config_source"] == config_source
+assert metadata["template"]["directory"] == template_dir
+assert metadata["template"]["name"] == template_path.name
+assert metadata["source"]["incoming_dir"] == incoming_dir
+assert metadata["source"]["image_count"] == sum(
+    1 for path in incoming_path.iterdir() if path.is_file()
+)
+assert metadata["generated"]["photo_count"] == sum(
+    1 for path in (dist_path / "photos").iterdir() if path.is_file()
+)
+assert metadata["generated"]["thumb_count"] == sum(
+    1 for path in (dist_path / "thumbs").iterdir() if path.is_file()
+)
+assert metadata["generated"]["html_count"] == sum(
+    1 for path in dist_path.rglob("*.html") if path.is_file()
+)
+assert metadata["tarball"]["included"] is tarball_expected
+assert metadata["tarball"]["file"] == (tarball_files[0] if tarball_files else "")
+assert metadata["settings"]["title"] == title
+assert metadata["settings"]["height"] == "120"
+assert metadata["settings"]["thumbheight"] == "30"
+assert metadata["settings"]["maxpreviews"] == maxpreviews
+assert metadata["settings"]["shuffle"] is False
+assert "original_basepath" in metadata["settings"]
+PY
+}
+
 test_version() {
     local output
 
@@ -704,6 +793,7 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_file_exists "$TEST_TMPDIR/dist/html/3-2.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/html/index.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/index.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
 
     page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
     top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
@@ -712,17 +802,36 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_contains 'Next 2 pictures' "$page_html"
     test::assert_contains 'url=./html/index.html' "$top_index_html"
     test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
+    test::assert_generation_metadata \
+        "$TEST_TMPDIR/dist/photoalbum.json" \
+        './photoalbum.conf' \
+        "$TEST_TMPDIR/incoming" \
+        "$TEST_TMPDIR/dist" \
+        "$TEST_REPO_ROOT/share/templates/default" \
+        no \
+        'Integration album' \
+        2
 
     (
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate --tarball
     )
+    test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
     tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tar' -print)
     test::assert_contains "$TEST_TMPDIR/dist/incoming-" "$tarball"
     tarball_listing=$(tar -tf "$tarball")
     test::assert_contains \
         'incoming/04 filename with spaces.jpg' \
         "$tarball_listing"
+    test::assert_generation_metadata \
+        "$TEST_TMPDIR/dist/photoalbum.json" \
+        './photoalbum.conf' \
+        "$TEST_TMPDIR/incoming" \
+        "$TEST_TMPDIR/dist" \
+        "$TEST_REPO_ROOT/share/templates/default" \
+        yes \
+        'Integration album' \
+        2
 
     (
         cd "$TEST_TMPDIR"
@@ -793,6 +902,7 @@ test_generate_imagemagick_failure_preserves_dist() {
     test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old dist'
     test "$(cat "$TEST_TMPDIR/dist/sentinel")" = 'keep me'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01.jpg"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -829,6 +939,7 @@ test_generate_template_failure_preserves_dist() {
     test::assert_contains 'Generating' "$output"
     test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -867,6 +978,7 @@ test_generate_swap_failure_restores_dist() {
     test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
     test "$(cat "$TEST_TMPDIR/dist/sentinel")" = 'old sentinel'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -964,6 +1076,56 @@ test_generate_escapes_html_values() {
     test::assert_not_contains '<title>A & "quoted" <title>' "$page_html"
     test::assert_not_contains "$photo_name" "$view_html"
 
+    test::teardown
+}
+
+test_generate_metadata_escapes_json_and_custom_tarball_suffix() {
+    local config_file
+    local fake_bin
+    local tarball
+    local title
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    title=$'Metadata \e album'
+
+    test::install_fake_imagemagick "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+
+    {
+        printf 'TITLE=%q\n' "$title"
+        printf 'THUMBHEIGHT=30\n'
+        printf 'HEIGHT=120\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'INCOMING_DIR=%q/incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$TEST_REPO_ROOT"
+        printf 'TARBALL_INCLUDE=yes\n'
+        printf 'TARBALL_SUFFIX=.tgz\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+    )
+
+    python3 - "$TEST_TMPDIR/dist/photoalbum.json" "$title" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata_file, title = sys.argv[1:]
+metadata = json.loads(pathlib.Path(metadata_file).read_text())
+
+assert metadata["settings"]["title"] == title
+assert metadata["tarball"]["included"] is True
+assert metadata["tarball"]["file"].endswith(".tgz")
+PY
+
+    tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -type f -name '*.tgz' -print)
+    test::assert_contains "$TEST_TMPDIR/dist/incoming-" "$tarball"
     test::teardown
 }
 
@@ -1180,6 +1342,9 @@ main() {
     test::run_case \
         '--generate escapes generated HTML values' \
         test_generate_escapes_html_values
+    test::run_case \
+        '--generate metadata escapes JSON and custom tarball suffix' \
+        test_generate_metadata_escapes_json_and_custom_tarball_suffix
     test::run_case \
         '--generate preserves filenames with spaces without reprocessing' \
         test_generate_preserves_space_filename_without_reprocessing

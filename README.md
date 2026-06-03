@@ -45,6 +45,11 @@ settings, readable input and template directories, a writable output location,
 and ImageMagick availability. Generation stops before writing album output when
 validation fails.
 
+Successful generation writes `photoalbum.json` into the output directory. This
+metadata records the generator version and timestamp, config source, template
+directory, source and generated file counts, tarball status, and effective
+settings useful for debugging a published album.
+
 The following long options override config values:
 
 | Option | Config value |
