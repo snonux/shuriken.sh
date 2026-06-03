@@ -6,6 +6,7 @@ set -euo pipefail
 
 declare -r VERSION='0.6.0'
 declare -r DEFAULTRC="${PHOTOALBUM_DEFAULT_RC:-/etc/default/photoalbum}"
+PHOTOALBUM_OUTPUT_MODE="${PHOTOALBUM_OUTPUT_MODE:-normal}"
 
 usage() {
     cat - <<USAGE >&2
@@ -29,7 +30,33 @@ usage() {
     --no-shuffle
     --tarball
     --no-tarball
+    --verbose
+    --quiet
 USAGE
+}
+
+output_is_quiet() {
+    [ "$PHOTOALBUM_OUTPUT_MODE" = quiet ]
+}
+
+output_is_verbose() {
+    [ "$PHOTOALBUM_OUTPUT_MODE" = verbose ]
+}
+
+log_info() {
+    if ! output_is_quiet; then
+        printf '%s\n' "$*"
+    fi
+}
+
+log_verbose() {
+    if output_is_verbose; then
+        printf 'Verbose: %s\n' "$*"
+    fi
+}
+
+log_warning() {
+    printf 'WARNING: %s\n' "$*" >&2
 }
 
 resolve_default_rc_file() {
@@ -91,7 +118,7 @@ init_config() {
             "$rc_file"
     fi
 
-    echo "Created ./$rc_file"
+    log_info "Created ./$rc_file"
 }
 
 imagemagick() {
@@ -114,7 +141,7 @@ tarball() {
     find "$DIST_DIR" -maxdepth 1 -type f -name '*.tar' -delete
     base=$(basename "$INCOMING_DIR")
 
-    echo "Creating tarball $(_display_path "$DIST_DIR/$tarball_name")" \
+    log_info "Creating tarball $(_display_path "$DIST_DIR/$tarball_name")" \
         "from $INCOMING_DIR"
     (
         cd "$(dirname "$INCOMING_DIR")"
@@ -248,7 +275,7 @@ template() {
     local thumbs_dir_html
     local title_html
 
-    echo "Generating $(_display_path "$dist_html")/$html"
+    log_info "Generating $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
     animation_class_html=$(_html_escape "${animation_class:-}")
@@ -305,10 +332,11 @@ cleanphotos() {
             continue
         fi
 
-        echo "Cleaning up $(_display_path "$photo")"
+        log_info "Cleaning up $(_display_path "$photo")"
         for sub in thumbs blurs photos; do
             if [ -f "$DIST_DIR/$sub/$basename" ]; then
-                rm -v "$DIST_DIR/$sub/$basename"
+                rm -f "$DIST_DIR/$sub/$basename"
+                log_info "removed '$(_display_path "$DIST_DIR/$sub/$basename")'"
             fi
         done
     done < <(find "$DIST_DIR/photos" -maxdepth 1 -type f)
@@ -351,7 +379,7 @@ warn_unsupported_incoming_files() {
 
     while IFS= read -r file; do
         if ! is_supported_image_file "$file"; then
-            echo "WARNING: Ignoring unsupported incoming file: $file" >&2
+            log_warning "Ignoring unsupported incoming file: $file"
         fi
     done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n' | sort)
 }
@@ -367,11 +395,11 @@ scalephotos() {
         mkdir -p "$dirname"
 
         if [ -f "$destphoto" ]; then
-            echo "Already exists: $(_display_path "$destphoto")"
+            log_verbose "Skipped existing photo $(_display_path "$destphoto")"
             continue
         fi
 
-        echo "Processing $photo to $(_display_path "$destphoto")"
+        log_info "Processing $photo to $(_display_path "$destphoto")"
         if [ -n "${HEIGHT:-}" ]; then
             # Scale down size.
             imagemagick \
@@ -505,12 +533,13 @@ albumhtml() {
 
         if [[ -f "$DIST_DIR/$thumbs_dir/$photo" \
             && -f "$DIST_DIR/$blurs_dir/$photo" ]]; then
-            echo "Already exists: $(_display_path "$DIST_DIR/$thumbs_dir/$photo") and" \
+            log_verbose "Skipped existing thumb and blur" \
+                "$(_display_path "$DIST_DIR/$thumbs_dir/$photo") and" \
                 "$(_display_path "$DIST_DIR/$blurs_dir/$photo")"
         else
             dirname="$DIST_DIR/$thumbs_dir"
             mkdir -p "$dirname"
-            echo "Creating thumb $(_display_path "$DIST_DIR/$thumbs_dir/$photo")"
+            log_info "Creating thumb $(_display_path "$DIST_DIR/$thumbs_dir/$photo")"
             # Double the height, as CSS scales images based on boxing too.
             height=$(( THUMBHEIGHT * 2 ))
             imagemagick \
@@ -520,7 +549,7 @@ albumhtml() {
 
             dirname="$DIST_DIR/$blurs_dir"
             mkdir -p "$dirname"
-            echo "Creating blur $(_display_path "$DIST_DIR/$blurs_dir/$photo")"
+            log_info "Creating blur $(_display_path "$DIST_DIR/$blurs_dir/$photo")"
             imagemagick \
                 "$DIST_DIR/$thumbs_dir/$photo" \
                 -flip \
@@ -696,6 +725,10 @@ generate() {
 
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
         tarball_name=$(generated_tarball_name)
+        log_verbose \
+            "Tarball enabled; planned archive: $(_display_path "$DIST_DIR/$tarball_name")"
+    else
+        log_verbose 'Tarball disabled; no archive will be created'
     fi
 
     warn_unsupported_incoming_files
@@ -897,6 +930,8 @@ generate_staged() {
     local -i status=0
 
     staging_dir=$(generation_staging_dir "$final_dist")
+    log_verbose "Effective output directory: $final_dist"
+    log_verbose "Generation staging directory: $staging_dir"
     PHOTOALBUM_ACTIVE_STAGING_DIR="$staging_dir"
     trap cleanup_generation_staging_dir EXIT
     trap 'cleanup_generation_staging_dir; exit 130' INT
@@ -1238,6 +1273,12 @@ main() {
                 cli_tarball_include='no'
                 has_config_overrides='yes'
                 ;;
+            --verbose)
+                PHOTOALBUM_OUTPUT_MODE=verbose
+                ;;
+            --quiet)
+                PHOTOALBUM_OUTPUT_MODE=quiet
+                ;;
             --version|--init|--clean|--generate|--dry-run)
                 if [ -n "$action" ]; then
                     usage
@@ -1282,11 +1323,19 @@ main() {
             apply_cli_overrides
             PHOTOALBUM_CONFIG_SOURCE="$rc_file"
             export PHOTOALBUM_CONFIG_SOURCE
+            log_verbose "Selected config file: $rc_file"
+            log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
+            log_verbose "Effective output directory: ${DIST_DIR:-}"
+            log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
+            log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
 
             case "$action" in
                 --clean)
                     if [ -d "$DIST_DIR" ]; then
+                        log_info "Cleaning $DIST_DIR"
                         rm -rf "$DIST_DIR"
+                    else
+                        log_verbose "Output directory does not exist: $DIST_DIR"
                     fi
                     ;;
                 --generate)

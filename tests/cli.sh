@@ -502,6 +502,181 @@ test_generate_cli_no_tarball_overrides_config() {
     test::teardown
 }
 
+test_default_output_reports_routine_progress() {
+    local config_file
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Default output album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_contains 'Processing 01-landscape.jpg to' "$output"
+    test::assert_contains 'Generating ' "$output"
+    test::assert_contains 'Creating thumb ' "$output"
+    test::assert_not_contains 'Verbose:' "$output"
+    test::teardown
+}
+
+test_quiet_output_suppresses_routine_progress() {
+    local config_file
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Quiet output album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --quiet --generate
+    )
+
+    test::assert_not_contains 'Processing ' "$output"
+    test::assert_not_contains 'Generating ' "$output"
+    test::assert_not_contains 'Creating thumb ' "$output"
+    test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
+    test::teardown
+}
+
+test_quiet_output_keeps_errors_on_stderr() {
+    local config_file
+    local output_file
+    local stderr_file
+    local stdout
+    local stderr
+    local -i status=0
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    output_file="$TEST_TMPDIR/stdout"
+    stderr_file="$TEST_TMPDIR/stderr"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/missing" "$TEST_TMPDIR/dist" \
+        'Quiet error album' 40
+
+    set +e
+    (
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --quiet --generate \
+            > "$output_file" 2> "$stderr_file"
+    )
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        echo 'FAIL: expected quiet generation to fail' >&2
+        exit 1
+    fi
+
+    stdout=$(<"$output_file")
+    stderr=$(<"$stderr_file")
+    test "$stdout" = ''
+    test::assert_contains \
+        "ERROR: You have to create $TEST_TMPDIR/missing first" \
+        "$stderr"
+    test::teardown
+}
+
+test_verbose_output_reports_processing_decisions() {
+    local config_file
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Verbose output album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate >/dev/null
+    )
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --verbose --generate
+    )
+
+    test::assert_contains 'Verbose: Selected config file: ./photoalbum.conf' \
+        "$output"
+    test::assert_contains "Verbose: Effective incoming directory: $TEST_TMPDIR/incoming" \
+        "$output"
+    test::assert_contains "Verbose: Effective output directory: $TEST_TMPDIR/dist" \
+        "$output"
+    test::assert_contains \
+        "Verbose: Effective template directory: $TEST_REPO_ROOT/share/templates/default" \
+        "$output"
+    test::assert_contains \
+        'Verbose: Tarball disabled; no archive will be created' \
+        "$output"
+    test::assert_contains \
+        "Verbose: Skipped existing photo $TEST_TMPDIR/dist/photos/01-landscape.jpg" \
+        "$output"
+    test::assert_contains 'Verbose: Skipped existing thumb and blur' "$output"
+    test::teardown
+}
+
+test_repeated_output_flags_use_last_value() {
+    local config_file
+    local fake_bin
+    local quiet_last_output
+    local verbose_last_output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Repeated output flags album' 40
+
+    verbose_last_output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+            --quiet --verbose --generate
+    )
+    quiet_last_output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+            --verbose --quiet --generate
+    )
+
+    test::assert_contains 'Verbose: Selected config file: ./photoalbum.conf' \
+        "$verbose_last_output"
+    test::assert_not_contains 'Verbose:' "$quiet_last_output"
+    test::assert_not_contains 'Processing ' "$quiet_last_output"
+    test::assert_not_contains 'Generating ' "$quiet_last_output"
+    test::teardown
+}
+
 test_dry_run_reports_cli_overrides_without_writes() {
     local config_file
     local dist_dir
@@ -1366,14 +1541,14 @@ test_generate_preserves_space_filename_without_reprocessing() {
     )
     second_output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --verbose --generate
     )
 
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/$photo_name"
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/a_b.jpg"
     test::assert_contains "Processing $photo_name to" "$first_output"
     test::assert_contains \
-        "Already exists: $TEST_TMPDIR/dist/photos/$photo_name" \
+        "Verbose: Skipped existing photo $TEST_TMPDIR/dist/photos/$photo_name" \
         "$second_output"
     test::assert_not_contains "Processing $photo_name to" "$second_output"
 
@@ -1509,6 +1684,21 @@ main() {
     test::run_case \
         '--generate --no-tarball overrides config' \
         test_generate_cli_no_tarball_overrides_config
+    test::run_case \
+        'default output reports routine progress' \
+        test_default_output_reports_routine_progress
+    test::run_case \
+        '--quiet suppresses routine progress' \
+        test_quiet_output_suppresses_routine_progress
+    test::run_case \
+        '--quiet keeps errors on stderr' \
+        test_quiet_output_keeps_errors_on_stderr
+    test::run_case \
+        '--verbose reports processing decisions' \
+        test_verbose_output_reports_processing_decisions
+    test::run_case \
+        'repeated output flags use last value' \
+        test_repeated_output_flags_use_last_value
     test::run_case \
         '--dry-run reports CLI overrides without writes' \
         test_dry_run_reports_cli_overrides_without_writes

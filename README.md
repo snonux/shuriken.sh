@@ -84,6 +84,13 @@ The following long options override config values:
 `--dry-run` accepts the same override options as `--generate`. `--clean` accepts
 the same override options, but only `--dist` changes what it removes.
 
+Output is human-readable by default and reports routine generation progress.
+Use `--quiet` to suppress routine progress while still writing errors to stderr.
+Use `--verbose` for extra diagnostics, including the selected config file,
+effective paths, skipped existing files, staging output directory, and tarball
+decisions. If `--quiet` and `--verbose` are repeated or combined, the last output
+flag wins.
+
 ## Example usage
 
 1. Run `photoalbum --init`.
