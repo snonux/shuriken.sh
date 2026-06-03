@@ -117,5 +117,8 @@ flag wins.
 ## HTML templates
 
 Templates live under `share/templates/default` in the source tree and under the
-installed template directory after installation. Copy and edit them, then point
-`TEMPLATE_DIR` or `--template PATH` at the customized directory.
+installed template directory after installation. The stock default resolves to
+the installed template directory when it exists, and otherwise falls back to the
+source tree's `share/templates/default` when running from a checkout. Copy and
+edit templates, then point `TEMPLATE_DIR` or `--template PATH` at the customized
+directory.

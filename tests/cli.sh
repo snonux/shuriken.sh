@@ -760,7 +760,8 @@ test_print_config_reflects_defaults() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" \
+        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
+            "$TEST_PHOTOALBUM" \
             --print-config \
             --config "$TEST_REPO_ROOT/src/photoalbum.default.conf"
     )
@@ -768,7 +769,7 @@ test_print_config_reflects_defaults() {
 CONFIG_SOURCE=$TEST_REPO_ROOT/src/photoalbum.default.conf
 INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
-TEMPLATE_DIR=/usr/share/photoalbum/templates/default
+TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 TITLE=A\\ simple\\ Photoalbum
 HEIGHT=1200
 THUMBHEIGHT=300
@@ -782,6 +783,101 @@ EOF
 )
 
     test "$output" = "$expected"
+    test::teardown
+}
+
+test_print_config_keeps_explicit_config_template_dir() {
+    local config_file
+    local output
+    local template_dir
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    template_dir="$TEST_TMPDIR/explicit-config-template"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Explicit config template' 8
+    printf 'TEMPLATE_DIR=%q\n' "$template_dir" >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
+            "$TEST_PHOTOALBUM" --print-config
+    )
+
+    test::assert_contains "TEMPLATE_DIR=$template_dir" "$output"
+    test::teardown
+}
+
+test_print_config_resolves_installed_default_template() {
+    local config_file
+    local installed_template_dir
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    installed_template_dir="$TEST_TMPDIR/usr/share/photoalbum/templates/default"
+    mkdir -p "$(dirname "$installed_template_dir")"
+    cp -R "$TEST_REPO_ROOT/share/templates/default" "$installed_template_dir"
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        /usr/share/photoalbum/templates/default
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$installed_template_dir" \
+            "$TEST_PHOTOALBUM" --print-config
+    )
+
+    test::assert_contains "TEMPLATE_DIR=$installed_template_dir" "$output"
+    test::teardown
+}
+
+test_print_config_resolves_repo_default_template() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        /usr/share/photoalbum/templates/default
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
+            "$TEST_PHOTOALBUM" --print-config
+    )
+
+    test::assert_contains \
+        "TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default" \
+        "$output"
+    test::teardown
+}
+
+test_print_config_keeps_cli_template_override() {
+    local config_file
+    local installed_template_dir
+    local output
+    local template_dir
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    installed_template_dir="$TEST_TMPDIR/usr/share/photoalbum/templates/default"
+    template_dir="$TEST_TMPDIR/cli-template"
+    mkdir -p "$(dirname "$installed_template_dir")"
+    cp -R "$TEST_REPO_ROOT/share/templates/default" "$installed_template_dir"
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        /usr/share/photoalbum/templates/default
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$installed_template_dir" \
+            "$TEST_PHOTOALBUM" --print-config --template "$template_dir"
+    )
+
+    test::assert_contains "TEMPLATE_DIR=$template_dir" "$output"
     test::teardown
 }
 
@@ -1499,6 +1595,40 @@ test_generate_preflight_rejects_missing_templates() {
     test::teardown
 }
 
+test_dry_run_rejects_missing_default_template_dir() {
+    local config_file
+    local dist_dir
+    local incoming_dir
+    local output
+    local photoalbum_copy
+    local template_dir
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    incoming_dir="$TEST_TMPDIR/incoming"
+    photoalbum_copy="$TEST_TMPDIR/photoalbum"
+    template_dir="$TEST_TMPDIR/missing-default-template"
+    mkdir -p "$incoming_dir"
+    cp "$TEST_PHOTOALBUM" "$photoalbum_copy"
+    test::write_preflight_config \
+        "$config_file" "$incoming_dir" "$dist_dir" \
+        /usr/share/photoalbum/templates/default
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$template_dir" \
+            test::capture_failure_output \
+                "$photoalbum_copy" --dry-run --config "$config_file"
+    )
+
+    test::assert_contains \
+        "ERROR: TEMPLATE_DIR $template_dir must be a readable directory" \
+        "$output"
+    test::assert_path_absent "$dist_dir"
+    test::teardown
+}
+
 test_integration_generates_album_outputs_and_cleans() {
     local config_file
     local fake_bin
@@ -2068,6 +2198,18 @@ main() {
         '--print-config reflects defaults' \
         test_print_config_reflects_defaults
     test::run_case \
+        '--print-config keeps explicit config template dir' \
+        test_print_config_keeps_explicit_config_template_dir
+    test::run_case \
+        '--print-config resolves installed default template dir' \
+        test_print_config_resolves_installed_default_template
+    test::run_case \
+        '--print-config resolves repo default template dir' \
+        test_print_config_resolves_repo_default_template
+    test::run_case \
+        '--print-config keeps CLI template override' \
+        test_print_config_keeps_cli_template_override
+    test::run_case \
         '--print-config reads selected config' \
         test_print_config_reads_selected_config
     test::run_case \
@@ -2121,6 +2263,9 @@ main() {
     test::run_case \
         '--generate preflight rejects missing templates' \
         test_generate_preflight_rejects_missing_templates
+    test::run_case \
+        '--dry-run rejects missing default template dir' \
+        test_dry_run_rejects_missing_default_template_dir
     test::run_case \
         '--generate creates output structure and --clean removes it' \
         test_integration_generates_album_outputs_and_cleans

@@ -6,6 +6,9 @@ set -euo pipefail
 
 declare -r VERSION='PHOTOALBUMVERSION'
 declare -r DEFAULTRC="${PHOTOALBUM_DEFAULT_RC:-/etc/default/photoalbum}"
+declare -r PACKAGED_TEMPLATE_DIR='/usr/share/photoalbum/templates/default'
+DEFAULT_TEMPLATE_DIR="${PHOTOALBUM_DEFAULT_TEMPLATE_DIR:-$PACKAGED_TEMPLATE_DIR}"
+declare -r DEFAULT_TEMPLATE_DIR
 PHOTOALBUM_OUTPUT_MODE="${PHOTOALBUM_OUTPUT_MODE:-normal}"
 
 usage() {
@@ -88,6 +91,45 @@ resolve_source_root() {
     if [[ -f "$source_root/src/photoalbum.default.conf" \
         && -d "$source_root/share/templates/default" ]]; then
         printf '%s\n' "$source_root"
+    fi
+}
+
+resolve_default_template_dir() {
+    local source_root
+
+    if [ -d "$DEFAULT_TEMPLATE_DIR" ]; then
+        printf '%s\n' "$DEFAULT_TEMPLATE_DIR"
+        return
+    fi
+
+    source_root=$(resolve_source_root)
+
+    if [ -n "$source_root" ]; then
+        printf '%s\n' "$source_root/share/templates/default"
+        return
+    fi
+
+    printf '%s\n' "$DEFAULT_TEMPLATE_DIR"
+}
+
+template_dir_uses_default() {
+    if [ -z "${TEMPLATE_DIR+x}" ] || [ -z "$TEMPLATE_DIR" ]; then
+        return 1
+    fi
+
+    case "$TEMPLATE_DIR" in
+        "$PACKAGED_TEMPLATE_DIR"|"$DEFAULT_TEMPLATE_DIR")
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+apply_template_dir_default() {
+    if template_dir_uses_default; then
+        TEMPLATE_DIR=$(resolve_default_template_dir)
     fi
 }
 
@@ -1413,6 +1455,7 @@ main() {
 
             source "$rc_file"
             apply_config_defaults
+            apply_template_dir_default
             apply_cli_overrides
             PHOTOALBUM_CONFIG_SOURCE="$rc_file"
             export PHOTOALBUM_CONFIG_SOURCE
