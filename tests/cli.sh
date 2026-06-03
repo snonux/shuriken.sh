@@ -523,9 +523,12 @@ test_generate_ignores_unsupported_incoming_files_with_warning() {
         "$TEST_TMPDIR/incoming/04-photo.webp"
     "$TEST_IMAGEMAGICK" -size 160x90 xc:red \
         "$TEST_TMPDIR/incoming/05-photo.gif"
+    printf 'extension-looking basename\n' > "$TEST_TMPDIR/incoming/jpg"
     printf 'notes\n' > "$TEST_TMPDIR/incoming/notes.txt"
     printf '# album notes\n' > "$TEST_TMPDIR/incoming/README.md"
     mkdir -p "$TEST_TMPDIR/dist/photos"
+    printf 'stale cached unsupported file\n' \
+        > "$TEST_TMPDIR/dist/photos/jpg"
     printf 'stale cached unsupported file\n' \
         > "$TEST_TMPDIR/dist/photos/notes.txt"
     printf 'stale cached unsupported file\n' \
@@ -544,6 +547,7 @@ test_generate_ignores_unsupported_incoming_files_with_warning() {
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/03-photo.png"
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/04-photo.webp"
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/05-photo.gif"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/jpg"
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/notes.txt"
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/README.md"
     test::assert_contains \
@@ -552,8 +556,12 @@ test_generate_ignores_unsupported_incoming_files_with_warning() {
     test::assert_contains \
         'WARNING: Ignoring unsupported incoming file: notes.txt' \
         "$output"
+    test::assert_contains \
+        'WARNING: Ignoring unsupported incoming file: jpg' \
+        "$output"
     test::assert_not_contains 'Processing notes.txt' "$output"
     test::assert_not_contains 'Processing README.md' "$output"
+    test::assert_not_contains 'Processing jpg' "$output"
 
     python3 - "$TEST_TMPDIR/dist/photoalbum.json" <<'PY'
 import json

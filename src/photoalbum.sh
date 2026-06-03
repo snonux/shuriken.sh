@@ -315,8 +315,13 @@ cleanphotos() {
 
 is_supported_image_file() {
     local -r file="$1"; shift
-    local extension="${file##*.}"
+    local extension
 
+    if [[ "$file" != *.* ]]; then
+        return 1
+    fi
+
+    extension="${file##*.}"
     extension="${extension,,}"
 
     case "$extension" in
