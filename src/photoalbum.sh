@@ -299,7 +299,8 @@ cleanphotos() {
     while IFS= read -r photo; do
         basename=$(basename "$photo")
 
-        if [ -f "$INCOMING_DIR/$basename" ]; then
+        if [[ -f "$INCOMING_DIR/$basename" ]] \
+            && is_supported_image_file "$basename"; then
             continue
         fi
 
@@ -310,6 +311,43 @@ cleanphotos() {
             fi
         done
     done < <(find "$DIST_DIR/photos" -maxdepth 1 -type f)
+}
+
+is_supported_image_file() {
+    local -r file="$1"; shift
+    local extension="${file##*.}"
+
+    extension="${extension,,}"
+
+    case "$extension" in
+        gif|jpeg|jpg|png|webp)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+incoming_image_files() {
+    local file
+
+    while IFS= read -r file; do
+        if is_supported_image_file "$file"; then
+            printf '%s\n' "$file"
+        fi
+    done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n') \
+        | sort
+}
+
+warn_unsupported_incoming_files() {
+    local file
+
+    while IFS= read -r file; do
+        if ! is_supported_image_file "$file"; then
+            echo "WARNING: Ignoring unsupported incoming file: $file" >&2
+        fi
+    done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n' | sort)
 }
 
 scalephotos() {
@@ -342,10 +380,7 @@ scalephotos() {
                 -auto-orient \
                 "$destphoto"
         fi
-    done < <(
-        find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n' \
-            | sort
-    )
+    done < <(incoming_image_files)
 }
 
 random_animation_css_class() {
@@ -568,6 +603,10 @@ count_files() {
     fi
 }
 
+count_incoming_images() {
+    incoming_image_files | wc -l
+}
+
 count_tree_files() {
     local -r dir="$1"; shift
     local -r name="$1"; shift
@@ -585,7 +624,7 @@ write_generation_metadata() {
     local -r generated_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
     local -r config_source="${PHOTOALBUM_CONFIG_SOURCE:-}"
     local -r template_name=$(basename "$TEMPLATE_DIR")
-    local -r source_image_count=$(count_files "$INCOMING_DIR")
+    local -r source_image_count=$(count_incoming_images)
     local -r generated_photo_count=$(count_files "$DIST_DIR/photos")
     local -r generated_thumb_count=$(count_files "$DIST_DIR/thumbs")
     local -r generated_html_count=$(count_tree_files "$DIST_DIR" '*.html')
@@ -641,6 +680,7 @@ generate() {
         tarball_name="${base}-${now}${TARBALL_SUFFIX:-.tar}"
     fi
 
+    warn_unsupported_incoming_files
     mkdir -p "$DIST_DIR/photos"
     cleanphotos
     scalephotos

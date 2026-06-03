@@ -45,10 +45,15 @@ settings, readable input and template directories, a writable output location,
 and ImageMagick availability. Generation stops before writing album output when
 validation fails.
 
+Only regular files in `INCOMING_DIR` with supported image extensions are
+processed as album images. Supported extensions are `jpg`, `jpeg`, `png`, `webp`,
+and `gif`, matched case-insensitively. Other files, such as `.txt` or `.md`
+notes, are ignored with a warning so generation can continue.
+
 Successful generation writes `photoalbum.json` into the output directory. This
 metadata records the generator version and timestamp, config source, template
-directory, source and generated file counts, tarball status, and effective
-settings useful for debugging a published album.
+directory, supported source image and generated file counts, tarball status, and
+effective settings useful for debugging a published album.
 
 The following long options override config values:
 

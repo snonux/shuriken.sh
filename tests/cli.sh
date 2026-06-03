@@ -111,8 +111,11 @@ assert metadata["config_source"] == config_source
 assert metadata["template"]["directory"] == template_dir
 assert metadata["template"]["name"] == template_path.name
 assert metadata["source"]["incoming_dir"] == incoming_dir
+supported_extensions = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 assert metadata["source"]["image_count"] == sum(
-    1 for path in incoming_path.iterdir() if path.is_file()
+    1
+    for path in incoming_path.iterdir()
+    if path.is_file() and path.suffix.lower() in supported_extensions
 )
 assert metadata["generated"]["photo_count"] == sum(
     1 for path in (dist_path / "photos").iterdir() if path.is_file()
@@ -496,6 +499,72 @@ test_generate_cli_no_tarball_overrides_config() {
     )
 
     test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
+    test::teardown
+}
+
+test_generate_ignores_unsupported_incoming_files_with_warning() {
+    local config_file
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    "$TEST_IMAGEMAGICK" -size 160x90 xc:red \
+        "$TEST_TMPDIR/incoming/01-upper.JPG"
+    "$TEST_IMAGEMAGICK" -size 160x90 xc:red \
+        "$TEST_TMPDIR/incoming/02-photo.jpeg"
+    "$TEST_IMAGEMAGICK" -size 160x90 xc:red \
+        "$TEST_TMPDIR/incoming/03-photo.png"
+    "$TEST_IMAGEMAGICK" -size 160x90 xc:red \
+        "$TEST_TMPDIR/incoming/04-photo.webp"
+    "$TEST_IMAGEMAGICK" -size 160x90 xc:red \
+        "$TEST_TMPDIR/incoming/05-photo.gif"
+    printf 'notes\n' > "$TEST_TMPDIR/incoming/notes.txt"
+    printf '# album notes\n' > "$TEST_TMPDIR/incoming/README.md"
+    mkdir -p "$TEST_TMPDIR/dist/photos"
+    printf 'stale cached unsupported file\n' \
+        > "$TEST_TMPDIR/dist/photos/notes.txt"
+    printf 'stale cached unsupported file\n' \
+        > "$TEST_TMPDIR/dist/photos/README.md"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Extension filter album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate 2>&1
+    )
+
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-upper.JPG"
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/02-photo.jpeg"
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/03-photo.png"
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/04-photo.webp"
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/05-photo.gif"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/notes.txt"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/README.md"
+    test::assert_contains \
+        'WARNING: Ignoring unsupported incoming file: README.md' \
+        "$output"
+    test::assert_contains \
+        'WARNING: Ignoring unsupported incoming file: notes.txt' \
+        "$output"
+    test::assert_not_contains 'Processing notes.txt' "$output"
+    test::assert_not_contains 'Processing README.md' "$output"
+
+    python3 - "$TEST_TMPDIR/dist/photoalbum.json" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert metadata["source"]["image_count"] == 5
+assert metadata["generated"]["photo_count"] == 5
+PY
+
     test::teardown
 }
 
@@ -1297,6 +1366,9 @@ main() {
     test::run_case \
         '--generate --no-tarball overrides config' \
         test_generate_cli_no_tarball_overrides_config
+    test::run_case \
+        '--generate ignores unsupported incoming files with warning' \
+        test_generate_ignores_unsupported_incoming_files_with_warning
     test::run_case \
         '--generate missing incoming fails' \
         test_generate_missing_incoming_fails
