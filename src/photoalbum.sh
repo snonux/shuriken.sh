@@ -488,12 +488,113 @@ source_template_file() {
         bash -euo pipefail -- "$template_path" >> "$output_path"
 }
 
+parse_template_context() {
+    local -r template_name="$1"; shift
+    local -n context_ref="$1"; shift
+    local context_key
+    local context_value
+
+    while (( $# > 0 )); do
+        if (( $# < 2 )); then
+            config_error "template $template_name render context is incomplete"
+            return 1
+        fi
+
+        context_key="$1"
+        context_value="$2"
+        shift 2
+
+        if [[ ! "$context_key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+            config_error \
+                "template $template_name render variable $context_key is invalid"
+            return 1
+        fi
+
+        # shellcheck disable=SC2034
+        context_ref["$context_key"]="$context_value"
+    done
+}
+
+prepare_template_render_vars() {
+    local -r context_name="$1"; shift
+
+    render_animation_class_html=$(
+        _html_escape "$(template_context_value "$context_name" animation_class)"
+    )
+    render_backhref_css=$(
+        _css_string_escape "$(template_context_value "$context_name" backhref)"
+    )
+    render_backhref_html=$(
+        _html_escape "$(template_context_value "$context_name" backhref)"
+    )
+    render_background_image_css=$(
+        _css_string_escape \
+            "$(template_context_value "$context_name" background_image)"
+    )
+    render_blurs_dir_css=$(
+        _css_string_escape "$(template_context_value "$context_name" blurs_dir)"
+    )
+    render_current_date_text=$(_html_escape "$(current_date_text)")
+    render_exif_details_html=$(
+        template_context_value "$context_name" exif_details
+    )
+    render_height_html=$(_html_escape "${HEIGHT:-}")
+    render_html_dir_html=$(_html_escape "$render_html_dir")
+    render_maxpreviews_html=$(_html_escape "${MAXPREVIEWS:-}")
+    render_next_html=$(
+        _html_escape "$(template_context_value "$context_name" next)"
+    )
+    if [ -n "${ORIGINAL_BASEPATH:-}" ]; then
+        render_original_basepath_is_set='yes'
+    else
+        render_original_basepath_is_set='no'
+    fi
+    render_original_basepath_html=$(_html_escape "${ORIGINAL_BASEPATH:-}")
+    render_page_num_html=$(
+        _html_escape "$(template_context_value "$context_name" page_num)"
+    )
+    render_photo_html=$(
+        _html_escape "$(template_context_value "$context_name" photo)"
+    )
+    render_photos_dir_html=$(
+        _html_escape "$(template_context_value "$context_name" photos_dir)"
+    )
+    render_prev_html=$(
+        _html_escape "$(template_context_value "$context_name" prev)"
+    )
+    render_preview_num=$(
+        template_context_value "$context_name" preview_num
+    )
+    render_preview_num_html=$(_html_escape "$render_preview_num")
+    render_redirect_page_html=$(
+        _html_escape "$(template_context_value "$context_name" redirect_page)"
+    )
+    render_show_header_bar=$(
+        template_context_value "$context_name" show_header_bar
+    )
+    render_tarball_include="${TARBALL_INCLUDE:-no}"
+    render_tarball_name_html=$(
+        _html_escape "$(template_context_value "$context_name" tarball_name)"
+    )
+    render_thumbheight_html=$(_html_escape "${THUMBHEIGHT:-}")
+    render_thumbs_dir_html=$(
+        _html_escape "$(template_context_value "$context_name" thumbs_dir)"
+    )
+    render_title_html=$(_html_escape "${TITLE:-}")
+
+    if [ -n "$render_preview_num" ]; then
+        render_view_next_html=$(_html_escape "$(( render_preview_num + 1 ))")
+        render_view_prev_html=$(_html_escape "$(( render_preview_num - 1 ))")
+    else
+        render_view_next_html=''
+        render_view_prev_html=''
+    fi
+}
+
 template() {
     local -r template_name="$1"; shift
     local -r html="$1"; shift
     local -r template_path="$TEMPLATE_DIR/$template_name.tmpl"
-    local context_key
-    local context_value
     local dist_html
     local render_animation_class_html
     local render_backhref_css
@@ -524,27 +625,10 @@ template() {
     local render_title_html
     local render_view_next_html
     local render_view_prev_html
+    # shellcheck disable=SC2034
     local -A render_context=()
 
-    while (( $# > 0 )); do
-        if (( $# < 2 )); then
-            config_error "template $template_name render context is incomplete"
-            return 1
-        fi
-
-        context_key="$1"
-        context_value="$2"
-        shift 2
-
-        if [[ ! "$context_key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-            config_error \
-                "template $template_name render variable $context_key is invalid"
-            return 1
-        fi
-
-        # shellcheck disable=SC2034
-        render_context[$context_key]="$context_value"
-    done
+    parse_template_context "$template_name" render_context "$@"
 
     if [ ! -r "$template_path" ]; then
         config_error "template file $template_path must be readable"
@@ -559,78 +643,7 @@ template() {
     log_info "Generating $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
-    render_animation_class_html=$(
-        _html_escape "$(template_context_value render_context animation_class)"
-    )
-    render_backhref_css=$(
-        _css_string_escape "$(template_context_value render_context backhref)"
-    )
-    render_backhref_html=$(
-        _html_escape "$(template_context_value render_context backhref)"
-    )
-    render_background_image_css=$(
-        _css_string_escape \
-            "$(template_context_value render_context background_image)"
-    )
-    render_blurs_dir_css=$(
-        _css_string_escape "$(template_context_value render_context blurs_dir)"
-    )
-    render_current_date_text=$(_html_escape "$(current_date_text)")
-    render_exif_details_html=$(
-        template_context_value render_context exif_details
-    )
-    render_height_html=$(_html_escape "${HEIGHT:-}")
-    render_html_dir_html=$(_html_escape "$render_html_dir")
-    render_maxpreviews_html=$(_html_escape "${MAXPREVIEWS:-}")
-    render_next_html=$(
-        _html_escape "$(template_context_value render_context next)"
-    )
-    if [ -n "${ORIGINAL_BASEPATH:-}" ]; then
-        render_original_basepath_is_set='yes'
-    else
-        render_original_basepath_is_set='no'
-    fi
-    render_original_basepath_html=$(_html_escape "${ORIGINAL_BASEPATH:-}")
-    render_page_num_html=$(
-        _html_escape "$(template_context_value render_context page_num)"
-    )
-    render_photo_html=$(
-        _html_escape "$(template_context_value render_context photo)"
-    )
-    render_photos_dir_html=$(
-        _html_escape "$(template_context_value render_context photos_dir)"
-    )
-    render_prev_html=$(
-        _html_escape "$(template_context_value render_context prev)"
-    )
-    render_preview_num=$(
-        template_context_value render_context preview_num
-    )
-    render_preview_num_html=$(_html_escape "$render_preview_num")
-    render_redirect_page_html=$(
-        _html_escape "$(template_context_value render_context redirect_page)"
-    )
-    render_show_header_bar=$(
-        template_context_value render_context show_header_bar
-    )
-    render_tarball_include="${TARBALL_INCLUDE:-no}"
-    render_tarball_name_html=$(
-        _html_escape "$(template_context_value render_context tarball_name)"
-    )
-    render_thumbheight_html=$(_html_escape "${THUMBHEIGHT:-}")
-    render_thumbs_dir_html=$(
-        _html_escape "$(template_context_value render_context thumbs_dir)"
-    )
-    render_title_html=$(_html_escape "${TITLE:-}")
-
-    if [ -n "$render_preview_num" ]; then
-        render_view_next_html=$(_html_escape "$(( render_preview_num + 1 ))")
-        render_view_prev_html=$(_html_escape "$(( render_preview_num - 1 ))")
-    else
-        render_view_next_html=''
-        render_view_prev_html=''
-    fi
-
+    prepare_template_render_vars render_context
     source_template_file "$template_path" "$dist_html/$html"
 }
 
@@ -1356,7 +1369,8 @@ generate() {
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
         tarball_name=$(generated_tarball_name)
         log_verbose \
-            "Tarball enabled; planned archive: $(_display_path "$DIST_DIR/$tarball_name")"
+            "Tarball enabled; planned archive:" \
+            "$(_display_path "$DIST_DIR/$tarball_name")"
     else
         log_verbose 'Tarball disabled; no archive will be created'
     fi
@@ -1878,27 +1892,54 @@ validate_print_config() {
     resolve_tar_opts tar_opts
 }
 
-main() {
-    local action=''
-    local config_file=''
-    local has_config_overrides='no'
-    local cli_dist_dir=''
-    local cli_height=''
-    local cli_incoming_dir=''
-    local cli_maxpreviews=''
-    local cli_random_seed=''
-    local cli_shuffle=''
-    local cli_tarball_include=''
-    local cli_template_dir=''
-    local cli_thumbheight=''
-    local cli_title=''
-    local option
-    local rc_file
+set_cli_override() {
+    local -r option="$1"; shift
+    local -r value="$1"; shift
 
-    if (( $# == 0 )); then
+    case "$option" in
+        --incoming)
+            cli_incoming_dir="$value"
+            ;;
+        --dist)
+            cli_dist_dir="$value"
+            ;;
+        --template)
+            cli_template_dir="$value"
+            ;;
+        --title)
+            cli_title="$value"
+            ;;
+        --height)
+            cli_height="$value"
+            ;;
+        --thumbheight)
+            cli_thumbheight="$value"
+            ;;
+        --maxpreviews)
+            cli_maxpreviews="$value"
+            ;;
+        --random-seed)
+            cli_random_seed="$value"
+            ;;
+    esac
+
+    has_config_overrides='yes'
+}
+
+set_cli_action() {
+    local -r selected_action="$1"; shift
+
+    if [ -n "$action" ]; then
         usage
         exit 1
     fi
+
+    action="$selected_action"
+}
+
+parse_cli_arguments() {
+    local option_arg
+    local option
 
     while (( $# > 0 )); do
         option="$1"
@@ -1915,44 +1956,10 @@ main() {
                 config_file="$1"
                 shift
                 ;;
-            --incoming)
-                cli_incoming_dir=$(option_value "$option" "$@")
-                has_config_overrides='yes'
-                shift
-                ;;
-            --dist)
-                cli_dist_dir=$(option_value "$option" "$@")
-                has_config_overrides='yes'
-                shift
-                ;;
-            --template)
-                cli_template_dir=$(option_value "$option" "$@")
-                has_config_overrides='yes'
-                shift
-                ;;
-            --title)
-                cli_title=$(option_value "$option" "$@")
-                has_config_overrides='yes'
-                shift
-                ;;
-            --height)
-                cli_height=$(option_value "$option" "$@")
-                has_config_overrides='yes'
-                shift
-                ;;
-            --thumbheight)
-                cli_thumbheight=$(option_value "$option" "$@")
-                has_config_overrides='yes'
-                shift
-                ;;
-            --maxpreviews)
-                cli_maxpreviews=$(option_value "$option" "$@")
-                has_config_overrides='yes'
-                shift
-                ;;
-            --random-seed)
-                cli_random_seed=$(option_value "$option" "$@")
-                has_config_overrides='yes'
+            --incoming|--dist|--template|--title|--height|--thumbheight|\
+            --maxpreviews|--random-seed)
+                option_arg=$(option_value "$option" "$@")
+                set_cli_override "$option" "$option_arg"
                 shift
                 ;;
             --shuffle)
@@ -1978,12 +1985,7 @@ main() {
                 PHOTOALBUM_OUTPUT_MODE=quiet
                 ;;
             --version|--init|--clean|--generate|--dry-run|--print-config)
-                if [ -n "$action" ]; then
-                    usage
-                    exit 1
-                fi
-
-                action="$option"
+                set_cli_action "$option"
                 ;;
             *)
                 usage
@@ -1991,7 +1993,9 @@ main() {
                 ;;
         esac
     done
+}
 
+run_simple_action() {
     case "$action" in
         --version)
             if [[ -n "$config_file" || "$has_config_overrides" = 'yes' ]]; then
@@ -2009,55 +2013,106 @@ main() {
 
             init_config
             ;;
+    esac
+}
+
+load_configured_action() {
+    local -r rc_file="$1"; shift
+
+    if [ ! -f "$rc_file" ]; then
+        missing_config "$rc_file"
+    fi
+
+    source "$rc_file"
+    apply_config_defaults
+    apply_template_dir_default
+    apply_cli_overrides
+    PHOTOALBUM_CONFIG_SOURCE="$rc_file"
+    export PHOTOALBUM_CONFIG_SOURCE
+}
+
+log_configured_action() {
+    local -r rc_file="$1"; shift
+
+    if [ "$action" = --print-config ]; then
+        return
+    fi
+
+    log_verbose "Selected config file: $rc_file"
+    log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
+    log_verbose "Effective output directory: ${DIST_DIR:-}"
+    log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
+    log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
+}
+
+run_configured_action() {
+    local rc_file
+
+    rc_file="$(resolve_config_file "$config_file")"
+    load_configured_action "$rc_file"
+    log_configured_action "$rc_file"
+
+    case "$action" in
+        --clean)
+            if [ -d "$DIST_DIR" ]; then
+                log_info "Cleaning $DIST_DIR"
+                rm -rf "$DIST_DIR"
+            else
+                log_verbose "Output directory does not exist: $DIST_DIR"
+            fi
+            ;;
+        --generate)
+            validate_generation_config
+            generate_staged
+            ;;
+        --dry-run)
+            validate_generation_config no
+            dry_run
+            ;;
+        --print-config)
+            validate_print_config
+            print_config
+            ;;
+    esac
+}
+
+run_action() {
+    case "$action" in
+        --version|--init)
+            run_simple_action
+            ;;
         --clean|--generate|--dry-run|--print-config)
-            rc_file="$(resolve_config_file "$config_file")"
-
-            if [ ! -f "$rc_file" ]; then
-                missing_config "$rc_file"
-            fi
-
-            source "$rc_file"
-            apply_config_defaults
-            apply_template_dir_default
-            apply_cli_overrides
-            PHOTOALBUM_CONFIG_SOURCE="$rc_file"
-            export PHOTOALBUM_CONFIG_SOURCE
-            if [ "$action" != --print-config ]; then
-                log_verbose "Selected config file: $rc_file"
-                log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
-                log_verbose "Effective output directory: ${DIST_DIR:-}"
-                log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
-                log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
-            fi
-
-            case "$action" in
-                --clean)
-                    if [ -d "$DIST_DIR" ]; then
-                        log_info "Cleaning $DIST_DIR"
-                        rm -rf "$DIST_DIR"
-                    else
-                        log_verbose "Output directory does not exist: $DIST_DIR"
-                    fi
-                    ;;
-                --generate)
-                    validate_generation_config
-                    generate_staged
-                    ;;
-                --dry-run)
-                    validate_generation_config no
-                    dry_run
-                    ;;
-                --print-config)
-                    validate_print_config
-                    print_config
-                    ;;
-            esac
+            run_configured_action
             ;;
         *)
             usage
             exit 1
             ;;
     esac
+}
+
+main() {
+    local action=''
+    local config_file=''
+    local has_config_overrides='no'
+    local cli_dist_dir=''
+    local cli_height=''
+    local cli_incoming_dir=''
+    local cli_maxpreviews=''
+    local cli_random_seed=''
+    local cli_shuffle=''
+    local cli_tarball_include=''
+    local cli_template_dir=''
+    local cli_thumbheight=''
+    local cli_title=''
+
+    if (( $# == 0 )); then
+        usage
+        exit 1
+    fi
+
+    parse_cli_arguments "$@"
+    run_action
 }
 
 main "$@"
