@@ -1349,12 +1349,6 @@ clear_rendered_html() {
     find "$DIST_DIR" -type f -name '*.html' -delete
 }
 
-render_top_level_index_redirect() {
-    template 'redirect' 'index.html' \
-        html_dir './' \
-        redirect_page './html/index'
-}
-
 create_generation_archive() {
     local -r tarball_name="$1"; shift
 
@@ -1377,8 +1371,7 @@ generate() {
 
     prepare_generation_photo_assets
     clear_rendered_html
-    render_album_pages 'photos' 'html' 'thumbs' 'blurs' '..' "$tarball_name"
-    render_top_level_index_redirect
+    render_album_pages 'photos' '.' 'thumbs' 'blurs' '.' "$tarball_name"
     create_generation_archive "$tarball_name"
     write_generation_metadata "$tarball_name"
 }
@@ -1425,24 +1418,21 @@ dry_run() {
     printf '  %s/photos\n' "$DIST_DIR"
     printf '  %s/thumbs\n' "$DIST_DIR"
     printf '  %s/blurs\n' "$DIST_DIR"
-    printf '  %s/html\n' "$DIST_DIR"
 
     printf 'Planned generated files:\n'
-    printf '  %s/index.html\n' "$DIST_DIR"
+    printf '  %s/index.html (%s album index redirect)\n' \
+        "$DIST_DIR" "$html_index_count"
     printf '  %s/photoalbum.json\n' "$DIST_DIR"
     printf '  %s/photos/* (%s image files)\n' "$DIST_DIR" "$image_count"
     printf '  %s/thumbs/* (%s image files)\n' "$DIST_DIR" "$image_count"
     printf '  %s/blurs/* (%s image files)\n' "$DIST_DIR" "$image_count"
-    printf '  %s/html/page-*.html (%s preview pages)\n' \
-        "$DIST_DIR" "$page_count"
-    printf '  %s/html/[page]-[image].html (%s view pages)\n' \
+    printf '  %s/page-*.html (%s preview pages)\n' "$DIST_DIR" "$page_count"
+    printf '  %s/[page]-[image].html (%s view pages)\n' \
         "$DIST_DIR" "$image_count"
-    printf '  %s/html/[page]-[image]-details.html (%s details pages)\n' \
+    printf '  %s/[page]-[image]-details.html (%s details pages)\n' \
         "$DIST_DIR" "$details_count"
-    printf '  %s/html/[redirect].html (%s navigation redirects)\n' \
+    printf '  %s/[redirect].html (%s navigation redirects)\n' \
         "$DIST_DIR" "$redirect_count"
-    printf '  %s/html/index.html (%s album index redirect)\n' \
-        "$DIST_DIR" "$html_index_count"
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
         printf '  %s/%s\n' "$DIST_DIR" "$(tarball_name_plan)"
     fi

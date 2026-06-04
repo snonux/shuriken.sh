@@ -138,6 +138,16 @@ assert "original_basepath" in metadata["settings"]
 PY
 }
 
+test::assert_no_html_subdir_output() {
+    local -r dist_dir="$1"; shift
+
+    test::assert_path_absent "$dist_dir/html"
+    if grep -R -n --include='*.html' 'html/' "$dist_dir"; then
+        echo "FAIL: expected no html/ links in generated HTML" >&2
+        exit 1
+    fi
+}
+
 test_version() {
     local output
 
@@ -344,7 +354,8 @@ test_generate_with_config_succeeds_without_default_config() {
     )
 
     test::assert_file_exists "$TEST_TMPDIR/custom-dist/photos/01-landscape.jpg"
-    test::assert_file_exists "$TEST_TMPDIR/custom-dist/html/page-2.html"
+    test::assert_file_exists "$TEST_TMPDIR/custom-dist/page-2.html"
+    test::assert_path_absent "$TEST_TMPDIR/custom-dist/html"
     test::teardown
 }
 
@@ -389,8 +400,8 @@ test_generate_cli_overrides_config_values() {
             --no-tarball
     )
 
-    page_html=$(<"$TEST_TMPDIR/cli-dist/html/page-1.html")
-    view_html=$(<"$TEST_TMPDIR/cli-dist/html/1-1.html")
+    page_html=$(<"$TEST_TMPDIR/cli-dist/page-1.html")
+    view_html=$(<"$TEST_TMPDIR/cli-dist/1-1.html")
 
     test::assert_file_exists "$TEST_TMPDIR/cli-dist/photos/01-landscape.jpg"
     test::assert_file_exists "$TEST_TMPDIR/cli-dist/photos/02-portrait.jpg"
@@ -466,7 +477,7 @@ test_generate_no_shuffle_override_uses_sorted_order() {
             "$TEST_PHOTOALBUM" --generate --no-shuffle
     )
 
-    page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
+    page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
     test::assert_contains_before \
         "name='01-landscape.jpg'" \
         "name='06-extra.jpg'" \
@@ -509,7 +520,13 @@ test_generate_random_seed_repeats_html_with_shuffle() {
                 --dist "$TEST_TMPDIR/dist-two"
     )
 
-    if ! diff -ru "$TEST_TMPDIR/dist-one/html" "$TEST_TMPDIR/dist-two/html"; then
+    if ! diff -ru \
+        --exclude=blurs \
+        --exclude=photoalbum.json \
+        --exclude=photos \
+        --exclude=thumbs \
+        "$TEST_TMPDIR/dist-one" \
+        "$TEST_TMPDIR/dist-two"; then
         echo 'FAIL: seeded generation should produce identical HTML' >&2
         exit 1
     fi
@@ -1285,20 +1302,18 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains "  $dist_dir/photos/* (6 image files)" "$output"
     test::assert_contains "  $dist_dir/thumbs/* (6 image files)" "$output"
     test::assert_contains "  $dist_dir/blurs/* (6 image files)" "$output"
-    test::assert_contains "  $dist_dir/html/page-*.html (3 preview pages)" \
+    test::assert_contains "  $dist_dir/page-*.html (3 preview pages)" \
         "$output"
     test::assert_contains \
-        "  $dist_dir/html/[page]-[image].html (6 view pages)" \
+        "  $dist_dir/[page]-[image].html (6 view pages)" \
         "$output"
     test::assert_contains \
-        "  $dist_dir/html/[page]-[image]-details.html (6 details pages)" \
+        "  $dist_dir/[page]-[image]-details.html (6 details pages)" \
         "$output"
     test::assert_contains \
-        "  $dist_dir/html/[redirect].html (6 navigation redirects)" \
+        "  $dist_dir/[redirect].html (6 navigation redirects)" \
         "$output"
-    test::assert_contains \
-        "  $dist_dir/html/index.html (1 album index redirect)" \
-        "$output"
+    test::assert_not_contains "$dist_dir/html" "$output"
     test::assert_contains "  $dist_dir/incoming-<timestamp>.tar" "$output"
     test::assert_not_contains 'Processing ' "$output"
     test::assert_not_contains 'Creating tarball ' "$output"
@@ -1747,26 +1762,26 @@ test_integration_generates_album_outputs_and_cleans() {
         "$TEST_TMPDIR/dist/photos/04 filename with spaces.jpg"
     test::assert_file_exists "$TEST_TMPDIR/dist/thumbs/01-landscape.jpg"
     test::assert_file_exists "$TEST_TMPDIR/dist/blurs/01-landscape.jpg"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/page-1.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/page-2.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/page-3.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/1-1.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/1-1-details.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/3-2.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/3-2-details.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/index.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/page-1.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/page-2.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/page-3.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/1-1.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/1-1-details.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/3-2.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/3-2-details.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/index.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_no_html_subdir_output "$TEST_TMPDIR/dist"
 
-    page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
-    details_html=$(<"$TEST_TMPDIR/dist/html/1-1-details.html")
+    page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
+    details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
     top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
     test::assert_contains "name='04 filename with spaces.jpg'" \
-        "$(<"$TEST_TMPDIR/dist/html/page-2.html")"
+        "$(<"$TEST_TMPDIR/dist/page-2.html")"
     test::assert_contains 'Next 2 pictures' "$page_html"
     test::assert_contains 'No EXIF details available.' "$details_html"
     test::assert_contains 'href="1-1.html">Image view</a>' "$details_html"
-    test::assert_contains 'url=./html/index.html' "$top_index_html"
+    test::assert_contains 'url=page-1.html' "$top_index_html"
     test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
     test::assert_generation_metadata \
         "$TEST_TMPDIR/dist/photoalbum.json" \
@@ -1832,9 +1847,9 @@ test_generate_replaces_dist_after_success() {
     )
 
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
-    test::assert_file_exists "$TEST_TMPDIR/dist/html/page-1.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/page-1.html"
     test::assert_path_absent "$TEST_TMPDIR/dist/stale-root-file"
-    test::assert_path_absent "$TEST_TMPDIR/dist/html/stale.html"
+    test::assert_path_absent "$TEST_TMPDIR/dist/html"
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/stale.jpg"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
@@ -2107,24 +2122,25 @@ test_generate_escapes_html_values() {
             "$TEST_PHOTOALBUM" --generate
     )
 
-    page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
-    view_html=$(<"$TEST_TMPDIR/dist/html/1-1.html")
-    details_html=$(<"$TEST_TMPDIR/dist/html/1-1-details.html")
+    page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
+    view_html=$(<"$TEST_TMPDIR/dist/1-1.html")
+    details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
+    test::assert_no_html_subdir_output "$TEST_TMPDIR/dist"
 
     test::assert_contains "<title>$title_html</title>" "$page_html"
     test::assert_contains \
-        "background-image: url(\"../blurs/$css_photo\");" \
+        "background-image: url(\"./blurs/$css_photo\");" \
         "$page_html"
     test::assert_contains "name='$photo_html'" "$page_html"
-    test::assert_contains "src='../thumbs/$photo_html'" "$page_html"
+    test::assert_contains "src='./thumbs/$photo_html'" "$page_html"
     test::assert_contains '&amp;&quot;&#39;.tar' "$page_html"
     test::assert_contains "href=\"page-1.html#$photo_html\"" "$view_html"
     test::assert_contains 'href="1-1-details.html">Details</a>' "$view_html"
-    test::assert_contains "href ='../photos/$photo_html'" "$view_html"
+    test::assert_contains "href ='./photos/$photo_html'" "$view_html"
     test::assert_contains \
         "href=\"$original_basepath_html/$photo_html\"" \
         "$view_html"
-    test::assert_contains "src='../photos/$photo_html'" "$details_html"
+    test::assert_contains "src='./photos/$photo_html'" "$details_html"
     test::assert_contains '<th>exif:Artist</th>' "$details_html"
     test::assert_contains "<td>$exif_value_html</td>" "$details_html"
     test::assert_contains "href=\"1-1.html\">Image view</a>" "$details_html"
@@ -2161,8 +2177,8 @@ test_generate_renders_exif_details() {
             "$TEST_PHOTOALBUM" --generate
     )
 
-    view_html=$(<"$TEST_TMPDIR/dist/html/1-1.html")
-    details_html=$(<"$TEST_TMPDIR/dist/html/1-1-details.html")
+    view_html=$(<"$TEST_TMPDIR/dist/1-1.html")
+    details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
 
     test::assert_contains 'href="1-1-details.html">Details</a>' "$view_html"
     test::assert_contains '<table class="details">' "$details_html"
@@ -2287,14 +2303,14 @@ test_generate_handles_space_and_underscore_names_distinctly() {
         PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
     )
 
-    page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
+    page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
 
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/a b.jpg"
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/a_b.jpg"
     test::assert_file_exists "$TEST_TMPDIR/dist/thumbs/a b.jpg"
     test::assert_file_exists "$TEST_TMPDIR/dist/thumbs/a_b.jpg"
-    test::assert_contains "src='../thumbs/a b.jpg'" "$page_html"
-    test::assert_contains "src='../thumbs/a_b.jpg'" "$page_html"
+    test::assert_contains "src='./thumbs/a b.jpg'" "$page_html"
+    test::assert_contains "src='./thumbs/a_b.jpg'" "$page_html"
 
     test::teardown
 }
