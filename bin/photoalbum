@@ -141,14 +141,14 @@ init_config() {
     local source_template_dir
 
     if [ -f "$rc_file" ]; then
-        echo "Error: $rc_file already exists" >&2
+        printf 'Error: %s already exists\n' "$rc_file" >&2
         exit 1
     fi
 
     default_rc_file=$(resolve_default_rc_file)
 
     if [ ! -f "$default_rc_file" ]; then
-        echo "Error: Can not find config file $default_rc_file" >&2
+        printf 'Error: Can not find config file %s\n' "$default_rc_file" >&2
         exit 1
     fi
 
@@ -171,7 +171,7 @@ imagemagick() {
     elif command -v convert >/dev/null 2>&1; then
         convert "$@"
     else
-        echo 'ERROR: ImageMagick is required; install magick or convert' >&2
+        printf 'ERROR: ImageMagick is required; install magick or convert\n' >&2
         return 127
     fi
 }
@@ -188,7 +188,7 @@ imagemagick_identify() {
             convert "$@" info:
         fi
     else
-        echo 'ERROR: ImageMagick is required; install magick or convert' >&2
+        printf 'ERROR: ImageMagick is required; install magick or convert\n' >&2
         return 127
     fi
 }
@@ -1232,7 +1232,7 @@ randomphoto() {
     )
 
     if (( ${#photos[@]} == 0 )); then
-        echo "ERROR: No photos found in" \
+        printf 'ERROR: No photos found in %s\n' \
             "$(_display_path "$DIST_DIR/$photos_dir")" >&2
         return 1
     fi
@@ -1586,11 +1586,13 @@ replace_dist_with_staging() {
 
     if [ -n "$backup_dist" ] && [ -e "$backup_dist" ]; then
         if [ -e "$final_dist" ] && ! rm -rf "$final_dist"; then
-            echo "ERROR: Failed to restore $final_dist from $backup_dist" >&2
+            printf 'ERROR: Failed to restore %s from %s\n' \
+                "$final_dist" "$backup_dist" >&2
             return "$status"
         fi
         if ! mv "$backup_dist" "$final_dist"; then
-            echo "ERROR: Failed to restore $final_dist from $backup_dist" >&2
+            printf 'ERROR: Failed to restore %s from %s\n' \
+                "$final_dist" "$backup_dist" >&2
             return "$status"
         fi
         rm -rf "$backup_parent"
@@ -1664,8 +1666,8 @@ resolve_config_file() {
 missing_config() {
     local -r config_file="$1"; shift
 
-    echo "Error: Can not find config file $config_file" >&2
-    echo 'Run photoalbum --init to create ./photoalbum.conf.' >&2
+    printf 'Error: Can not find config file %s\n' "$config_file" >&2
+    printf 'Run photoalbum --init to create ./photoalbum.conf.\n' >&2
     exit 1
 }
 
@@ -1685,7 +1687,7 @@ option_value() {
     local -r option="$1"; shift
 
     if (( $# == 0 )) || [ -z "$1" ]; then
-        echo "Error: $option requires a value" >&2
+        printf 'Error: %s requires a value\n' "$option" >&2
         usage
         exit 1
     fi
@@ -1729,7 +1731,7 @@ apply_cli_overrides() {
 config_error() {
     local -r message="$1"; shift
 
-    echo "ERROR: $message" >&2
+    printf 'ERROR: %s\n' "$message" >&2
     return 1
 }
 
@@ -1948,7 +1950,7 @@ parse_cli_arguments() {
         case "$option" in
             --config)
                 if (( $# == 0 )) || [ -z "$1" ]; then
-                    echo 'Error: --config requires a path' >&2
+                    printf 'Error: --config requires a path\n' >&2
                     usage
                     exit 1
                 fi
@@ -2003,7 +2005,7 @@ run_simple_action() {
                 exit 1
             fi
 
-            echo "This is Photoalbum Version $VERSION"
+            printf 'This is Photoalbum Version %s\n' "$VERSION"
             ;;
         --init)
             if [[ -n "$config_file" || "$has_config_overrides" = 'yes' ]]; then
@@ -2023,6 +2025,7 @@ load_configured_action() {
         missing_config "$rc_file"
     fi
 
+    # shellcheck source=/dev/null
     source "$rc_file"
     apply_config_defaults
     apply_template_dir_default

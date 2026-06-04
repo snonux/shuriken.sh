@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-declare -r TEST_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEST_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+declare -r TEST_REPO_ROOT
 declare -r TEST_PHOTOALBUM="${PHOTOALBUM:-$TEST_REPO_ROOT/bin/photoalbum}"
 
 # shellcheck source=tests/helpers.sh
@@ -174,7 +175,7 @@ test_init_existing_config_fails_without_overwrite() {
     )
 
     test::assert_contains 'Error: photoalbum.conf already exists' "$output"
-    test "$(cat "$TEST_TMPDIR/photoalbum.conf")" = 'sentinel'
+    test "$(<"$TEST_TMPDIR/photoalbum.conf")" = 'sentinel'
     test::teardown
 }
 
@@ -1864,8 +1865,8 @@ test_generate_imagemagick_failure_preserves_dist() {
     )
 
     test::assert_contains 'simulated ImageMagick failure' "$output"
-    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old dist'
-    test "$(cat "$TEST_TMPDIR/dist/sentinel")" = 'keep me'
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
+    test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'keep me'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01.jpg"
     test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
@@ -1902,7 +1903,7 @@ test_generate_template_failure_preserves_dist() {
     )
 
     test::assert_contains 'Generating' "$output"
-    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
     test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
@@ -1941,7 +1942,7 @@ test_generate_templates_cannot_read_generation_locals() {
     )
 
     test::assert_contains 'num: unbound variable' "$output"
-    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
     test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
@@ -1980,7 +1981,7 @@ test_generate_templates_cannot_read_renderer_internals() {
     )
 
     test::assert_contains 'context_key: unbound variable' "$output"
-    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
     test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
@@ -2018,8 +2019,8 @@ test_generate_swap_failure_restores_dist() {
     )
 
     test::assert_contains 'simulated mv failure' "$output"
-    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
-    test "$(cat "$TEST_TMPDIR/dist/sentinel")" = 'old sentinel'
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'old sentinel'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
     test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
