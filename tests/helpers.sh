@@ -393,6 +393,7 @@ test::write_album_config() {
         printf 'INCOMING_DIR=%q\n' "$incoming_dir"
         printf 'DIST_DIR=%q\n' "$dist_dir"
         printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$TEST_REPO_ROOT"
+        printf 'SPLASH_PAGE=yes\n'
         printf 'TARBALL_INCLUDE=no\n'
     } > "$config_file"
 }

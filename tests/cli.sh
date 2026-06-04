@@ -40,6 +40,9 @@ test::write_preflight_config() {
         if [ "$omitted_var" != SHUFFLE ]; then
             printf 'SHUFFLE=no\n'
         fi
+        if [ "$omitted_var" != SPLASH_PAGE ]; then
+            printf 'SPLASH_PAGE=yes\n'
+        fi
         if [ "$omitted_var" != TARBALL_INCLUDE ]; then
             printf 'TARBALL_INCLUDE=no\n'
         fi
@@ -134,6 +137,7 @@ assert metadata["settings"]["height"] == "120"
 assert metadata["settings"]["thumbheight"] == "30"
 assert metadata["settings"]["maxpreviews"] == maxpreviews
 assert metadata["settings"]["shuffle"] is False
+assert isinstance(metadata["settings"]["splash_page"], bool)
 assert "original_basepath" in metadata["settings"]
 PY
 }
@@ -869,6 +873,7 @@ THUMBHEIGHT=300
 MAXPREVIEWS=40
 RANDOM_SEED=''
 SHUFFLE=no
+SPLASH_PAGE=yes
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_OPTS=( -c )
@@ -1002,6 +1007,7 @@ THUMBHEIGHT=30
 MAXPREVIEWS=7
 RANDOM_SEED=''
 SHUFFLE=yes
+SPLASH_PAGE=yes
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_OPTS=( -c )
@@ -1037,6 +1043,7 @@ THUMBHEIGHT=30
 MAXPREVIEWS=8
 RANDOM_SEED=''
 SHUFFLE=no
+SPLASH_PAGE=yes
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_OPTS=( -c )
@@ -1082,6 +1089,7 @@ test_print_config_applies_cli_overrides_without_writes() {
                 --maxpreviews 9 \
                 --random-seed cli-seed \
                 --shuffle \
+                --no-splash \
                 --tarball
     )
     expected=$(cat <<EOF
@@ -1095,6 +1103,7 @@ THUMBHEIGHT=45
 MAXPREVIEWS=9
 RANDOM_SEED=cli-seed
 SHUFFLE=yes
+SPLASH_PAGE=no
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_OPTS=( -c )
@@ -1126,10 +1135,12 @@ test_print_config_applies_negative_cli_overrides() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --print-config --no-shuffle --no-tarball
+        "$TEST_PHOTOALBUM" \
+            --print-config --no-shuffle --no-splash --no-tarball
     )
 
     test::assert_contains 'SHUFFLE=no' "$output"
+    test::assert_contains 'SPLASH_PAGE=no' "$output"
     test::assert_contains 'TARBALL_INCLUDE=no' "$output"
     test::teardown
 }
@@ -1274,6 +1285,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
                 --maxpreviews 2 \
                 --random-seed dry-seed \
                 --shuffle \
+                --no-splash \
                 --tarball
     )
 
@@ -1290,6 +1302,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains 'Max previews per page: 2' "$output"
     test::assert_contains 'Random seed: dry-seed' "$output"
     test::assert_contains 'Shuffle: yes' "$output"
+    test::assert_contains 'Splash page: no' "$output"
     test::assert_contains 'Image count: 6' "$output"
     test::assert_contains 'Tarball setting: yes' "$output"
     test::assert_contains 'Tarball name plan: incoming-<timestamp>.tar' \
@@ -1297,7 +1310,9 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains 'Planned directories:' "$output"
     test::assert_contains "  $dist_dir/photos" "$output"
     test::assert_contains 'Planned generated files:' "$output"
-    test::assert_contains "  $dist_dir/index.html" "$output"
+    test::assert_contains \
+        "  $dist_dir/index.html (1 album index redirect)" \
+        "$output"
     test::assert_contains "  $dist_dir/photoalbum.json" "$output"
     test::assert_contains "  $dist_dir/photos/* (6 image files)" "$output"
     test::assert_contains "  $dist_dir/thumbs/* (6 image files)" "$output"
@@ -1573,6 +1588,7 @@ test_generate_preflight_rejects_invalid_yes_no_values() {
     local output
     local -a bool_vars=(
         SHUFFLE
+        SPLASH_PAGE
         TARBALL_INCLUDE
     )
 
@@ -1781,7 +1797,15 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_contains 'Next 2 pictures' "$page_html"
     test::assert_contains 'No EXIF details available.' "$details_html"
     test::assert_contains 'href="1-1.html">Image view</a>' "$details_html"
-    test::assert_contains 'url=page-1.html' "$top_index_html"
+    test::assert_contains '<title>Integration album</title>' "$top_index_html"
+    test::assert_contains 'Enter album' "$top_index_html"
+    test::assert_contains 'href="page-1.html"' "$top_index_html"
+    test::assert_contains \
+        '<img class="splash-photo" src="./photos/' \
+        "$top_index_html"
+    test::assert_not_contains '<script' "$top_index_html"
+    test::assert_not_contains 'javascript:' "$top_index_html"
+    test::assert_not_contains "http-equiv='refresh'" "$top_index_html"
     test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
     test::assert_generation_metadata \
         "$TEST_TMPDIR/dist/photoalbum.json" \
@@ -1819,6 +1843,82 @@ test_integration_generates_album_outputs_and_cleans() {
         "$TEST_PHOTOALBUM" --clean
     )
     test::assert_path_absent "$TEST_TMPDIR/dist"
+    test::teardown
+}
+
+test_generate_config_no_splash_keeps_index_redirect() {
+    local config_file
+    local fake_bin
+    local top_index_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'No splash config album' 40
+    printf 'SPLASH_PAGE=no\n' >> "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+    )
+
+    top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
+    test::assert_contains 'url=page-1.html' "$top_index_html"
+    test::assert_not_contains 'Enter album' "$top_index_html"
+    test::assert_not_contains '<script' "$top_index_html"
+    test::assert_not_contains 'javascript:' "$top_index_html"
+
+    python3 - "$TEST_TMPDIR/dist/photoalbum.json" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert metadata["settings"]["splash_page"] is False
+PY
+
+    test::teardown
+}
+
+test_generate_cli_no_splash_overrides_config() {
+    local config_file
+    local fake_bin
+    local template_dir
+    local top_index_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    template_dir="$TEST_TMPDIR/templates"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
+    rm -f "$template_dir/splash.tmpl"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'No splash CLI album' 40
+    printf 'TEMPLATE_DIR=%q\n' "$template_dir" >> "$config_file"
+    printf 'SPLASH_PAGE=yes\n' >> "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+            --generate --no-splash
+    )
+
+    top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
+    test::assert_contains 'url=page-1.html' "$top_index_html"
+    test::assert_not_contains 'Enter album' "$top_index_html"
+    test::assert_not_contains '<script' "$top_index_html"
+    test::assert_not_contains 'javascript:' "$top_index_html"
     test::teardown
 }
 
@@ -2084,6 +2184,7 @@ test_generate_escapes_html_values() {
     local photo_name
     local title
     local title_html
+    local top_index_html
     local view_html
 
     test::setup
@@ -2123,14 +2224,18 @@ test_generate_escapes_html_values() {
     )
 
     page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
+    top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
     view_html=$(<"$TEST_TMPDIR/dist/1-1.html")
     details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
     test::assert_no_html_subdir_output "$TEST_TMPDIR/dist"
 
     test::assert_contains "<title>$title_html</title>" "$page_html"
+    test::assert_contains "<title>$title_html</title>" "$top_index_html"
     test::assert_contains \
         "background-image: url(\"./blurs/$css_photo\");" \
         "$page_html"
+    test::assert_contains "url(\"./blurs/$css_photo\")" "$top_index_html"
+    test::assert_contains "src=\"./photos/$photo_html\"" "$top_index_html"
     test::assert_contains "name='$photo_html'" "$page_html"
     test::assert_contains "src='./thumbs/$photo_html'" "$page_html"
     test::assert_contains '&amp;&quot;&#39;.tar' "$page_html"
@@ -2145,6 +2250,7 @@ test_generate_escapes_html_values() {
     test::assert_contains "<td>$exif_value_html</td>" "$details_html"
     test::assert_contains "href=\"1-1.html\">Image view</a>" "$details_html"
     test::assert_not_contains '<title>A & "quoted" <title>' "$page_html"
+    test::assert_not_contains "$photo_name" "$top_index_html"
     test::assert_not_contains "$photo_name" "$view_html"
     test::assert_not_contains "O'Neil & \"<camera>\"" "$details_html"
 
@@ -2515,6 +2621,12 @@ main() {
     test::run_case \
         '--generate creates output structure and --clean removes it' \
         test_integration_generates_album_outputs_and_cleans
+    test::run_case \
+        '--generate SPLASH_PAGE=no keeps root index redirect' \
+        test_generate_config_no_splash_keeps_index_redirect
+    test::run_case \
+        '--generate --no-splash keeps root index redirect' \
+        test_generate_cli_no_splash_overrides_config
     test::run_case \
         '--generate replaces final dist after success' \
         test_generate_replaces_dist_after_success

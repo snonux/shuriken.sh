@@ -31,6 +31,8 @@ usage() {
     --thumbheight VALUE
     --maxpreviews N
     --random-seed VALUE
+    --splash
+    --no-splash
     --shuffle
     --no-shuffle
     --tarball
@@ -425,6 +427,16 @@ validate_template_context() {
         redirect)
             required_vars+=(redirect_page)
             ;;
+        splash)
+            required_vars+=(
+                backhref
+                background_image
+                blurs_dir
+                enter_page
+                photo
+                photos_dir
+            )
+            ;;
         details)
             required_vars+=(
                 animation_class
@@ -464,6 +476,7 @@ source_template_file() {
         render_background_image_css="$render_background_image_css" \
         render_blurs_dir_css="$render_blurs_dir_css" \
         render_current_date_text="$render_current_date_text" \
+        render_enter_page_html="$render_enter_page_html" \
         render_exif_details_html="$render_exif_details_html" \
         render_height_html="$render_height_html" \
         render_html_dir_html="$render_html_dir_html" \
@@ -535,6 +548,9 @@ prepare_template_render_vars() {
         _css_string_escape "$(template_context_value "$context_name" blurs_dir)"
     )
     render_current_date_text=$(_html_escape "$(current_date_text)")
+    render_enter_page_html=$(
+        _html_escape "$(template_context_value "$context_name" enter_page)"
+    )
     render_exif_details_html=$(
         template_context_value "$context_name" exif_details
     )
@@ -602,6 +618,7 @@ template() {
     local render_background_image_css
     local render_blurs_dir_css
     local render_current_date_text
+    local render_enter_page_html
     local render_exif_details_html
     local render_height_html
     local render_html_dir
@@ -1153,6 +1170,38 @@ render_album_index_redirect() {
         redirect_page 'page-1'
 }
 
+render_album_splash_page() {
+    local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local photo
+
+    photo=$(randomphoto "$photos_dir" splash)
+    template 'splash' 'index.html' \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        blurs_dir "$blurs_dir" \
+        background_image "$photo" \
+        photos_dir "$photos_dir" \
+        photo "$photo" \
+        enter_page 'page-1'
+}
+
+render_album_index() {
+    local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+
+    if [ "${SPLASH_PAGE:-yes}" = yes ]; then
+        render_album_splash_page "$photos_dir" "$html_dir" "$blurs_dir" \
+            "$backhref"
+    else
+        render_album_index_redirect "$html_dir"
+    fi
+}
+
 render_album_pages() {
     local -r photos_dir="$1"; shift
     local -r html_dir="$1"; shift
@@ -1214,7 +1263,7 @@ render_album_pages() {
 
     finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
     render_view_redirects "$html_dir"
-    render_album_index_redirect "$html_dir"
+    render_album_index "$photos_dir" "$html_dir" "$blurs_dir" "$backhref"
 }
 
 randomphoto() {
@@ -1331,6 +1380,7 @@ write_generation_metadata() {
         printf '    "maxpreviews": %s,\n' "$(_json_string "${MAXPREVIEWS:-}")"
         printf '    "random_seed": %s,\n' "$(_json_string "${RANDOM_SEED:-}")"
         printf '    "shuffle": %s,\n' "$(_json_bool "${SHUFFLE:-no}")"
+        printf '    "splash_page": %s,\n' "$(_json_bool "${SPLASH_PAGE:-yes}")"
         printf '    "original_basepath": %s\n' \
             "$(_json_string "${ORIGINAL_BASEPATH:-}")"
         printf '  }\n'
@@ -1405,6 +1455,7 @@ dry_run() {
     printf 'Max previews per page: %s\n' "$MAXPREVIEWS"
     printf 'Random seed: %s\n' "${RANDOM_SEED:-}"
     printf 'Shuffle: %s\n' "${SHUFFLE:-no}"
+    printf 'Splash page: %s\n' "${SPLASH_PAGE:-yes}"
     printf 'Image count: %s\n' "$image_count"
     printf 'Tarball setting: %s\n' "${TARBALL_INCLUDE:-no}"
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
@@ -1420,8 +1471,13 @@ dry_run() {
     printf '  %s/blurs\n' "$DIST_DIR"
 
     printf 'Planned generated files:\n'
-    printf '  %s/index.html (%s album index redirect)\n' \
-        "$DIST_DIR" "$html_index_count"
+    if [ "${SPLASH_PAGE:-yes}" = yes ]; then
+        printf '  %s/index.html (%s splash page)\n' \
+            "$DIST_DIR" "$html_index_count"
+    else
+        printf '  %s/index.html (%s album index redirect)\n' \
+            "$DIST_DIR" "$html_index_count"
+    fi
     printf '  %s/photoalbum.json\n' "$DIST_DIR"
     printf '  %s/photos/* (%s image files)\n' "$DIST_DIR" "$image_count"
     printf '  %s/thumbs/* (%s image files)\n' "$DIST_DIR" "$image_count"
@@ -1471,6 +1527,7 @@ print_config() {
     print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
     print_shell_assignment RANDOM_SEED "${RANDOM_SEED:-}"
     print_shell_assignment SHUFFLE "${SHUFFLE:-no}"
+    print_shell_assignment SPLASH_PAGE "${SPLASH_PAGE:-yes}"
     print_shell_assignment TARBALL_INCLUDE "${TARBALL_INCLUDE:-no}"
     print_shell_assignment TARBALL_SUFFIX "${TARBALL_SUFFIX:-.tar}"
     print_shell_array_assignment TAR_OPTS "${tar_opts[@]}"
@@ -1666,6 +1723,7 @@ apply_config_defaults() {
     ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
     RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
+    SPLASH_PAGE="${SPLASH_PAGE:-yes}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
     if ! declare -p TAR_OPTS >/dev/null 2>&1; then
@@ -1712,6 +1770,9 @@ apply_cli_overrides() {
     fi
     if [ -n "$cli_shuffle" ]; then
         SHUFFLE="$cli_shuffle"
+    fi
+    if [ -n "$cli_splash_page" ]; then
+        SPLASH_PAGE="$cli_splash_page"
     fi
     if [ -n "$cli_tarball_include" ]; then
         TARBALL_INCLUDE="$cli_tarball_include"
@@ -1805,6 +1866,10 @@ validate_template_dir() {
         config_error "TEMPLATE_DIR $TEMPLATE_DIR must be a readable directory"
     fi
 
+    if [ "${SPLASH_PAGE:-yes}" = yes ]; then
+        required_templates+=(splash)
+    fi
+
     for template_name in "${required_templates[@]}"; do
         if [ ! -r "$TEMPLATE_DIR/$template_name.tmpl" ]; then
             config_error \
@@ -1844,6 +1909,7 @@ validate_generation_config() {
     validate_positive_integer_config_var THUMBHEIGHT
     validate_positive_integer_config_var MAXPREVIEWS
     validate_yes_no_config_var SHUFFLE
+    validate_yes_no_config_var SPLASH_PAGE
     validate_yes_no_config_var TARBALL_INCLUDE
 
     if [ ! -d "$INCOMING_DIR" ]; then
@@ -1880,6 +1946,7 @@ validate_print_config() {
     validate_positive_integer_config_var THUMBHEIGHT
     validate_positive_integer_config_var MAXPREVIEWS
     validate_yes_no_config_var SHUFFLE
+    validate_yes_no_config_var SPLASH_PAGE
     validate_yes_no_config_var TARBALL_INCLUDE
     resolve_tar_opts tar_opts
 }
@@ -1962,6 +2029,14 @@ parse_cli_arguments() {
                 cli_shuffle='no'
                 has_config_overrides='yes'
                 ;;
+            --splash)
+                cli_splash_page='yes'
+                has_config_overrides='yes'
+                ;;
+            --no-splash)
+                cli_splash_page='no'
+                has_config_overrides='yes'
+                ;;
             --tarball)
                 cli_tarball_include='yes'
                 has_config_overrides='yes'
@@ -2035,6 +2110,7 @@ log_configured_action() {
     log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
     log_verbose "Effective output directory: ${DIST_DIR:-}"
     log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
+    log_verbose "Effective splash page setting: ${SPLASH_PAGE:-yes}"
     log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
 }
 
@@ -2094,6 +2170,7 @@ main() {
     local cli_maxpreviews=''
     local cli_random_seed=''
     local cli_shuffle=''
+    local cli_splash_page=''
     local cli_tarball_include=''
     local cli_template_dir=''
     local cli_thumbheight=''

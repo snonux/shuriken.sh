@@ -68,7 +68,7 @@ missing, run `photoalbum --init` first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
-`RANDOM_SEED`, `SHUFFLE`, and `TARBALL_INCLUDE`.
+`RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, and `TARBALL_INCLUDE`.
 
 Before generating, `photoalbum` validates the loaded config and command-line
 overrides. It checks required values, positive integer settings, `yes`/`no`
@@ -87,11 +87,12 @@ tarball filename uses `<timestamp>` as a placeholder so the output is stable.
 
 `--print-config` writes stable shell-style assignments to stdout in this order:
 `CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`,
-`THUMBHEIGHT`, `MAXPREVIEWS`, `RANDOM_SEED`, `SHUFFLE`, `TARBALL_INCLUDE`,
-`TARBALL_SUFFIX`, `TAR_OPTS`, and `ORIGINAL_BASEPATH`. Scalar values use Bash
-`%q` quoting and `TAR_OPTS` is normalized to a Bash array assignment, so the
-output can be parsed by shell tooling. `--quiet` does not suppress this output,
-and `--verbose` does not add human-readable diagnostics to it.
+`THUMBHEIGHT`, `MAXPREVIEWS`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`,
+`TARBALL_INCLUDE`, `TARBALL_SUFFIX`, `TAR_OPTS`, and `ORIGINAL_BASEPATH`.
+Scalar values use Bash `%q` quoting and `TAR_OPTS` is normalized to a Bash array
+assignment, so the output can be parsed by shell tooling. `--quiet` does not
+suppress this output, and `--verbose` does not add human-readable diagnostics to
+it.
 
 Successful generation writes `photoalbum.json` into the output directory. This
 metadata records the generator version and timestamp, config source, template
@@ -112,14 +113,20 @@ The following long options override config values:
 | `--random-seed VALUE` | `RANDOM_SEED` |
 | `--shuffle` | `SHUFFLE=yes` |
 | `--no-shuffle` | `SHUFFLE=no` |
+| `--splash` | `SPLASH_PAGE=yes` |
+| `--no-splash` | `SPLASH_PAGE=no` |
 | `--tarball` | `TARBALL_INCLUDE=yes` |
 | `--no-tarball` | `TARBALL_INCLUDE=no` |
 
-By default, background photos, animation classes, generated timestamps, and
-`--shuffle` preview order remain non-deterministic. Set `RANDOM_SEED` in the
-config, or pass `--random-seed VALUE`, to make those choices repeatable for
-stable tests or reproducible album builds. Use the same seed and inputs to
-produce the same HTML.
+By default, the generated root `index.html` is a no-JavaScript splash page using
+a randomly selected album photo. Set `SPLASH_PAGE=no` or pass `--no-splash` to
+restore the top-level redirect to `page-1.html`.
+
+By default, splash and background photos, animation classes, generated
+timestamps, and `--shuffle` preview order remain non-deterministic. Set
+`RANDOM_SEED` in the config, or pass `--random-seed VALUE`, to make those
+choices repeatable for stable tests or reproducible album builds. Use the same
+seed and inputs to produce the same HTML.
 
 `--dry-run` and `--print-config` accept the same override options as
 `--generate`. `--clean` accepts the same override options, but only `--dist`

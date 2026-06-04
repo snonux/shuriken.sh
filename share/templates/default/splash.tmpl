@@ -1,0 +1,78 @@
+cat <<END
+<html>
+<head>
+    <title>${render_title_html}</title>
+    <style type="text/css">
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            background-image:
+                linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.85)),
+                url("${render_backhref_css}/${render_blurs_dir_css}/${render_background_image_css}");
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center center;
+            font-family: verdana, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            text-align: center;
+        }
+
+        a {
+            color: #ffffff;
+        }
+
+        main.splash {
+            align-items: center;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        h1 {
+            background-color: #000000;
+            border: 3px solid #ffffff;
+            box-sizing: border-box;
+            font-size: 2em;
+            margin: 0 0 18px;
+            max-width: 900px;
+            padding: 8px 12px;
+            width: 100%;
+        }
+
+        img.splash-photo {
+            background-color: #000000;
+            border: 3px solid #ffffff;
+            box-sizing: border-box;
+            max-height: 72vh;
+            max-width: 95vw;
+            object-fit: contain;
+            padding: 5px;
+        }
+
+        p.enter {
+            background-color: #000000;
+            border: 3px solid #ffffff;
+            font-size: 1.2em;
+            margin: 18px 0 0;
+            padding: 8px 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="splash">
+        <h1>${render_title_html}</h1>
+        <a href="${render_enter_page_html}.html">
+            <img class="splash-photo" src="${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}" />
+        </a>
+        <p class="enter">
+            <a href="${render_enter_page_html}.html">Enter album</a>
+        </p>
+    </main>
+</body>
+</html>
+END
