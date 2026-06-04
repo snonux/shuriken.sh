@@ -612,109 +612,156 @@ newest_html() {
         | sed -n '1{s/^[^ ]* //;p}'
 }
 
-albumhtml() {
+album_photo_files() {
     local -r photos_dir="$1"; shift
-    local -r html_dir="$1"; shift
-    local -r thumbs_dir="$1"; shift
-    local -r blurs_dir="$1"; shift
-    local -r backhref="$1"; shift
 
+    find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
+        | maybe_shuffle
+}
+
+start_preview_page() {
+    local -r photos_dir="$1"; shift
+    local -r page_name="$1"; shift
+    local -r header_bar="$1"; shift
+    local background_image
+    local show_header_bar
+
+    background_image=$(randomphoto "$photos_dir" "$page_name")
+    show_header_bar="$header_bar"
+    export background_image show_header_bar
+    template header "$page_name.html"
+}
+
+finish_preview_page() {
+    local -r page_name="$1"; shift
+
+    template footer "$page_name.html"
+}
+
+finish_preview_page_with_next() {
+    local -r page_name="$1"; shift
+    local -r next_page="$1"; shift
+    local -r prev_page="$1"; shift
+    local next
+    local prev
+
+    next="$next_page"
+    prev="$prev_page"
+    export next prev
+    template next "$page_name.html"
+    finish_preview_page "$page_name"
+}
+
+render_previous_page_link() {
+    local -r page_name="$1"; shift
+    local -r prev_page="$1"; shift
+    local prev
+
+    prev="$prev_page"
+    export prev
+    template prev "$page_name.html"
+}
+
+render_preview_thumbnail() {
+    local -r page_name="$1"; shift
+    local -r page_num="$1"; shift
+    local -r preview_num="$1"; shift
+    local -r photo_file="$1"; shift
+    local animation_class
+    local i
+    local num
+    local photo
+
+    i="$preview_num"
+    num="$page_num"
+    photo="$photo_file"
+    animation_class=$(random_animation_css_class slow "$photo")
+    export animation_class
+    template preview "$page_name.html"
+}
+
+render_view_page() {
+    local -r page_num="$1"; shift
+    local -r preview_num="$1"; shift
+    local -r photo_file="$1"; shift
     local animation_class
     local background_image
+    local i
+    local num
+    local photo
+    local show_header_bar
+
+    i="$preview_num"
+    num="$page_num"
+    photo="$photo_file"
+    background_image="$photo"
+    show_header_bar='no'
+    export background_image show_header_bar
+    template header "$num-$i.html"
+
+    animation_class=$(random_animation_css_class fast "$photo")
+    export animation_class
+    template view "$num-$i.html"
+    template footer "$num-$i.html"
+}
+
+create_photo_derivatives() {
+    local -r photos_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r photo="$1"; shift
     local dirname
     local height
+
+    if [[ -f "$DIST_DIR/$thumbs_dir/$photo" \
+        && -f "$DIST_DIR/$blurs_dir/$photo" ]]; then
+        log_verbose "Skipped existing thumb and blur" \
+            "$(_display_path "$DIST_DIR/$thumbs_dir/$photo") and" \
+            "$(_display_path "$DIST_DIR/$blurs_dir/$photo")"
+        return
+    fi
+
+    dirname="$DIST_DIR/$thumbs_dir"
+    mkdir -p "$dirname"
+    log_info "Creating thumb $(_display_path "$DIST_DIR/$thumbs_dir/$photo")"
+    # Double the height, as CSS scales images based on boxing too.
+    height=$(( THUMBHEIGHT * 2 ))
+    imagemagick \
+        "$DIST_DIR/$photos_dir/$photo" \
+        -geometry "x$height" \
+        "$DIST_DIR/$thumbs_dir/$photo"
+
+    dirname="$DIST_DIR/$blurs_dir"
+    mkdir -p "$dirname"
+    log_info "Creating blur $(_display_path "$DIST_DIR/$blurs_dir/$photo")"
+    imagemagick \
+        "$DIST_DIR/$thumbs_dir/$photo" \
+        -flip \
+        -blur 0x8 \
+        "$DIST_DIR/$blurs_dir/$photo"
+}
+
+render_photo_entry() {
+    local -r photos_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r page_name="$1"; shift
+    local -r page_num="$1"; shift
+    local -r preview_num="$1"; shift
+    local -r photo="$1"; shift
+
+    render_preview_thumbnail "$page_name" "$page_num" "$preview_num" "$photo"
+    render_view_page "$page_num" "$preview_num" "$photo"
+    create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" "$photo"
+}
+
+render_view_redirects() {
     local lastview
-    local name
-    local next
     local nextredirect
     local page
-    local photo
-    local prev
     local prefix
     local prevredirect
     local redirect_page
-    local show_header_bar
-    local -i i=0
-    local -i num=1
-
-    export backhref
-    name="page-$num"
-
-    # Random background image for preview page.
-    background_image=$(randomphoto "$photos_dir" "$name")
-    show_header_bar='yes'
-    export background_image show_header_bar
-    template 'header' "$name.html"
-
-    while IFS= read -r photo; do
-        (( ++i ))
-
-        if (( i > MAXPREVIEWS )); then
-            i=1
-            (( ++num ))
-            next="page-$num"
-            prev="${prev:-}"
-            export next prev
-            template next "$name.html"
-            template footer "$name.html"
-
-            prev="$name"
-            name="$next"
-
-            background_image=$(randomphoto "$photos_dir" "$name")
-            show_header_bar='no'
-            export background_image prev show_header_bar
-            template header "$name.html"
-            template prev "$name.html"
-        fi
-
-        # Preview page.
-        animation_class=$(random_animation_css_class slow "$photo")
-        export animation_class
-        template preview "$name.html"
-
-        # View page.
-        background_image="$photo"
-        show_header_bar='no'
-        export background_image show_header_bar
-        template header "$num-$i.html"
-
-        animation_class=$(random_animation_css_class fast "$photo")
-        export animation_class
-        template view "$num-$i.html"
-        template footer "$num-$i.html"
-
-        if [[ -f "$DIST_DIR/$thumbs_dir/$photo" \
-            && -f "$DIST_DIR/$blurs_dir/$photo" ]]; then
-            log_verbose "Skipped existing thumb and blur" \
-                "$(_display_path "$DIST_DIR/$thumbs_dir/$photo") and" \
-                "$(_display_path "$DIST_DIR/$blurs_dir/$photo")"
-        else
-            dirname="$DIST_DIR/$thumbs_dir"
-            mkdir -p "$dirname"
-            log_info "Creating thumb $(_display_path "$DIST_DIR/$thumbs_dir/$photo")"
-            # Double the height, as CSS scales images based on boxing too.
-            height=$(( THUMBHEIGHT * 2 ))
-            imagemagick \
-                "$DIST_DIR/$photos_dir/$photo" \
-                -geometry "x$height" \
-                "$DIST_DIR/$thumbs_dir/$photo"
-
-            dirname="$DIST_DIR/$blurs_dir"
-            mkdir -p "$dirname"
-            log_info "Creating blur $(_display_path "$DIST_DIR/$blurs_dir/$photo")"
-            imagemagick \
-                "$DIST_DIR/$thumbs_dir/$photo" \
-                -flip \
-                -blur 0x8 \
-                "$DIST_DIR/$blurs_dir/$photo"
-        fi
-    done < <(
-        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
-            | maybe_shuffle
-    )
-
-    template footer "$(newest_html 'page-*.html')"
 
     while IFS= read -r prefix; do
         page=$(newest_html "$prefix-*.html" | sed 's#\(.*\)-.*.html#\1#')
@@ -747,11 +794,62 @@ albumhtml() {
             | cut -d'-' -f1 \
             | sort -u
     )
+}
 
-    # Create per album index/redirect page.
+render_album_index_redirect() {
+    local redirect_page
+
     redirect_page='page-1'
     export redirect_page
     template 'redirect' 'index.html'
+}
+
+render_album_pages() {
+    local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+
+    local name
+    local photo
+    local prev
+    local -i i=0
+    local -i num=1
+
+    export backhref
+    name="page-$num"
+
+    start_preview_page "$photos_dir" "$name" 'yes'
+
+    while IFS= read -r photo; do
+        (( ++i ))
+
+        if (( i > MAXPREVIEWS )); then
+            i=1
+            (( ++num ))
+            finish_preview_page_with_next "$name" "page-$num" "${prev:-}"
+
+            prev="$name"
+            name="page-$num"
+
+            start_preview_page "$photos_dir" "$name" 'no'
+            render_previous_page_link "$name" "$prev"
+        fi
+
+        render_photo_entry \
+            "$photos_dir" \
+            "$thumbs_dir" \
+            "$blurs_dir" \
+            "$name" \
+            "$num" \
+            "$i" \
+            "$photo"
+    done < <(album_photo_files "$photos_dir")
+
+    finish_preview_page "$name"
+    render_view_redirects
+    render_album_index_redirect
 }
 
 randomphoto() {
@@ -875,9 +973,36 @@ write_generation_metadata() {
     } > "$DIST_DIR/photoalbum.json"
 }
 
-generate() {
+prepare_generation_photo_assets() {
+    warn_unsupported_incoming_files
+    mkdir -p "$DIST_DIR/photos"
+    cleanphotos
+    scalephotos
+}
+
+clear_rendered_html() {
+    find "$DIST_DIR" -type f -name '*.html' -delete
+}
+
+render_top_level_index_redirect() {
     local html_dir
     local redirect_page
+
+    html_dir='./'
+    redirect_page='./html/index'
+    export redirect_page
+    template 'redirect' 'index.html'
+}
+
+create_generation_archive() {
+    local -r tarball_name="$1"; shift
+
+    if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
+        tarball "$tarball_name"
+    fi
+}
+
+generate() {
     local tarball_name=''
 
     if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
@@ -888,24 +1013,11 @@ generate() {
         log_verbose 'Tarball disabled; no archive will be created'
     fi
 
-    warn_unsupported_incoming_files
-    mkdir -p "$DIST_DIR/photos"
-    cleanphotos
-    scalephotos
-
-    find "$DIST_DIR" -type f -name '*.html' -delete
-    albumhtml 'photos' 'html' 'thumbs' 'blurs' '..'
-
-    # Create top level index/redirect page.
-    html_dir='./'
-    redirect_page='./html/index'
-    export redirect_page
-    template 'redirect' 'index.html'
-
-    if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
-        tarball "$tarball_name"
-    fi
-
+    prepare_generation_photo_assets
+    clear_rendered_html
+    render_album_pages 'photos' 'html' 'thumbs' 'blurs' '..'
+    render_top_level_index_redirect
+    create_generation_archive "$tarball_name"
     write_generation_metadata "$tarball_name"
 }
 
