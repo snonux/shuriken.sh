@@ -1290,6 +1290,9 @@ test_dry_run_reports_cli_overrides_without_writes() {
         "  $dist_dir/html/[page]-[image].html (6 view pages)" \
         "$output"
     test::assert_contains \
+        "  $dist_dir/html/[page]-[image]-details.html (6 details pages)" \
+        "$output"
+    test::assert_contains \
         "  $dist_dir/html/[redirect].html (6 navigation redirects)" \
         "$output"
     test::assert_contains \
@@ -1671,7 +1674,7 @@ test_generate_preflight_rejects_missing_templates() {
     )
 
     test::assert_contains \
-        "ERROR: template file $template_dir/footer.tmpl must be readable" \
+        "ERROR: template file $template_dir/details.tmpl must be readable" \
         "$output"
     test::assert_path_absent "$dist_dir"
     test::teardown
@@ -1713,6 +1716,7 @@ test_dry_run_rejects_missing_default_template_dir() {
 
 test_integration_generates_album_outputs_and_cleans() {
     local config_file
+    local details_html
     local fake_bin
     local page_html
     local tarball
@@ -1746,16 +1750,21 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_file_exists "$TEST_TMPDIR/dist/html/page-2.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/html/page-3.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/html/1-1.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/html/1-1-details.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/html/3-2.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/html/3-2-details.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/html/index.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/index.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
 
     page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
+    details_html=$(<"$TEST_TMPDIR/dist/html/1-1-details.html")
     top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
     test::assert_contains "name='04 filename with spaces.jpg'" \
         "$(<"$TEST_TMPDIR/dist/html/page-2.html")"
     test::assert_contains 'Next 2 pictures' "$page_html"
+    test::assert_contains 'No EXIF details available.' "$details_html"
+    test::assert_contains 'href="1-1.html">Image view</a>' "$details_html"
     test::assert_contains 'url=./html/index.html' "$top_index_html"
     test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
     test::assert_generation_metadata \
@@ -2049,6 +2058,8 @@ test_generate_missing_imagemagick_fails() {
 test_generate_escapes_html_values() {
     local config_file
     local css_photo
+    local details_html
+    local exif_value_html
     local fake_bin
     local original_basepath
     local original_basepath_html
@@ -2067,6 +2078,7 @@ test_generate_escapes_html_values() {
     css_photo='kid\000027s_\000022\00003ctag\00003e\000026.jpg'
     title="A & \"quoted\" <title> 'ok'"
     title_html='A &amp; &quot;quoted&quot; &lt;title&gt; &#39;ok&#39;'
+    exif_value_html='O&#39;Neil &amp; &quot;&lt;camera&gt;&quot;'
     original_basepath="https://example.test/original?album=\"<x>&owner=O'Neil"
     original_basepath_html='https://example.test/original?album=&quot;&lt;x&gt;&amp;owner=O&#39;Neil'
 
@@ -2089,11 +2101,14 @@ test_generate_escapes_html_values() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" \
+            TEST_IMAGEMAGICK_IDENTIFY_OUTPUT=$'  exif:Artist: O\'Neil & "<camera>"' \
+            "$TEST_PHOTOALBUM" --generate
     )
 
     page_html=$(<"$TEST_TMPDIR/dist/html/page-1.html")
     view_html=$(<"$TEST_TMPDIR/dist/html/1-1.html")
+    details_html=$(<"$TEST_TMPDIR/dist/html/1-1-details.html")
 
     test::assert_contains "<title>$title_html</title>" "$page_html"
     test::assert_contains \
@@ -2103,12 +2118,59 @@ test_generate_escapes_html_values() {
     test::assert_contains "src='../thumbs/$photo_html'" "$page_html"
     test::assert_contains '&amp;&quot;&#39;.tar' "$page_html"
     test::assert_contains "href=\"page-1.html#$photo_html\"" "$view_html"
+    test::assert_contains 'href="1-1-details.html">Details</a>' "$view_html"
     test::assert_contains "href ='../photos/$photo_html'" "$view_html"
     test::assert_contains \
         "href=\"$original_basepath_html/$photo_html\"" \
         "$view_html"
+    test::assert_contains "src='../photos/$photo_html'" "$details_html"
+    test::assert_contains '<th>exif:Artist</th>' "$details_html"
+    test::assert_contains "<td>$exif_value_html</td>" "$details_html"
+    test::assert_contains "href=\"1-1.html\">Image view</a>" "$details_html"
     test::assert_not_contains '<title>A & "quoted" <title>' "$page_html"
     test::assert_not_contains "$photo_name" "$view_html"
+    test::assert_not_contains "O'Neil & \"<camera>\"" "$details_html"
+
+    test::teardown
+}
+
+test_generate_renders_exif_details() {
+    local config_file
+    local details_html
+    local fake_bin
+    local identify_output
+    local view_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    identify_output=$'Image:\n  exif:DateTime: 2026:06:04 12:34:56\n  exif:Make: ExampleCam\n  geometry: 120x90'
+
+    test::install_fake_imagemagick "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'EXIF album' 1
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_IMAGEMAGICK_IDENTIFY_OUTPUT="$identify_output" \
+            "$TEST_PHOTOALBUM" --generate
+    )
+
+    view_html=$(<"$TEST_TMPDIR/dist/html/1-1.html")
+    details_html=$(<"$TEST_TMPDIR/dist/html/1-1-details.html")
+
+    test::assert_contains 'href="1-1-details.html">Details</a>' "$view_html"
+    test::assert_contains '<table class="details">' "$details_html"
+    test::assert_contains '<th>exif:DateTime</th>' "$details_html"
+    test::assert_contains '<td>2026:06:04 12:34:56</td>' "$details_html"
+    test::assert_contains '<th>exif:Make</th>' "$details_html"
+    test::assert_contains '<td>ExampleCam</td>' "$details_html"
+    test::assert_not_contains 'geometry: 120x90' "$details_html"
+    test::assert_not_contains 'No EXIF details available.' "$details_html"
 
     test::teardown
 }
@@ -2460,6 +2522,9 @@ main() {
     test::run_case \
         '--generate escapes generated HTML values' \
         test_generate_escapes_html_values
+    test::run_case \
+        '--generate renders image EXIF details' \
+        test_generate_renders_exif_details
     test::run_case \
         '--generate metadata escapes JSON and custom tarball suffix' \
         test_generate_metadata_escapes_json_and_custom_tarball_suffix

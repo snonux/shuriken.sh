@@ -191,6 +191,13 @@ test::install_fake_imagemagick() {
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [ "${1:-}" = identify ]; then
+    if [ -n "${TEST_IMAGEMAGICK_IDENTIFY_OUTPUT:-}" ]; then
+        printf '%s\n' "$TEST_IMAGEMAGICK_IDENTIFY_OUTPUT"
+    fi
+    exit 0
+fi
+
 dest="${@: -1}"
 mkdir -p "$(dirname "$dest")"
 {

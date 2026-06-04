@@ -176,6 +176,23 @@ imagemagick() {
     fi
 }
 
+imagemagick_identify() {
+    if command -v magick >/dev/null 2>&1; then
+        magick identify "$@"
+    elif command -v identify >/dev/null 2>&1; then
+        identify "$@"
+    elif command -v convert >/dev/null 2>&1; then
+        if [[ "${1:-}" = '-verbose' && $# -eq 2 ]]; then
+            convert "$2" -verbose info:
+        else
+            convert "$@" info:
+        fi
+    else
+        echo 'ERROR: ImageMagick is required; install magick or convert' >&2
+        return 127
+    fi
+}
+
 tarball() {
     local -r tarball_name="$1"; shift
     local base
@@ -408,6 +425,17 @@ validate_template_context() {
         redirect)
             required_vars+=(redirect_page)
             ;;
+        details)
+            required_vars+=(
+                animation_class
+                backhref
+                exif_details
+                page_num
+                photo
+                photos_dir
+                preview_num
+            )
+            ;;
         view)
             required_vars+=(
                 animation_class
@@ -436,6 +464,7 @@ source_template_file() {
         render_background_image_css="$render_background_image_css" \
         render_blurs_dir_css="$render_blurs_dir_css" \
         render_current_date_text="$render_current_date_text" \
+        render_exif_details_html="$render_exif_details_html" \
         render_height_html="$render_height_html" \
         render_html_dir_html="$render_html_dir_html" \
         render_maxpreviews_html="$render_maxpreviews_html" \
@@ -472,6 +501,7 @@ template() {
     local render_background_image_css
     local render_blurs_dir_css
     local render_current_date_text
+    local render_exif_details_html
     local render_height_html
     local render_html_dir
     local render_html_dir_html
@@ -546,6 +576,9 @@ template() {
         _css_string_escape "$(template_context_value render_context blurs_dir)"
     )
     render_current_date_text=$(_html_escape "$(current_date_text)")
+    render_exif_details_html=$(
+        template_context_value render_context exif_details
+    )
     render_height_html=$(_html_escape "${HEIGHT:-}")
     render_html_dir_html=$(_html_escape "$render_html_dir")
     render_maxpreviews_html=$(_html_escape "${MAXPREVIEWS:-}")
@@ -774,13 +807,14 @@ maybe_shuffle() {
     fi
 }
 
-newest_html() {
-    local -r pattern="$1"; shift
+newest_view_html() {
+    local -r page="$1"; shift
     local -r html_dir="$1"; shift
 
     find "$DIST_DIR/$html_dir" \
         -maxdepth 1 \
-        -name "$pattern" \
+        -regextype posix-egrep \
+        -regex ".*/${page}-[0-9]+\\.html" \
         -printf '%T@ %f\n' \
         | sort -nr \
         | sed -n '1{s/^[^ ]* //;p}'
@@ -902,6 +936,81 @@ render_view_page() {
         tarball_name "$tarball_name"
 }
 
+photo_exif_details_html() {
+    local -r photo_path="$1"; shift
+    local key
+    local key_html
+    local line
+    local value
+    local value_html
+    local -i exif_count=0
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*exif:([^:]+):[[:space:]]*(.*)$ ]]; then
+            key="exif:${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+            key_html=$(_html_escape "$key")
+            value_html=$(_html_escape "$value")
+
+            if (( exif_count == 0 )); then
+                printf '<table class="details">\n'
+                printf '<tbody>\n'
+            fi
+
+            printf '<tr><th>%s</th><td>%s</td></tr>\n' \
+                "$key_html" \
+                "$value_html"
+            (( ++exif_count ))
+        fi
+    done < <(imagemagick_identify -verbose "$photo_path" 2>/dev/null || true)
+
+    if (( exif_count == 0 )); then
+        printf '<p class="details-empty">No EXIF details available.</p>\n'
+        return
+    fi
+
+    printf '</tbody>\n'
+    printf '</table>\n'
+}
+
+render_details_page() {
+    local -r html_dir="$1"; shift
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    local -r page_num="$1"; shift
+    local -r preview_num="$1"; shift
+    local -r photo_file="$1"; shift
+    local animation_class
+    local exif_details_html
+
+    template header "$page_num-$preview_num-details.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        blurs_dir "$blurs_dir" \
+        background_image "$photo_file" \
+        show_header_bar 'no'
+
+    animation_class=$(random_animation_css_class fast "$photo_file")
+    exif_details_html=$(
+        photo_exif_details_html "$INCOMING_DIR/$photo_file"
+    )
+    template details "$page_num-$preview_num-details.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        photos_dir "$photos_dir" \
+        page_num "$page_num" \
+        preview_num "$preview_num" \
+        photo "$photo_file" \
+        animation_class "$animation_class" \
+        exif_details "$exif_details_html"
+    template footer "$page_num-$preview_num-details.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        tarball_name "$tarball_name"
+}
+
 create_photo_derivatives() {
     local -r photos_dir="$1"; shift
     local -r thumbs_dir="$1"; shift
@@ -967,6 +1076,15 @@ render_photo_entry() {
         "$page_num" \
         "$preview_num" \
         "$photo"
+    render_details_page \
+        "$html_dir" \
+        "$photos_dir" \
+        "$blurs_dir" \
+        "$backhref" \
+        "$tarball_name" \
+        "$page_num" \
+        "$preview_num" \
+        "$photo"
     create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" "$photo"
 }
 
@@ -979,9 +1097,9 @@ render_view_redirects() {
     local prevredirect
 
     while IFS= read -r prefix; do
-        page=$(newest_html "$prefix-*.html" "$html_dir" \
+        page=$(newest_view_html "$prefix" "$html_dir" \
             | sed 's#\(.*\)-.*.html#\1#')
-        lastview=$(newest_html "$prefix-*.html" "$html_dir" \
+        lastview=$(newest_view_html "$prefix" "$html_dir" \
             | sed 's/.*-\(.*\).html/\1/')
 
         prevredirect="${page}-0"
@@ -1006,8 +1124,8 @@ render_view_redirects() {
     done < <(
         find "$DIST_DIR/$html_dir" \
             -maxdepth 1 \
-            -name '*.html' \
-            ! -name 'page-*' \
+            -regextype posix-egrep \
+            -regex '.*/[0-9]+-[0-9]+\.html' \
             -printf '%f\n' \
             | cut -d'-' -f1 \
             | sort -u
@@ -1256,10 +1374,12 @@ dry_run() {
     local -i html_index_count=1
     local -i page_count=0
     local -i redirect_count=0
+    local -i details_count=0
 
     image_count=$(count_incoming_images)
 
     if (( image_count > 0 )); then
+        details_count=$image_count
         page_count=$(( (image_count + MAXPREVIEWS - 1) / MAXPREVIEWS ))
         redirect_count=$(( page_count * 2 ))
         if (( image_count % MAXPREVIEWS != 0 )); then
@@ -1303,6 +1423,8 @@ dry_run() {
         "$DIST_DIR" "$page_count"
     printf '  %s/html/[page]-[image].html (%s view pages)\n' \
         "$DIST_DIR" "$image_count"
+    printf '  %s/html/[page]-[image]-details.html (%s details pages)\n' \
+        "$DIST_DIR" "$details_count"
     printf '  %s/html/[redirect].html (%s navigation redirects)\n' \
         "$DIST_DIR" "$redirect_count"
     printf '  %s/html/index.html (%s album index redirect)\n' \
@@ -1662,6 +1784,7 @@ validate_dist_dir() {
 validate_template_dir() {
     local template_name
     local -a required_templates=(
+        details
         footer
         header
         next
