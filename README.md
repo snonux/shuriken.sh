@@ -13,6 +13,13 @@ just build
 sudo just install
 ```
 
+`bin/photoalbum` is a committed generated artifact for compatibility with
+existing checkouts and packaging. Its source of truth is `src/photoalbum.sh`
+rendered through the `VERSION` value in `Justfile`. Run `just build` after
+changing either file, and use `just check-generated` to verify that the tracked
+script has not drifted. `just test` and `just install` run that drift check
+before rebuilding so stale committed output is not hidden.
+
 `just install` installs `photoalbum` to `/usr/bin`, templates to
 `/usr/share/photoalbum/templates`, and the default config to
 `/etc/default/photoalbum`. Override paths with `DESTDIR`, `PREFIX`, `BINDIR`,
