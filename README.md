@@ -9,9 +9,23 @@ Build and install the command, templates, and default config from a source
 checkout with:
 
 ```
-make
-sudo make install
+just build
+sudo just install
 ```
+
+`just install` installs `photoalbum` to `/usr/bin`, templates to
+`/usr/share/photoalbum/templates`, and the default config to
+`/etc/default/photoalbum`. Override paths with `DESTDIR`, `PREFIX`, `BINDIR`,
+`DATADIR`, or `SYSCONFDIR` when packaging or staging an install:
+
+```
+DESTDIR="$PWD/pkg" PREFIX=/usr just install
+DESTDIR="$PWD/pkg" PREFIX=/usr just deinstall
+```
+
+`just uninstall` is an alias for `just deinstall`. The legacy Makefile forwards
+the same targets to `just`, so `make test` remains available for existing
+automation.
 
 ImageMagick must also be installed. The script prefers the
 modern `magick` command and falls back to `convert` when needed.

@@ -178,6 +178,33 @@ test_init_existing_config_fails_without_overwrite() {
     test::teardown
 }
 
+test_just_install_and_deinstall_with_destdir() {
+    local stage_dir
+
+    test::setup
+    stage_dir="$TEST_TMPDIR/stage"
+
+    (
+        cd "$TEST_REPO_ROOT"
+        DESTDIR="$stage_dir" PREFIX=/usr just install
+    )
+
+    test::assert_file_exists "$stage_dir/usr/bin/photoalbum"
+    test::assert_file_exists "$stage_dir/etc/default/photoalbum"
+    test::assert_file_exists \
+        "$stage_dir/usr/share/photoalbum/templates/default/view.tmpl"
+
+    (
+        cd "$TEST_REPO_ROOT"
+        DESTDIR="$stage_dir" PREFIX=/usr just deinstall
+    )
+
+    test::assert_path_absent "$stage_dir/usr/bin/photoalbum"
+    test::assert_path_absent "$stage_dir/etc/default/photoalbum"
+    test::assert_path_absent "$stage_dir/usr/share/photoalbum"
+    test::teardown
+}
+
 test_clean() {
     local staging_dir
 
@@ -2279,6 +2306,9 @@ main() {
     test::run_case \
         '--init refuses existing config without overwrite' \
         test_init_existing_config_fails_without_overwrite
+    test::run_case \
+        'just install and deinstall supports DESTDIR' \
+        test_just_install_and_deinstall_with_destdir
     test::run_case '--clean succeeds' test_clean
     test::run_case '--clean --config succeeds' test_clean_with_config
     test::run_case '--clean --dist overrides config' \
