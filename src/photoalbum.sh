@@ -348,84 +348,257 @@ current_timestamp_iso() {
     fi
 }
 
+template_context_value() {
+    local -n context_ref="$1"; shift
+    local -r name="$1"; shift
+
+    printf '%s\n' "${context_ref[$name]:-}"
+}
+
+require_template_context_vars() {
+    local -r template_name="$1"; shift
+    local -n context_ref="$1"; shift
+    local name
+    local -i missing=0
+
+    for name in "$@"; do
+        if [ -z "${context_ref[$name]+x}" ]; then
+            config_error "template $template_name requires render variable $name"
+            missing=1
+        fi
+    done
+
+    return "$missing"
+}
+
+validate_template_context() {
+    local -r template_name="$1"; shift
+    local -r context_name="$1"; shift
+    local -n context_ref="$context_name"
+    local -a required_vars=(html_dir)
+
+    case "$template_name" in
+        footer)
+            required_vars+=(backhref tarball_name)
+            ;;
+        header)
+            required_vars+=(
+                backhref
+                background_image
+                blurs_dir
+                show_header_bar
+            )
+            ;;
+        next)
+            required_vars+=(next prev)
+            ;;
+        prev)
+            required_vars+=(prev)
+            ;;
+        preview)
+            required_vars+=(
+                animation_class
+                backhref
+                page_num
+                photo
+                preview_num
+                thumbs_dir
+            )
+            ;;
+        redirect)
+            required_vars+=(redirect_page)
+            ;;
+        view)
+            required_vars+=(
+                animation_class
+                backhref
+                page_num
+                photo
+                photos_dir
+                preview_num
+            )
+            ;;
+    esac
+
+    require_template_context_vars "$template_name" "$context_name" \
+        "${required_vars[@]}"
+}
+
+source_template_file() {
+    local -r template_path="$1"; shift
+    local -r output_path="$1"; shift
+
+    env -i \
+        PATH="$PATH" \
+        render_animation_class_html="$render_animation_class_html" \
+        render_backhref_css="$render_backhref_css" \
+        render_backhref_html="$render_backhref_html" \
+        render_background_image_css="$render_background_image_css" \
+        render_blurs_dir_css="$render_blurs_dir_css" \
+        render_current_date_text="$render_current_date_text" \
+        render_height_html="$render_height_html" \
+        render_html_dir_html="$render_html_dir_html" \
+        render_maxpreviews_html="$render_maxpreviews_html" \
+        render_next_html="$render_next_html" \
+        render_original_basepath_is_set="$render_original_basepath_is_set" \
+        render_original_basepath_html="$render_original_basepath_html" \
+        render_page_num_html="$render_page_num_html" \
+        render_photo_html="$render_photo_html" \
+        render_photos_dir_html="$render_photos_dir_html" \
+        render_prev_html="$render_prev_html" \
+        render_preview_num_html="$render_preview_num_html" \
+        render_redirect_page_html="$render_redirect_page_html" \
+        render_show_header_bar="$render_show_header_bar" \
+        render_tarball_include="$render_tarball_include" \
+        render_tarball_name_html="$render_tarball_name_html" \
+        render_thumbheight_html="$render_thumbheight_html" \
+        render_thumbs_dir_html="$render_thumbs_dir_html" \
+        render_title_html="$render_title_html" \
+        render_view_next_html="$render_view_next_html" \
+        render_view_prev_html="$render_view_prev_html" \
+        bash -euo pipefail -- "$template_path" >> "$output_path"
+}
+
 template() {
     local -r template_name="$1"; shift
     local -r html="$1"; shift
-    local -r dist_html="$DIST_DIR/$html_dir"
-    local animation_class_html
-    local backhref_css
-    local backhref_html
-    local background_image_css
-    local blurs_dir_css
-    local height_html
-    local html_dir_html
-    local maxpreviews_html
-    local next_html
-    local original_basepath_html
-    local photo_html
-    local photos_dir_html
-    local prev_html
-    local redirect_page_html
-    local tarball_name_html
-    local thumbheight_html
-    local thumbs_dir_html
-    local title_html
+    local -r template_path="$TEMPLATE_DIR/$template_name.tmpl"
+    local context_key
+    local context_value
+    local dist_html
+    local render_animation_class_html
+    local render_backhref_css
+    local render_backhref_html
+    local render_background_image_css
+    local render_blurs_dir_css
+    local render_current_date_text
+    local render_height_html
+    local render_html_dir
+    local render_html_dir_html
+    local render_maxpreviews_html
+    local render_next_html
+    local render_original_basepath_is_set
+    local render_original_basepath_html
+    local render_page_num_html
+    local render_photo_html
+    local render_photos_dir_html
+    local render_prev_html
+    local render_preview_num
+    local render_preview_num_html
+    local render_redirect_page_html
+    local render_show_header_bar
+    local render_tarball_include
+    local render_tarball_name_html
+    local render_thumbheight_html
+    local render_thumbs_dir_html
+    local render_title_html
+    local render_view_next_html
+    local render_view_prev_html
+    local -A render_context=()
+
+    while (( $# > 0 )); do
+        if (( $# < 2 )); then
+            config_error "template $template_name render context is incomplete"
+            return 1
+        fi
+
+        context_key="$1"
+        context_value="$2"
+        shift 2
+
+        if [[ ! "$context_key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+            config_error \
+                "template $template_name render variable $context_key is invalid"
+            return 1
+        fi
+
+        # shellcheck disable=SC2034
+        render_context[$context_key]="$context_value"
+    done
+
+    if [ ! -r "$template_path" ]; then
+        config_error "template file $template_path must be readable"
+        return 1
+    fi
+
+    validate_template_context "$template_name" render_context
+
+    render_html_dir=$(template_context_value render_context html_dir)
+    dist_html="$DIST_DIR/$render_html_dir"
 
     log_info "Generating $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
-    animation_class_html=$(_html_escape "${animation_class:-}")
-    backhref_css=$(_css_string_escape "${backhref:-}")
-    backhref_html=$(_html_escape "${backhref:-}")
-    background_image_css=$(_css_string_escape "${background_image:-}")
-    blurs_dir_css=$(_css_string_escape "${blurs_dir:-}")
-    height_html=$(_html_escape "${HEIGHT:-}")
-    html_dir_html=$(_html_escape "${html_dir:-}")
-    maxpreviews_html=$(_html_escape "${MAXPREVIEWS:-}")
-    next_html=$(_html_escape "${next:-}")
-    original_basepath_html=$(_html_escape "${ORIGINAL_BASEPATH:-}")
-    photo_html=$(_html_escape "${photo:-}")
-    photos_dir_html=$(_html_escape "${photos_dir:-}")
-    prev_html=$(_html_escape "${prev:-}")
-    redirect_page_html=$(_html_escape "${redirect_page:-}")
-    tarball_name_html=$(_html_escape "${tarball_name:-}")
-    thumbheight_html=$(_html_escape "${THUMBHEIGHT:-}")
-    thumbs_dir_html=$(_html_escape "${thumbs_dir:-}")
-    title_html=$(_html_escape "${TITLE:-}")
-    export \
-        animation_class_html \
-        backhref_css \
-        backhref_html \
-        background_image_css \
-        blurs_dir_css \
-        height_html \
-        html_dir_html \
-        maxpreviews_html \
-        next_html \
-        original_basepath_html \
-        photo_html \
-        photos_dir_html \
-        prev_html \
-        redirect_page_html \
-        tarball_name_html \
-        thumbheight_html \
-        thumbs_dir_html \
-        title_html
-
-    if random_seed_is_set; then
-        # shellcheck disable=SC2329
-        date() {
-            if (( $# == 0 )); then
-                current_date_text
-            else
-                command date "$@"
-            fi
-        }
-        source "$TEMPLATE_DIR/$template_name.tmpl" >> "$dist_html/$html"
-        unset -f date
+    render_animation_class_html=$(
+        _html_escape "$(template_context_value render_context animation_class)"
+    )
+    render_backhref_css=$(
+        _css_string_escape "$(template_context_value render_context backhref)"
+    )
+    render_backhref_html=$(
+        _html_escape "$(template_context_value render_context backhref)"
+    )
+    render_background_image_css=$(
+        _css_string_escape \
+            "$(template_context_value render_context background_image)"
+    )
+    render_blurs_dir_css=$(
+        _css_string_escape "$(template_context_value render_context blurs_dir)"
+    )
+    render_current_date_text=$(_html_escape "$(current_date_text)")
+    render_height_html=$(_html_escape "${HEIGHT:-}")
+    render_html_dir_html=$(_html_escape "$render_html_dir")
+    render_maxpreviews_html=$(_html_escape "${MAXPREVIEWS:-}")
+    render_next_html=$(
+        _html_escape "$(template_context_value render_context next)"
+    )
+    if [ -n "${ORIGINAL_BASEPATH:-}" ]; then
+        render_original_basepath_is_set='yes'
     else
-        source "$TEMPLATE_DIR/$template_name.tmpl" >> "$dist_html/$html"
+        render_original_basepath_is_set='no'
     fi
+    render_original_basepath_html=$(_html_escape "${ORIGINAL_BASEPATH:-}")
+    render_page_num_html=$(
+        _html_escape "$(template_context_value render_context page_num)"
+    )
+    render_photo_html=$(
+        _html_escape "$(template_context_value render_context photo)"
+    )
+    render_photos_dir_html=$(
+        _html_escape "$(template_context_value render_context photos_dir)"
+    )
+    render_prev_html=$(
+        _html_escape "$(template_context_value render_context prev)"
+    )
+    render_preview_num=$(
+        template_context_value render_context preview_num
+    )
+    render_preview_num_html=$(_html_escape "$render_preview_num")
+    render_redirect_page_html=$(
+        _html_escape "$(template_context_value render_context redirect_page)"
+    )
+    render_show_header_bar=$(
+        template_context_value render_context show_header_bar
+    )
+    render_tarball_include="${TARBALL_INCLUDE:-no}"
+    render_tarball_name_html=$(
+        _html_escape "$(template_context_value render_context tarball_name)"
+    )
+    render_thumbheight_html=$(_html_escape "${THUMBHEIGHT:-}")
+    render_thumbs_dir_html=$(
+        _html_escape "$(template_context_value render_context thumbs_dir)"
+    )
+    render_title_html=$(_html_escape "${TITLE:-}")
+
+    if [ -n "$render_preview_num" ]; then
+        render_view_next_html=$(_html_escape "$(( render_preview_num + 1 ))")
+        render_view_prev_html=$(_html_escape "$(( render_preview_num - 1 ))")
+    else
+        render_view_next_html=''
+        render_view_prev_html=''
+    fi
+
+    source_template_file "$template_path" "$dist_html/$html"
 }
 
 cleanphotos() {
@@ -603,6 +776,7 @@ maybe_shuffle() {
 
 newest_html() {
     local -r pattern="$1"; shift
+    local -r html_dir="$1"; shift
 
     find "$DIST_DIR/$html_dir" \
         -maxdepth 1 \
@@ -621,88 +795,111 @@ album_photo_files() {
 
 start_preview_page() {
     local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
     local -r page_name="$1"; shift
     local -r header_bar="$1"; shift
     local background_image
-    local show_header_bar
 
     background_image=$(randomphoto "$photos_dir" "$page_name")
-    show_header_bar="$header_bar"
-    export background_image show_header_bar
-    template header "$page_name.html"
+    template header "$page_name.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        blurs_dir "$blurs_dir" \
+        background_image "$background_image" \
+        show_header_bar "$header_bar"
 }
 
 finish_preview_page() {
     local -r page_name="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
 
-    template footer "$page_name.html"
+    template footer "$page_name.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        tarball_name "$tarball_name"
 }
 
 finish_preview_page_with_next() {
     local -r page_name="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
     local -r next_page="$1"; shift
     local -r prev_page="$1"; shift
-    local next
-    local prev
 
-    next="$next_page"
-    prev="$prev_page"
-    export next prev
-    template next "$page_name.html"
-    finish_preview_page "$page_name"
+    template next "$page_name.html" \
+        html_dir "$html_dir" \
+        next "$next_page" \
+        prev "$prev_page"
+    finish_preview_page "$page_name" "$html_dir" "$backhref" "$tarball_name"
 }
 
 render_previous_page_link() {
     local -r page_name="$1"; shift
+    local -r html_dir="$1"; shift
     local -r prev_page="$1"; shift
-    local prev
 
-    prev="$prev_page"
-    export prev
-    template prev "$page_name.html"
+    template prev "$page_name.html" \
+        html_dir "$html_dir" \
+        prev "$prev_page"
 }
 
 render_preview_thumbnail() {
     local -r page_name="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
     local -r page_num="$1"; shift
     local -r preview_num="$1"; shift
     local -r photo_file="$1"; shift
     local animation_class
-    local i
-    local num
-    local photo
 
-    i="$preview_num"
-    num="$page_num"
-    photo="$photo_file"
-    animation_class=$(random_animation_css_class slow "$photo")
-    export animation_class
-    template preview "$page_name.html"
+    animation_class=$(random_animation_css_class slow "$photo_file")
+    template preview "$page_name.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        thumbs_dir "$thumbs_dir" \
+        page_num "$page_num" \
+        preview_num "$preview_num" \
+        photo "$photo_file" \
+        animation_class "$animation_class"
 }
 
 render_view_page() {
+    local -r html_dir="$1"; shift
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
     local -r page_num="$1"; shift
     local -r preview_num="$1"; shift
     local -r photo_file="$1"; shift
     local animation_class
-    local background_image
-    local i
-    local num
-    local photo
-    local show_header_bar
 
-    i="$preview_num"
-    num="$page_num"
-    photo="$photo_file"
-    background_image="$photo"
-    show_header_bar='no'
-    export background_image show_header_bar
-    template header "$num-$i.html"
+    template header "$page_num-$preview_num.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        blurs_dir "$blurs_dir" \
+        background_image "$photo_file" \
+        show_header_bar 'no'
 
-    animation_class=$(random_animation_css_class fast "$photo")
-    export animation_class
-    template view "$num-$i.html"
-    template footer "$num-$i.html"
+    animation_class=$(random_animation_css_class fast "$photo_file")
+    template view "$page_num-$preview_num.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        photos_dir "$photos_dir" \
+        page_num "$page_num" \
+        preview_num "$preview_num" \
+        photo "$photo_file" \
+        animation_class "$animation_class"
+    template footer "$page_num-$preview_num.html" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        tarball_name "$tarball_name"
 }
 
 create_photo_derivatives() {
@@ -745,46 +942,67 @@ render_photo_entry() {
     local -r photos_dir="$1"; shift
     local -r thumbs_dir="$1"; shift
     local -r blurs_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
     local -r page_name="$1"; shift
     local -r page_num="$1"; shift
     local -r preview_num="$1"; shift
     local -r photo="$1"; shift
 
-    render_preview_thumbnail "$page_name" "$page_num" "$preview_num" "$photo"
-    render_view_page "$page_num" "$preview_num" "$photo"
+    render_preview_thumbnail \
+        "$page_name" \
+        "$html_dir" \
+        "$thumbs_dir" \
+        "$backhref" \
+        "$page_num" \
+        "$preview_num" \
+        "$photo"
+    render_view_page \
+        "$html_dir" \
+        "$photos_dir" \
+        "$blurs_dir" \
+        "$backhref" \
+        "$tarball_name" \
+        "$page_num" \
+        "$preview_num" \
+        "$photo"
     create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" "$photo"
 }
 
 render_view_redirects() {
+    local -r html_dir="$1"; shift
     local lastview
     local nextredirect
     local page
     local prefix
     local prevredirect
-    local redirect_page
 
     while IFS= read -r prefix; do
-        page=$(newest_html "$prefix-*.html" | sed 's#\(.*\)-.*.html#\1#')
-        lastview=$(newest_html "$prefix-*.html" | sed 's/.*-\(.*\).html/\1/')
+        page=$(newest_html "$prefix-*.html" "$html_dir" \
+            | sed 's#\(.*\)-.*.html#\1#')
+        lastview=$(newest_html "$prefix-*.html" "$html_dir" \
+            | sed 's/.*-\(.*\).html/\1/')
 
         prevredirect="${page}-0"
         nextredirect="${page}-$(( lastview + 1 ))"
 
-        redirect_page="$(( page - 1 ))-${MAXPREVIEWS}"
-        export redirect_page
-        template redirect "$prevredirect.html"
+        template redirect "$prevredirect.html" \
+            html_dir "$html_dir" \
+            redirect_page "$(( page - 1 ))-${MAXPREVIEWS}"
 
         if (( lastview == MAXPREVIEWS )); then
-            redirect_page="$(( page + 1 ))-1"
+            template redirect "$nextredirect.html" \
+                html_dir "$html_dir" \
+                redirect_page "$(( page + 1 ))-1"
         else
-            redirect_page="${page}-$lastview"
-            export redirect_page
-            template redirect "0-$MAXPREVIEWS.html"
-            redirect_page='1-1'
+            template redirect "0-$MAXPREVIEWS.html" \
+                html_dir "$html_dir" \
+                redirect_page "${page}-$lastview"
+            template redirect "$nextredirect.html" \
+                html_dir "$html_dir" \
+                redirect_page '1-1'
         fi
-
-        export redirect_page
-        template redirect "$nextredirect.html"
     done < <(
         find "$DIST_DIR/$html_dir" \
             -maxdepth 1 \
@@ -797,11 +1015,11 @@ render_view_redirects() {
 }
 
 render_album_index_redirect() {
-    local redirect_page
+    local -r html_dir="$1"; shift
 
-    redirect_page='page-1'
-    export redirect_page
-    template 'redirect' 'index.html'
+    template 'redirect' 'index.html' \
+        html_dir "$html_dir" \
+        redirect_page 'page-1'
 }
 
 render_album_pages() {
@@ -810,6 +1028,7 @@ render_album_pages() {
     local -r thumbs_dir="$1"; shift
     local -r blurs_dir="$1"; shift
     local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
 
     local name
     local photo
@@ -817,10 +1036,10 @@ render_album_pages() {
     local -i i=0
     local -i num=1
 
-    export backhref
     name="page-$num"
 
-    start_preview_page "$photos_dir" "$name" 'yes'
+    start_preview_page \
+        "$photos_dir" "$html_dir" "$blurs_dir" "$backhref" "$name" 'yes'
 
     while IFS= read -r photo; do
         (( ++i ))
@@ -828,28 +1047,43 @@ render_album_pages() {
         if (( i > MAXPREVIEWS )); then
             i=1
             (( ++num ))
-            finish_preview_page_with_next "$name" "page-$num" "${prev:-}"
+            finish_preview_page_with_next \
+                "$name" \
+                "$html_dir" \
+                "$backhref" \
+                "$tarball_name" \
+                "page-$num" \
+                "${prev:-}"
 
             prev="$name"
             name="page-$num"
 
-            start_preview_page "$photos_dir" "$name" 'no'
-            render_previous_page_link "$name" "$prev"
+            start_preview_page \
+                "$photos_dir" \
+                "$html_dir" \
+                "$blurs_dir" \
+                "$backhref" \
+                "$name" \
+                'no'
+            render_previous_page_link "$name" "$html_dir" "$prev"
         fi
 
         render_photo_entry \
             "$photos_dir" \
             "$thumbs_dir" \
             "$blurs_dir" \
+            "$html_dir" \
+            "$backhref" \
+            "$tarball_name" \
             "$name" \
             "$num" \
             "$i" \
             "$photo"
     done < <(album_photo_files "$photos_dir")
 
-    finish_preview_page "$name"
-    render_view_redirects
-    render_album_index_redirect
+    finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
+    render_view_redirects "$html_dir"
+    render_album_index_redirect "$html_dir"
 }
 
 randomphoto() {
@@ -985,13 +1219,9 @@ clear_rendered_html() {
 }
 
 render_top_level_index_redirect() {
-    local html_dir
-    local redirect_page
-
-    html_dir='./'
-    redirect_page='./html/index'
-    export redirect_page
-    template 'redirect' 'index.html'
+    template 'redirect' 'index.html' \
+        html_dir './' \
+        redirect_page './html/index'
 }
 
 create_generation_archive() {
@@ -1015,7 +1245,7 @@ generate() {
 
     prepare_generation_photo_assets
     clear_rendered_html
-    render_album_pages 'photos' 'html' 'thumbs' 'blurs' '..'
+    render_album_pages 'photos' 'html' 'thumbs' 'blurs' '..' "$tarball_name"
     render_top_level_index_redirect
     create_generation_archive "$tarball_name"
     write_generation_metadata "$tarball_name"

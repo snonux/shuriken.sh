@@ -1,7 +1,7 @@
-if [ "${TARBALL_INCLUDE}" = 'yes' ]; then
+if [ "${render_tarball_include}" = 'yes' ]; then
 cat <<END
 <div class="footer">
-    Download all photos in original size <a href='${backhref_html}/${tarball_name_html}'>here</a><br /><br />
+    Download all photos in original size <a href='${render_backhref_html}/${render_tarball_name_html}'>here</a><br /><br />
 </div>
 END
 fi

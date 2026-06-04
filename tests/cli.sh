@@ -1873,6 +1873,84 @@ test_generate_template_failure_preserves_dist() {
     test::teardown
 }
 
+test_generate_templates_cannot_read_generation_locals() {
+    local config_file
+    local fake_bin
+    local output
+    local template_dir
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    template_dir="$TEST_TMPDIR/templates"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
+    # shellcheck disable=SC2016
+    printf 'printf "legacy num: %%s\\n" "${num}"\n' \
+        > "$template_dir/preview.tmpl"
+    mkdir -p "$TEST_TMPDIR/dist"
+    printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Renderer contract album' 40
+    printf 'TEMPLATE_DIR=%q\n' "$template_dir" >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" num=ambient \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_contains 'num: unbound variable' "$output"
+    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
+test_generate_templates_cannot_read_renderer_internals() {
+    local config_file
+    local fake_bin
+    local output
+    local template_dir
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    template_dir="$TEST_TMPDIR/templates"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
+    # shellcheck disable=SC2016
+    printf 'printf "context key: %%s\\n" "${context_key}"\n' \
+        > "$template_dir/preview.tmpl"
+    mkdir -p "$TEST_TMPDIR/dist"
+    printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Renderer internals album' 40
+    printf 'TEMPLATE_DIR=%q\n' "$template_dir" >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" context_key=ambient \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_contains 'context_key: unbound variable' "$output"
+    test "$(cat "$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
 test_generate_swap_failure_restores_dist() {
     local config_file
     local fake_bin
@@ -2337,6 +2415,12 @@ main() {
     test::run_case \
         '--generate template failure preserves final dist' \
         test_generate_template_failure_preserves_dist
+    test::run_case \
+        '--generate templates cannot read generation locals' \
+        test_generate_templates_cannot_read_generation_locals
+    test::run_case \
+        '--generate templates cannot read renderer internals' \
+        test_generate_templates_cannot_read_renderer_internals
     test::run_case \
         '--generate swap failure restores final dist' \
         test_generate_swap_failure_restores_dist
