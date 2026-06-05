@@ -180,6 +180,34 @@ test_init() {
     test::teardown
 }
 
+test_init_with_hash_in_source_path() {
+    local config
+    local output_dir
+    local repo_dir
+
+    test::setup
+    repo_dir="$TEST_TMPDIR/repo#with-hash"
+    output_dir="$TEST_TMPDIR/output"
+    mkdir -p "$repo_dir" "$output_dir"
+    cp -R \
+        "$TEST_REPO_ROOT/bin" \
+        "$TEST_REPO_ROOT/share" \
+        "$TEST_REPO_ROOT/src" \
+        "$repo_dir/"
+
+    (
+        cd "$output_dir"
+        PHOTOALBUM_DEFAULT_RC="$TEST_TMPDIR/missing" \
+            "$repo_dir/bin/photoalbum" --init >/dev/null
+        test::assert_file_exists photoalbum.conf
+    )
+    config=$(<"$output_dir/photoalbum.conf")
+    test::assert_contains \
+        "TEMPLATE_DIR=$repo_dir/share/templates/default" \
+        "$config"
+    test::teardown
+}
+
 test_init_existing_config_fails_without_overwrite() {
     local output
 
@@ -3097,6 +3125,9 @@ main() {
 
     test::run_case '--version succeeds' test_version
     test::run_case '--init succeeds' test_init
+    test::run_case \
+        '--init succeeds when source path contains #' \
+        test_init_with_hash_in_source_path
     test::run_case \
         '--init refuses existing config without overwrite' \
         test_init_existing_config_fails_without_overwrite

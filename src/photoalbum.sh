@@ -218,6 +218,7 @@ apply_template_dir_default() {
 init_config() {
     local -r rc_file=photoalbum.conf
     local default_rc_file
+    local rewritten_rc_file
     local source_root
     local source_template_dir
 
@@ -239,8 +240,18 @@ init_config() {
     if [[ -n "$source_root" \
         && "$default_rc_file" = "$source_root/src/photoalbum.default.conf" ]]; then
         source_template_dir="$source_root/share/templates/default"
-        sed -i "s#^TEMPLATE_DIR=.*#TEMPLATE_DIR=$source_template_dir#" \
-            "$rc_file"
+        rewritten_rc_file=$(mktemp "${rc_file}.XXXXXX")
+        if ! awk -v template_dir="$source_template_dir" \
+            '/^TEMPLATE_DIR=/ {
+                print "TEMPLATE_DIR=" template_dir
+                next
+            }
+            { print }' "$rc_file" > "$rewritten_rc_file"; then
+            rm -f "$rewritten_rc_file"
+            exit 1
+        fi
+        cat "$rewritten_rc_file" > "$rc_file"
+        rm -f "$rewritten_rc_file"
     fi
 
     log_info "Created ./$rc_file"
