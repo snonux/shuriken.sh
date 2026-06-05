@@ -345,11 +345,18 @@ run_with_timeout() {
 
 tarball() {
     local -r tarball_name="$1"; shift
+    local -r tarball_suffix="${TARBALL_SUFFIX:-.tar}"
     local base
+    local old_tarball
     local -a tar_opts=()
 
-    # Cleanup tarball from prev run if any
-    find "$DIST_DIR" -maxdepth 1 -type f -name '*.tar' -delete
+    # Cleanup tarballs from previous runs for the configured suffix.
+    while IFS= read -r -d '' old_tarball; do
+        if [[ "$old_tarball" == *"$tarball_suffix" ]]; then
+            rm -f "$old_tarball"
+        fi
+    done < <(find "$DIST_DIR" -maxdepth 1 -type f -print0)
+
     base=$(basename "$INCOMING_DIR")
     resolve_tar_opts tar_opts
 

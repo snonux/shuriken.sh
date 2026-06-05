@@ -639,6 +639,69 @@ test_generate_default_tar_opts_create_archive() {
     test::teardown
 }
 
+test_generate_custom_tarball_suffix_cleans_previous_archive() {
+    local config_file
+    local fake_bin
+    local first_tarball
+    local second_tarball
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    cat > "$fake_bin/date" <<'DATE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+count=0
+if [ -f "$TEST_FAKE_DATE_COUNTER" ]; then
+    count=$(<"$TEST_FAKE_DATE_COUNTER")
+fi
+count=$(( count + 1 ))
+printf '%s\n' "$count" > "$TEST_FAKE_DATE_COUNTER"
+
+if [ "${1:-}" = -u ]; then
+    printf '2026-06-05T12:00:%02dZ\n' "$count"
+else
+    printf '2026-06-05-1200%02d\n' "$count"
+fi
+DATE
+    chmod 0755 "$fake_bin/date"
+
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Custom tarball suffix cleanup' 40
+    {
+        printf 'TARBALL_INCLUDE=yes\n'
+        printf 'TARBALL_SUFFIX=.tgz\n'
+    } >> "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_FAKE_DATE_COUNTER="$TEST_TMPDIR/date-count" \
+            "$TEST_PHOTOALBUM" --generate
+    )
+    first_tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tgz' -print)
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_FAKE_DATE_COUNTER="$TEST_TMPDIR/date-count" \
+            "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_find_count 1 "$TEST_TMPDIR/dist" '*.tgz'
+    test::assert_path_absent "$first_tarball"
+    second_tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tgz' -print)
+    test::assert_contains "$TEST_TMPDIR/dist/incoming-" "$second_tarball"
+
+    test::teardown
+}
+
 test_generate_scalar_multi_tar_opts_create_archive() {
     local config_file
     local fake_bin
@@ -3074,6 +3137,9 @@ main() {
     test::run_case \
         '--generate default TAR_OPTS creates archive' \
         test_generate_default_tar_opts_create_archive
+    test::run_case \
+        '--generate custom TARBALL_SUFFIX cleans previous archive' \
+        test_generate_custom_tarball_suffix_cleans_previous_archive
     test::run_case \
         '--generate scalar multi-option TAR_OPTS creates archive' \
         test_generate_scalar_multi_tar_opts_create_archive
