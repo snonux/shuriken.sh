@@ -1,7 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 NAME := "photoalbum"
-VERSION := "0.6.0"
+VERSION := "0.7.0"
 DESTDIR := env_var_or_default("DESTDIR", "")
 PREFIX := env_var_or_default("PREFIX", "/usr")
 BINDIR := env_var_or_default("BINDIR", PREFIX + "/bin")
