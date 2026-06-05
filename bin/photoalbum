@@ -248,9 +248,9 @@ init_config() {
 
 imagemagick() {
     if command -v magick >/dev/null 2>&1; then
-        magick "$@"
+        run_with_timeout ImageMagick "$IMAGEMAGICK_TIMEOUT" magick "$@"
     elif command -v convert >/dev/null 2>&1; then
-        convert "$@"
+        run_with_timeout ImageMagick "$IMAGEMAGICK_TIMEOUT" convert "$@"
     else
         printf 'ERROR: ImageMagick is required; install magick or convert\n' >&2
         return 127
@@ -259,19 +259,48 @@ imagemagick() {
 
 imagemagick_identify() {
     if command -v magick >/dev/null 2>&1; then
-        magick identify "$@"
+        run_with_timeout ImageMagick "$IMAGEMAGICK_TIMEOUT" \
+            magick identify "$@"
     elif command -v identify >/dev/null 2>&1; then
-        identify "$@"
+        run_with_timeout ImageMagick "$IMAGEMAGICK_TIMEOUT" \
+            identify "$@"
     elif command -v convert >/dev/null 2>&1; then
         if [[ "${1:-}" = '-verbose' && $# -eq 2 ]]; then
-            convert "$2" -verbose info:
+            run_with_timeout ImageMagick "$IMAGEMAGICK_TIMEOUT" \
+                convert "$2" -verbose info:
         else
-            convert "$@" info:
+            run_with_timeout ImageMagick "$IMAGEMAGICK_TIMEOUT" \
+                convert "$@" info:
         fi
     else
         printf 'ERROR: ImageMagick is required; install magick or convert\n' >&2
         return 127
     fi
+}
+
+run_with_timeout() {
+    local -r description="$1"; shift
+    local -r seconds="$1"; shift
+    local -i status=0
+
+    if ! command -v timeout >/dev/null 2>&1; then
+        printf 'ERROR: timeout command is required to run %s\n' \
+            "$description" >&2
+        return 127
+    fi
+
+    if timeout "$seconds" "$@"; then
+        return
+    else
+        status=$?
+    fi
+
+    if (( status == 124 )); then
+        printf 'ERROR: %s timed out after %s seconds\n' \
+            "$description" "$seconds" >&2
+    fi
+
+    return "$status"
 }
 
 tarball() {
@@ -288,7 +317,8 @@ tarball() {
         "from $INCOMING_DIR"
     (
         cd "$(dirname "$INCOMING_DIR")"
-        tar "${tar_opts[@]}" -f "$DIST_DIR/$tarball_name" "$base"
+        run_with_timeout tar "$TAR_TIMEOUT" \
+            tar "${tar_opts[@]}" -f "$DIST_DIR/$tarball_name" "$base"
     )
 }
 
@@ -1870,11 +1900,13 @@ print_config() {
     print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
     print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
     print_shell_assignment IMAGE_JOBS "$IMAGE_JOBS"
+    print_shell_assignment IMAGEMAGICK_TIMEOUT "$IMAGEMAGICK_TIMEOUT"
     print_shell_assignment RANDOM_SEED "${RANDOM_SEED:-}"
     print_shell_assignment SHUFFLE "${SHUFFLE:-no}"
     print_shell_assignment SPLASH_PAGE "${SPLASH_PAGE:-yes}"
     print_shell_assignment TARBALL_INCLUDE "${TARBALL_INCLUDE:-no}"
     print_shell_assignment TARBALL_SUFFIX "${TARBALL_SUFFIX:-.tar}"
+    print_shell_assignment TAR_TIMEOUT "$TAR_TIMEOUT"
     print_shell_array_assignment TAR_OPTS "${tar_opts[@]}"
     print_shell_assignment ORIGINAL_BASEPATH "${ORIGINAL_BASEPATH:-}"
 }
@@ -2065,12 +2097,14 @@ missing_config() {
 apply_config_defaults() {
     HEIGHT="${HEIGHT:-}"
     IMAGE_JOBS="${IMAGE_JOBS:-3}"
+    IMAGEMAGICK_TIMEOUT="${IMAGEMAGICK_TIMEOUT:-60}"
     ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
     RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
+    TAR_TIMEOUT="${TAR_TIMEOUT:-120}"
     if ! declare -p TAR_OPTS >/dev/null 2>&1; then
         TAR_OPTS=(-c)
     fi
@@ -2275,6 +2309,8 @@ validate_generation_config() {
     validate_positive_integer_config_var THUMBHEIGHT
     validate_positive_integer_config_var MAXPREVIEWS
     validate_positive_integer_config_var IMAGE_JOBS
+    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT
+    validate_positive_integer_config_var TAR_TIMEOUT
     validate_yes_no_config_var SHUFFLE
     validate_yes_no_config_var SPLASH_PAGE
     validate_yes_no_config_var TARBALL_INCLUDE
@@ -2314,6 +2350,8 @@ validate_print_config() {
     validate_positive_integer_config_var THUMBHEIGHT
     validate_positive_integer_config_var MAXPREVIEWS
     validate_positive_integer_config_var IMAGE_JOBS
+    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT
+    validate_positive_integer_config_var TAR_TIMEOUT
     validate_yes_no_config_var SHUFFLE
     validate_yes_no_config_var SPLASH_PAGE
     validate_yes_no_config_var TARBALL_INCLUDE
@@ -2440,6 +2478,8 @@ log_configured_action() {
     log_verbose "Effective output directory: ${DIST_DIR:-}"
     log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
     log_verbose "Effective image jobs: ${IMAGE_JOBS:-3}"
+    log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT:-60}s"
+    log_verbose "Effective tar timeout: ${TAR_TIMEOUT:-120}s"
     log_verbose "Effective splash page setting: ${SPLASH_PAGE:-yes}"
     log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
 }

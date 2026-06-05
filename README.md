@@ -68,8 +68,8 @@ If the file is missing, run `photoalbum --init` first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
-`IMAGE_JOBS`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, and
-`TARBALL_INCLUDE`.
+`IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`,
+`TARBALL_INCLUDE`, and `TAR_TIMEOUT`.
 
 Before generating, `photoalbum` validates the loaded config and command-line
 overrides. It checks required values, positive integer settings, `yes`/`no`
@@ -88,9 +88,9 @@ tarball filename uses `<timestamp>` as a placeholder so the output is stable.
 
 `--print-config` writes stable shell-style assignments to stdout in this order:
 `CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`,
-`THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `RANDOM_SEED`, `SHUFFLE`,
-`SPLASH_PAGE`,
-`TARBALL_INCLUDE`, `TARBALL_SUFFIX`, `TAR_OPTS`, and `ORIGINAL_BASEPATH`.
+`THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`,
+`RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `TARBALL_INCLUDE`,
+`TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, and `ORIGINAL_BASEPATH`.
 Scalar values use Bash `%q` quoting and `TAR_OPTS` is normalized to a Bash array
 assignment, so the output can be parsed by shell tooling. `--quiet` does not
 suppress this output, and `--verbose` does not add human-readable diagnostics to
@@ -151,6 +151,10 @@ flag wins.
 ImageMagick photo processing runs in parallel. The default is `IMAGE_JOBS=3`.
 Set `IMAGE_JOBS` in the config, or pass `--image-jobs N`, to tune the number of
 concurrent ImageMagick jobs.
+
+Each ImageMagick command is bounded by `IMAGEMAGICK_TIMEOUT=60` seconds, and
+tarball creation is bounded by `TAR_TIMEOUT=120` seconds. Set either config
+value to a positive integer to adjust the limit for large images or archives.
 
 ## Example usage
 

@@ -288,6 +288,21 @@ MAGICK
     cp "$bin_dir/magick" "$bin_dir/convert"
 }
 
+test::install_hanging_imagemagick() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+sleep "${TEST_HANG_SECONDS:-5}"
+MAGICK
+    chmod 0755 "$bin_dir/magick"
+    cp "$bin_dir/magick" "$bin_dir/convert"
+}
+
 test::install_failing_generation_tools() {
     local -r bin_dir="$1"; shift
     local name
@@ -388,6 +403,20 @@ set -euo pipefail
 } >> "\$TEST_TAR_LOG"
 
 "$real_tar" "\$@"
+TAR
+    chmod 0755 "$bin_dir/tar"
+}
+
+test::install_hanging_tar() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/tar" <<'TAR'
+#!/usr/bin/env bash
+set -euo pipefail
+
+sleep "${TEST_HANG_SECONDS:-5}"
 TAR
     chmod 0755 "$bin_dir/tar"
 }

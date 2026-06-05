@@ -927,11 +927,13 @@ HEIGHT=1200
 THUMBHEIGHT=300
 MAXPREVIEWS=40
 IMAGE_JOBS=3
+IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
+TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 ORIGINAL_BASEPATH=''
 EOF
@@ -1062,11 +1064,13 @@ HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=7
 IMAGE_JOBS=3
+IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=yes
 SPLASH_PAGE=yes
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
+TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 ORIGINAL_BASEPATH=''
 EOF
@@ -1099,11 +1103,13 @@ HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=8
 IMAGE_JOBS=3
+IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
+TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 ORIGINAL_BASEPATH=''
 EOF
@@ -1161,11 +1167,13 @@ HEIGHT=456
 THUMBHEIGHT=45
 MAXPREVIEWS=9
 IMAGE_JOBS=2
+IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=cli-seed
 SHUFFLE=yes
 SPLASH_PAGE=no
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
+TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 ORIGINAL_BASEPATH=''
 EOF
@@ -2205,6 +2213,80 @@ test_generate_imagemagick_failure_preserves_dist() {
     test::teardown
 }
 
+test_generate_imagemagick_timeout_preserves_dist() {
+    local config_file
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_hanging_imagemagick "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'old dist\n' > "$TEST_TMPDIR/dist/index.html"
+    printf 'keep me\n' > "$TEST_TMPDIR/dist/sentinel"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Hanging ImageMagick album' 40
+    printf 'IMAGEMAGICK_TIMEOUT=1\n' >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_HANG_SECONDS=2 \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_contains \
+        'ERROR: ImageMagick timed out after 1 seconds' "$output"
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
+    test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'keep me'
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/01.jpg"
+    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
+test_generate_tar_timeout_preserves_dist() {
+    local config_file
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::install_hanging_tar "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/dist"
+    printf 'old dist\n' > "$TEST_TMPDIR/dist/index.html"
+    printf 'keep me\n' > "$TEST_TMPDIR/dist/sentinel"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Hanging tar album' 40
+    {
+        printf 'TARBALL_INCLUDE=yes\n'
+        printf 'TAR_TIMEOUT=1\n'
+    } >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_HANG_SECONDS=2 \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+    )
+
+    test::assert_contains 'ERROR: tar timed out after 1 seconds' "$output"
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
+    test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'keep me'
+    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
 test_generate_template_failure_preserves_dist() {
     local config_file
     local fake_bin
@@ -2866,6 +2948,12 @@ main() {
     test::run_case \
         '--generate ImageMagick failure preserves final dist' \
         test_generate_imagemagick_failure_preserves_dist
+    test::run_case \
+        '--generate ImageMagick timeout preserves final dist' \
+        test_generate_imagemagick_timeout_preserves_dist
+    test::run_case \
+        '--generate tar timeout preserves final dist' \
+        test_generate_tar_timeout_preserves_dist
     test::run_case \
         '--generate template failure preserves final dist' \
         test_generate_template_failure_preserves_dist
