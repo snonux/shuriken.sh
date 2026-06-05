@@ -1388,7 +1388,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
         "  $dist_dir/[page]-[image]-details.html (6 details pages)" \
         "$output"
     test::assert_contains \
-        "  $dist_dir/[redirect].html (6 navigation redirects)" \
+        "  $dist_dir/[redirect].html (7 navigation redirects)" \
         "$output"
     test::assert_not_contains "$dist_dir/html" "$output"
     test::assert_contains "  $dist_dir/incoming-<timestamp>.tar" "$output"
@@ -1942,6 +1942,44 @@ test_render_view_redirects_uses_numeric_last_view() {
     redirect_html=$(<"$dist_dir/1-11.html")
     test::assert_contains 'url=2-1.html' "$redirect_html"
     test "$(<"$dist_dir/1-10.html")" = ''
+    test::teardown
+}
+
+test_render_view_redirects_wraps_when_last_page_full() {
+    local dist_dir
+    local html_dir
+    local next_redirect_html
+    local prev_redirect_html
+    local view
+
+    test::setup
+    dist_dir="$TEST_TMPDIR/dist"
+    html_dir='.'
+    mkdir -p "$dist_dir"
+
+    # shellcheck source=/dev/null
+    source <(sed '$d' "$TEST_PHOTOALBUM")
+
+    export DIST_DIR="$dist_dir"
+    export TEMPLATE_DIR="$TEST_REPO_ROOT/share/templates/default"
+    export PHOTOALBUM_OUTPUT_MODE=quiet
+    export MAXPREVIEWS=2
+
+    for view in 1 2; do
+        : > "$dist_dir/1-$view.html"
+        : > "$dist_dir/2-$view.html"
+        : > "$dist_dir/3-$view.html"
+    done
+
+    render_view_redirects "$html_dir"
+
+    test::assert_file_exists "$dist_dir/0-2.html"
+    test::assert_file_exists "$dist_dir/3-3.html"
+    prev_redirect_html=$(<"$dist_dir/0-2.html")
+    next_redirect_html=$(<"$dist_dir/3-3.html")
+    test::assert_contains 'url=3-2.html' "$prev_redirect_html"
+    test::assert_contains 'url=1-1.html' "$next_redirect_html"
+    test::assert_path_absent "$dist_dir/4-1.html"
     test::teardown
 }
 
@@ -2807,6 +2845,9 @@ main() {
     test::run_case \
         'view redirects use numeric last view' \
         test_render_view_redirects_uses_numeric_last_view
+    test::run_case \
+        'view redirects wrap when last page is full' \
+        test_render_view_redirects_wraps_when_last_page_full
     test::run_case \
         '--generate SPLASH_PAGE=no keeps root index redirect' \
         test_generate_config_no_splash_keeps_index_redirect

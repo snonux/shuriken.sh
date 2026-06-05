@@ -1213,13 +1213,31 @@ render_photo_view_and_details() {
 
 render_view_redirects() {
     local -r html_dir="$1"; shift
+    local -i max_page=0
+    local -a prefixes=()
     local lastview
     local nextredirect
     local page
-    local prefix
     local prevredirect
+    local prefix
 
-    while IFS= read -r prefix; do
+    mapfile -t prefixes < <(
+        find "$DIST_DIR/$html_dir" \
+            -maxdepth 1 \
+            -regextype posix-egrep \
+            -regex '.*/[0-9]+-[0-9]+\.html' \
+            -printf '%f\n' \
+            | cut -d'-' -f1 \
+            | sort -n -u
+    )
+
+    if (( ${#prefixes[@]} == 0 )); then
+        return
+    fi
+
+    max_page=${prefixes[$(( ${#prefixes[@]} - 1 ))]}
+
+    for prefix in "${prefixes[@]}"; do
         page="$prefix"
         lastview=$(last_view_number "$page" "$html_dir")
 
@@ -1230,27 +1248,19 @@ render_view_redirects() {
             html_dir "$html_dir" \
             redirect_page "$(( page - 1 ))-${MAXPREVIEWS}"
 
-        if (( lastview == MAXPREVIEWS )); then
-            template redirect "$nextredirect.html" \
-                html_dir "$html_dir" \
-                redirect_page "$(( page + 1 ))-1"
-        else
+        if (( page == max_page )); then
             template redirect "0-$MAXPREVIEWS.html" \
                 html_dir "$html_dir" \
                 redirect_page "${page}-$lastview"
             template redirect "$nextredirect.html" \
                 html_dir "$html_dir" \
                 redirect_page '1-1'
+        else
+            template redirect "$nextredirect.html" \
+                html_dir "$html_dir" \
+                redirect_page "$(( page + 1 ))-1"
         fi
-    done < <(
-        find "$DIST_DIR/$html_dir" \
-            -maxdepth 1 \
-            -regextype posix-egrep \
-            -regex '.*/[0-9]+-[0-9]+\.html' \
-            -printf '%f\n' \
-            | cut -d'-' -f1 \
-            | sort -u
-    )
+    done
 }
 
 render_album_index_redirect() {
@@ -1609,10 +1619,7 @@ dry_run() {
     if (( image_count > 0 )); then
         details_count=$image_count
         page_count=$(( (image_count + MAXPREVIEWS - 1) / MAXPREVIEWS ))
-        redirect_count=$(( page_count * 2 ))
-        if (( image_count % MAXPREVIEWS != 0 )); then
-            (( ++redirect_count ))
-        fi
+        redirect_count=$(( page_count * 2 + 1 ))
     fi
 
     printf 'Dry run: no files will be written.\n'
