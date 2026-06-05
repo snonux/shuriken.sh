@@ -576,38 +576,23 @@ validate_template_context() {
 source_template_file() {
     local -r template_path="$1"; shift
     local -r output_path="$1"; shift
+    local context_file
+    local -i status=0
 
-    env -i \
-        PATH="$PATH" \
-        render_animation_class_html="$render_animation_class_html" \
-        render_backhref_css="$render_backhref_css" \
-        render_backhref_html="$render_backhref_html" \
-        render_background_image_css="$render_background_image_css" \
-        render_blurs_dir_css="$render_blurs_dir_css" \
-        render_current_date_text="$render_current_date_text" \
-        render_enter_page_html="$render_enter_page_html" \
-        render_exif_details_html="$render_exif_details_html" \
-        render_height_html="$render_height_html" \
-        render_html_dir_html="$render_html_dir_html" \
-        render_maxpreviews_html="$render_maxpreviews_html" \
-        render_next_html="$render_next_html" \
-        render_original_basepath_is_set="$render_original_basepath_is_set" \
-        render_original_basepath_html="$render_original_basepath_html" \
-        render_page_num_html="$render_page_num_html" \
-        render_photo_html="$render_photo_html" \
-        render_photos_dir_html="$render_photos_dir_html" \
-        render_prev_html="$render_prev_html" \
-        render_preview_num_html="$render_preview_num_html" \
-        render_redirect_page_html="$render_redirect_page_html" \
-        render_show_header_bar="$render_show_header_bar" \
-        render_tarball_include="$render_tarball_include" \
-        render_tarball_name_html="$render_tarball_name_html" \
-        render_thumbheight_html="$render_thumbheight_html" \
-        render_thumbs_dir_html="$render_thumbs_dir_html" \
-        render_title_html="$render_title_html" \
-        render_view_next_html="$render_view_next_html" \
-        render_view_prev_html="$render_view_prev_html" \
-        bash -euo pipefail -- "$template_path" >> "$output_path"
+    context_file=$(mktemp)
+    {
+        serialize_template_render_context
+        printf 'unset BASH_ENV\n'
+    } > "$context_file"
+
+    if env -i PATH="$PATH" BASH_ENV="$context_file" \
+        bash -euo pipefail -- "$template_path" >> "$output_path"; then
+        rm -f "$context_file"
+    else
+        status=$?
+        rm -f "$context_file"
+        return "$status"
+    fi
 }
 
 parse_template_context() {
@@ -635,6 +620,54 @@ parse_template_context() {
         # shellcheck disable=SC2034
         context_ref["$context_key"]="$context_value"
     done
+}
+
+serialize_template_render_var() {
+    local -r name="$1"; shift
+    local -r value="$1"; shift
+
+    printf '%s=%q\n' "$name" "$value"
+}
+
+serialize_template_render_context() {
+    serialize_template_render_var \
+        render_animation_class_html "$render_animation_class_html"
+    serialize_template_render_var render_backhref_css "$render_backhref_css"
+    serialize_template_render_var render_backhref_html "$render_backhref_html"
+    serialize_template_render_var \
+        render_background_image_css "$render_background_image_css"
+    serialize_template_render_var render_blurs_dir_css "$render_blurs_dir_css"
+    serialize_template_render_var \
+        render_current_date_text "$render_current_date_text"
+    serialize_template_render_var render_enter_page_html "$render_enter_page_html"
+    serialize_template_render_var \
+        render_exif_details_html "$render_exif_details_html"
+    serialize_template_render_var render_height_html "$render_height_html"
+    serialize_template_render_var render_html_dir_html "$render_html_dir_html"
+    serialize_template_render_var \
+        render_maxpreviews_html "$render_maxpreviews_html"
+    serialize_template_render_var render_next_html "$render_next_html"
+    serialize_template_render_var \
+        render_original_basepath_is_set "$render_original_basepath_is_set"
+    serialize_template_render_var \
+        render_original_basepath_html "$render_original_basepath_html"
+    serialize_template_render_var render_page_num_html "$render_page_num_html"
+    serialize_template_render_var render_photo_html "$render_photo_html"
+    serialize_template_render_var render_photos_dir_html "$render_photos_dir_html"
+    serialize_template_render_var render_prev_html "$render_prev_html"
+    serialize_template_render_var \
+        render_preview_num_html "$render_preview_num_html"
+    serialize_template_render_var \
+        render_redirect_page_html "$render_redirect_page_html"
+    serialize_template_render_var render_show_header_bar "$render_show_header_bar"
+    serialize_template_render_var render_tarball_include "$render_tarball_include"
+    serialize_template_render_var \
+        render_tarball_name_html "$render_tarball_name_html"
+    serialize_template_render_var render_thumbheight_html "$render_thumbheight_html"
+    serialize_template_render_var render_thumbs_dir_html "$render_thumbs_dir_html"
+    serialize_template_render_var render_title_html "$render_title_html"
+    serialize_template_render_var render_view_next_html "$render_view_next_html"
+    serialize_template_render_var render_view_prev_html "$render_view_prev_html"
 }
 
 prepare_template_render_vars() {
