@@ -1943,7 +1943,6 @@ refresh_splash() {
 
     tmp_path=$(mktemp "$DIST_DIR/.index.html.XXXXXX")
     tmp_html=$(basename "$tmp_path")
-    rm -f "$tmp_path"
 
     if render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html"; then
         mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
