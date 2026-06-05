@@ -12,6 +12,4 @@ Expected checks for Bash changes:
 - `just test`
 - `just shellcheck`
 - `just check-generated`
-- `make test`
-- `make shellcheck`
 - `git diff --check`

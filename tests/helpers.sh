@@ -211,6 +211,67 @@ MAGICK
     cp "$bin_dir/magick" "$bin_dir/convert"
 }
 
+test::install_parallel_imagemagick_spy() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" = identify ]; then
+    exit 0
+fi
+
+lock_file="${TEST_PARALLEL_MAGICK_LOCK:?}"
+active_file="${TEST_PARALLEL_MAGICK_ACTIVE:?}"
+max_file="${TEST_PARALLEL_MAGICK_MAX:?}"
+log_file="${TEST_PARALLEL_MAGICK_LOG:?}"
+
+(
+    flock 9
+    active=0
+    if [ -f "$active_file" ]; then
+        active=$(<"$active_file")
+    fi
+    active=$(( active + 1 ))
+    printf '%s\n' "$active" > "$active_file"
+
+    max=0
+    if [ -f "$max_file" ]; then
+        max=$(<"$max_file")
+    fi
+    if (( active > max )); then
+        printf '%s\n' "$active" > "$max_file"
+    fi
+
+    printf 'start %s %s\n' "$active" "$*" >> "$log_file"
+) 9>"$lock_file"
+
+sleep 0.1
+
+dest="${@: -1}"
+mkdir -p "$(dirname "$dest")"
+{
+    printf 'fake image\n'
+    printf 'args:'
+    printf ' %q' "$@"
+    printf '\n'
+} > "$dest"
+
+(
+    flock 9
+    active=$(<"$active_file")
+    active=$(( active - 1 ))
+    printf '%s\n' "$active" > "$active_file"
+    printf 'finish %s %s\n' "$active" "$*" >> "$log_file"
+) 9>"$lock_file"
+MAGICK
+    chmod 0755 "$bin_dir/magick"
+    cp "$bin_dir/magick" "$bin_dir/convert"
+}
+
 test::install_failing_imagemagick() {
     local -r bin_dir="$1"; shift
 
@@ -390,6 +451,7 @@ test::write_album_config() {
         printf 'THUMBHEIGHT=30\n'
         printf 'HEIGHT=120\n'
         printf 'MAXPREVIEWS=%q\n' "$maxpreviews"
+        printf 'IMAGE_JOBS=3\n'
         printf 'INCOMING_DIR=%q\n' "$incoming_dir"
         printf 'DIST_DIR=%q\n' "$dist_dir"
         printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$TEST_REPO_ROOT"

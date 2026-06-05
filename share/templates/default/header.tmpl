@@ -41,10 +41,24 @@ cat <<END
         div.details-panel {
             background-color: #000000;
             border: 3px solid #ffffff;
-            margin: 2 auto;
+            flex: 1 1 34%;
             max-width: 900px;
             padding: 10px;
             text-align: left;
+        }
+
+        div.details-layout {
+            align-items: flex-start;
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin: 0 auto;
+            max-width: 98vw;
+        }
+
+        a.details-photo-link {
+            flex: 1 1 62%;
+            min-width: 0;
         }
 
         div.details-panel h1 {
@@ -94,6 +108,13 @@ cat <<END
             width: 95%;
             height: 80%;
             object-fit: contain;
+        }
+
+        div.details-layout img.details-photo {
+            height: auto;
+            max-height: min(${render_height_html}px, 85vh);
+            max-width: 100%;
+            width: auto;
         }
 
         .animate-none{}
@@ -154,6 +175,18 @@ cat <<END
                 animation-duration: 0.01ms !important;
                 animation-iteration-count: 1 !important;
                 transition-duration: 0.01ms !important;
+            }
+        }
+
+        @media (max-width: 900px) {
+            div.details-layout {
+                align-items: center;
+                flex-direction: column;
+            }
+
+            div.details-panel {
+                box-sizing: border-box;
+                width: 95%;
             }
         }
     </style>

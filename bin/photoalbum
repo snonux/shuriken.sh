@@ -30,6 +30,7 @@ usage() {
     --height VALUE
     --thumbheight VALUE
     --maxpreviews N
+    --image-jobs N
     --random-seed VALUE
     --splash
     --no-splash
@@ -730,36 +731,91 @@ warn_unsupported_incoming_files() {
 }
 
 scalephotos() {
-    local destphoto
-    local dirname
+    local -i failed=0
+    local -a image_job_pids=()
     local photo
 
     while IFS= read -r photo; do
-        destphoto="$DIST_DIR/photos/$photo"
-        dirname=$(dirname "$destphoto")
-        mkdir -p "$dirname"
-
-        if [ -f "$destphoto" ]; then
-            log_verbose "Skipped existing photo $(_display_path "$destphoto")"
-            continue
-        fi
-
-        log_info "Processing $photo to $(_display_path "$destphoto")"
-        if [ -n "${HEIGHT:-}" ]; then
-            # Scale down size.
-            imagemagick \
-                "$INCOMING_DIR/$photo" \
-                -auto-orient \
-                -geometry "$HEIGHT" \
-                "$destphoto"
-        else
-            # Keep original size.
-            imagemagick \
-                "$INCOMING_DIR/$photo" \
-                -auto-orient \
-                "$destphoto"
-        fi
+        wait_for_image_job_slot image_job_pids failed
+        scale_photo "$photo" &
+        image_job_pids+=("$!")
     done < <(incoming_image_files)
+
+    wait_for_image_jobs image_job_pids failed
+    if (( failed != 0 )); then
+        return 1
+    fi
+}
+
+wait_for_image_job_pid() {
+    local -r pid="$1"; shift
+    local -i status=0
+
+    set +e
+    wait "$pid"
+    status=$?
+    set -e
+
+    return "$status"
+}
+
+wait_for_image_job_slot() {
+    # shellcheck disable=SC2178
+    local -n image_job_pids_ref="$1"; shift
+    local -n failed_ref="$1"; shift
+    local -r max_jobs="${IMAGE_JOBS:-3}"
+
+    while (( ${#image_job_pids_ref[@]} >= max_jobs )); do
+        if ! wait_for_image_job_pid "${image_job_pids_ref[0]}"; then
+            failed_ref=1
+        fi
+        image_job_pids_ref=("${image_job_pids_ref[@]:1}")
+    done
+}
+
+wait_for_image_jobs() {
+    # shellcheck disable=SC2178
+    local -n image_job_pids_ref="$1"; shift
+    local -n failed_ref="$1"; shift
+
+    : "$failed_ref"
+    while (( ${#image_job_pids_ref[@]} > 0 )); do
+        if ! wait_for_image_job_pid "${image_job_pids_ref[0]}"; then
+            failed_ref=1
+        fi
+        image_job_pids_ref=("${image_job_pids_ref[@]:1}")
+    done
+}
+
+scale_photo() {
+    local -r photo="$1"; shift
+    local destphoto
+    local dirname
+
+    destphoto="$DIST_DIR/photos/$photo"
+    dirname=$(dirname "$destphoto")
+    mkdir -p "$dirname"
+
+    if [ -f "$destphoto" ]; then
+        log_verbose "Skipped existing photo $(_display_path "$destphoto")"
+        return
+    fi
+
+    log_info "Processing $photo to $(_display_path "$destphoto")"
+    if [ -n "${HEIGHT:-}" ]; then
+        # Scale down size.
+        imagemagick \
+            "$INCOMING_DIR/$photo" \
+            -auto-orient \
+            -geometry "$HEIGHT" \
+            "$destphoto"
+    else
+        # Keep original size.
+        imagemagick \
+            "$INCOMING_DIR/$photo" \
+            -auto-orient \
+            "$destphoto"
+    fi
 }
 
 random_seed_is_set() {
@@ -1077,6 +1133,30 @@ create_photo_derivatives() {
         "$DIST_DIR/$blurs_dir/$photo"
 }
 
+create_all_photo_derivatives() {
+    local -r photos_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -i failed=0
+    local -a image_job_pids=()
+    local photo
+
+    while IFS= read -r photo; do
+        wait_for_image_job_slot image_job_pids failed
+        create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" \
+            "$photo" &
+        image_job_pids+=("$!")
+    done < <(
+        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
+            | sort
+    )
+
+    wait_for_image_jobs image_job_pids failed
+    if (( failed != 0 )); then
+        return 1
+    fi
+}
+
 render_photo_entry() {
     local -r photos_dir="$1"; shift
     local -r thumbs_dir="$1"; shift
@@ -1097,6 +1177,18 @@ render_photo_entry() {
         "$page_num" \
         "$preview_num" \
         "$photo"
+}
+
+render_photo_view_and_details() {
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    local -r page_num="$1"; shift
+    local -r preview_num="$1"; shift
+    local -r photo="$1"; shift
+
     render_view_page \
         "$html_dir" \
         "$photos_dir" \
@@ -1115,7 +1207,6 @@ render_photo_entry() {
         "$page_num" \
         "$preview_num" \
         "$photo"
-    create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" "$photo"
 }
 
 render_view_redirects() {
@@ -1215,6 +1306,8 @@ render_album_pages() {
     local prev
     local -i i=0
     local -i num=1
+    local -i render_failed=0
+    local -a render_job_pids=()
 
     name="page-$num"
 
@@ -1259,9 +1352,24 @@ render_album_pages() {
             "$num" \
             "$i" \
             "$photo"
+        wait_for_image_job_slot render_job_pids render_failed
+        render_photo_view_and_details \
+            "$photos_dir" \
+            "$blurs_dir" \
+            "$html_dir" \
+            "$backhref" \
+            "$tarball_name" \
+            "$num" \
+            "$i" \
+            "$photo" &
+        render_job_pids+=("$!")
     done < <(album_photo_files "$photos_dir")
 
     finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
+    wait_for_image_jobs render_job_pids render_failed
+    if (( render_failed != 0 )); then
+        return 1
+    fi
     render_view_redirects "$html_dir"
     render_album_index "$photos_dir" "$html_dir" "$blurs_dir" "$backhref"
 }
@@ -1378,6 +1486,7 @@ write_generation_metadata() {
         printf '    "height": %s,\n' "$(_json_string "${HEIGHT:-}")"
         printf '    "thumbheight": %s,\n' "$(_json_string "${THUMBHEIGHT:-}")"
         printf '    "maxpreviews": %s,\n' "$(_json_string "${MAXPREVIEWS:-}")"
+        printf '    "image_jobs": %s,\n' "$(_json_string "${IMAGE_JOBS:-}")"
         printf '    "random_seed": %s,\n' "$(_json_string "${RANDOM_SEED:-}")"
         printf '    "shuffle": %s,\n' "$(_json_bool "${SHUFFLE:-no}")"
         printf '    "splash_page": %s,\n' "$(_json_bool "${SPLASH_PAGE:-yes}")"
@@ -1393,6 +1502,7 @@ prepare_generation_photo_assets() {
     mkdir -p "$DIST_DIR/photos"
     cleanphotos
     scalephotos
+    create_all_photo_derivatives 'photos' 'thumbs' 'blurs'
 }
 
 clear_rendered_html() {
@@ -1453,6 +1563,7 @@ dry_run() {
     printf 'Height: %s\n' "${HEIGHT:-}"
     printf 'Thumb height: %s\n' "$THUMBHEIGHT"
     printf 'Max previews per page: %s\n' "$MAXPREVIEWS"
+    printf 'Image jobs: %s\n' "$IMAGE_JOBS"
     printf 'Random seed: %s\n' "${RANDOM_SEED:-}"
     printf 'Shuffle: %s\n' "${SHUFFLE:-no}"
     printf 'Splash page: %s\n' "${SPLASH_PAGE:-yes}"
@@ -1525,6 +1636,7 @@ print_config() {
     print_shell_assignment HEIGHT "${HEIGHT:-}"
     print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
     print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
+    print_shell_assignment IMAGE_JOBS "$IMAGE_JOBS"
     print_shell_assignment RANDOM_SEED "${RANDOM_SEED:-}"
     print_shell_assignment SHUFFLE "${SHUFFLE:-no}"
     print_shell_assignment SPLASH_PAGE "${SPLASH_PAGE:-yes}"
@@ -1720,6 +1832,7 @@ missing_config() {
 
 apply_config_defaults() {
     HEIGHT="${HEIGHT:-}"
+    IMAGE_JOBS="${IMAGE_JOBS:-3}"
     ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
     RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
@@ -1764,6 +1877,9 @@ apply_cli_overrides() {
     fi
     if [ -n "$cli_maxpreviews" ]; then
         MAXPREVIEWS="$cli_maxpreviews"
+    fi
+    if [ -n "$cli_image_jobs" ]; then
+        IMAGE_JOBS="$cli_image_jobs"
     fi
     if [ -n "$cli_random_seed" ]; then
         RANDOM_SEED="$cli_random_seed"
@@ -1896,6 +2012,7 @@ validate_generation_config() {
         TITLE
         THUMBHEIGHT
         MAXPREVIEWS
+        IMAGE_JOBS
         INCOMING_DIR
         DIST_DIR
         TEMPLATE_DIR
@@ -1908,6 +2025,7 @@ validate_generation_config() {
     validate_optional_positive_integer_config_var HEIGHT
     validate_positive_integer_config_var THUMBHEIGHT
     validate_positive_integer_config_var MAXPREVIEWS
+    validate_positive_integer_config_var IMAGE_JOBS
     validate_yes_no_config_var SHUFFLE
     validate_yes_no_config_var SPLASH_PAGE
     validate_yes_no_config_var TARBALL_INCLUDE
@@ -1932,6 +2050,7 @@ validate_print_config() {
         TITLE
         THUMBHEIGHT
         MAXPREVIEWS
+        IMAGE_JOBS
         INCOMING_DIR
         DIST_DIR
         TEMPLATE_DIR
@@ -1945,6 +2064,7 @@ validate_print_config() {
     validate_optional_positive_integer_config_var HEIGHT
     validate_positive_integer_config_var THUMBHEIGHT
     validate_positive_integer_config_var MAXPREVIEWS
+    validate_positive_integer_config_var IMAGE_JOBS
     validate_yes_no_config_var SHUFFLE
     validate_yes_no_config_var SPLASH_PAGE
     validate_yes_no_config_var TARBALL_INCLUDE
@@ -1976,6 +2096,9 @@ set_cli_override() {
             ;;
         --maxpreviews)
             cli_maxpreviews="$value"
+            ;;
+        --image-jobs)
+            cli_image_jobs="$value"
             ;;
         --random-seed)
             cli_random_seed="$value"
@@ -2016,7 +2139,7 @@ parse_cli_arguments() {
                 shift
                 ;;
             --incoming|--dist|--template|--title|--height|--thumbheight|\
-            --maxpreviews|--random-seed)
+            --maxpreviews|--image-jobs|--random-seed)
                 option_arg=$(option_value "$option" "$@")
                 set_cli_override "$option" "$option_arg"
                 shift
@@ -2110,6 +2233,7 @@ log_configured_action() {
     log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
     log_verbose "Effective output directory: ${DIST_DIR:-}"
     log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
+    log_verbose "Effective image jobs: ${IMAGE_JOBS:-3}"
     log_verbose "Effective splash page setting: ${SPLASH_PAGE:-yes}"
     log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
 }
@@ -2166,6 +2290,7 @@ main() {
     local has_config_overrides='no'
     local cli_dist_dir=''
     local cli_height=''
+    local cli_image_jobs=''
     local cli_incoming_dir=''
     local cli_maxpreviews=''
     local cli_random_seed=''

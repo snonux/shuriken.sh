@@ -30,9 +30,7 @@ DESTDIR="$PWD/pkg" PREFIX=/usr just install
 DESTDIR="$PWD/pkg" PREFIX=/usr just deinstall
 ```
 
-`just uninstall` is an alias for `just deinstall`. The legacy Makefile forwards
-the same targets to `just`, so `make test` remains available for existing
-automation.
+`just uninstall` is an alias for `just deinstall`.
 
 ImageMagick must also be installed. The script prefers the
 modern `magick` command and falls back to `convert` when needed.
@@ -68,7 +66,8 @@ missing, run `photoalbum --init` first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
-`RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, and `TARBALL_INCLUDE`.
+`IMAGE_JOBS`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, and
+`TARBALL_INCLUDE`.
 
 Before generating, `photoalbum` validates the loaded config and command-line
 overrides. It checks required values, positive integer settings, `yes`/`no`
@@ -87,7 +86,8 @@ tarball filename uses `<timestamp>` as a placeholder so the output is stable.
 
 `--print-config` writes stable shell-style assignments to stdout in this order:
 `CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`,
-`THUMBHEIGHT`, `MAXPREVIEWS`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`,
+`THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `RANDOM_SEED`, `SHUFFLE`,
+`SPLASH_PAGE`,
 `TARBALL_INCLUDE`, `TARBALL_SUFFIX`, `TAR_OPTS`, and `ORIGINAL_BASEPATH`.
 Scalar values use Bash `%q` quoting and `TAR_OPTS` is normalized to a Bash array
 assignment, so the output can be parsed by shell tooling. `--quiet` does not
@@ -110,6 +110,7 @@ The following long options override config values:
 | `--height VALUE` | `HEIGHT` |
 | `--thumbheight VALUE` | `THUMBHEIGHT` |
 | `--maxpreviews N` | `MAXPREVIEWS` |
+| `--image-jobs N` | `IMAGE_JOBS` |
 | `--random-seed VALUE` | `RANDOM_SEED` |
 | `--shuffle` | `SHUFFLE=yes` |
 | `--no-shuffle` | `SHUFFLE=no` |
@@ -138,6 +139,10 @@ Use `--verbose` for extra diagnostics, including the selected config file,
 effective paths, skipped existing files, staging output directory, and tarball
 decisions. If `--quiet` and `--verbose` are repeated or combined, the last output
 flag wins.
+
+ImageMagick photo processing runs in parallel. The default is `IMAGE_JOBS=3`.
+Set `IMAGE_JOBS` in the config, or pass `--image-jobs N`, to tune the number of
+concurrent ImageMagick jobs.
 
 ## Example usage
 

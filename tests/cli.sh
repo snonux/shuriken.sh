@@ -28,6 +28,9 @@ test::write_preflight_config() {
         if [ "$omitted_var" != MAXPREVIEWS ]; then
             printf 'MAXPREVIEWS=40\n'
         fi
+        if [ "$omitted_var" != IMAGE_JOBS ]; then
+            printf 'IMAGE_JOBS=3\n'
+        fi
         if [ "$omitted_var" != INCOMING_DIR ]; then
             printf 'INCOMING_DIR=%q\n' "$incoming_dir"
         fi
@@ -136,6 +139,7 @@ assert metadata["settings"]["title"] == title
 assert metadata["settings"]["height"] == "120"
 assert metadata["settings"]["thumbheight"] == "30"
 assert metadata["settings"]["maxpreviews"] == maxpreviews
+assert metadata["settings"]["image_jobs"] == "3"
 assert metadata["settings"]["shuffle"] is False
 assert isinstance(metadata["settings"]["splash_page"], bool)
 assert "original_basepath" in metadata["settings"]
@@ -168,7 +172,6 @@ test_init() {
         PHOTOALBUM_DEFAULT_RC="$TEST_TMPDIR/missing" \
             "$TEST_PHOTOALBUM" --init >/dev/null
         test::assert_file_exists photoalbum.conf
-        test::assert_path_absent Makefile
     )
     config=$(<"$TEST_TMPDIR/photoalbum.conf")
     test::assert_contains \
@@ -420,6 +423,8 @@ test_generate_cli_overrides_config_values() {
     test::assert_contains 'height: 45px;' "$page_html"
     test::assert_contains 'max-height: 456px;' "$view_html"
     test::assert_contains 'Next 1 pictures' "$page_html"
+    test::assert_contains 'href="page-2.html" class="arrow">&rArr;</a>' \
+        "$page_html"
     test::assert_not_contains 'Config title' "$page_html"
 
     test::teardown
@@ -813,6 +818,56 @@ test_verbose_output_reports_processing_decisions() {
     test::teardown
 }
 
+test_generate_image_jobs_limits_parallel_imagemagick() {
+    local active_file
+    local config_file
+    local fake_bin
+    local lock_file
+    local log_file
+    local max_file
+    local max_seen
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    lock_file="$TEST_TMPDIR/parallel.lock"
+    active_file="$TEST_TMPDIR/parallel.active"
+    max_file="$TEST_TMPDIR/parallel.max"
+    log_file="$TEST_TMPDIR/parallel.log"
+
+    test::install_parallel_imagemagick_spy "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/02.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/03.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/04.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Parallel image jobs album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_PARALLEL_MAGICK_LOCK="$lock_file" \
+            TEST_PARALLEL_MAGICK_ACTIVE="$active_file" \
+            TEST_PARALLEL_MAGICK_MAX="$max_file" \
+            TEST_PARALLEL_MAGICK_LOG="$log_file" \
+            "$TEST_PHOTOALBUM" --image-jobs 2 --generate
+    )
+
+    max_seen=$(<"$max_file")
+    if (( max_seen < 2 || max_seen > 2 )); then
+        echo "FAIL: expected max parallel ImageMagick jobs to be 2" >&2
+        echo "max_seen=$max_seen" >&2
+        cat "$log_file" >&2
+        exit 1
+    fi
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/01.jpg"
+    test::assert_file_exists "$TEST_TMPDIR/dist/thumbs/01.jpg"
+    test::assert_file_exists "$TEST_TMPDIR/dist/blurs/01.jpg"
+    test::teardown
+}
+
 test_repeated_output_flags_use_last_value() {
     local config_file
     local fake_bin
@@ -871,6 +926,7 @@ TITLE=A\\ simple\\ Photoalbum
 HEIGHT=1200
 THUMBHEIGHT=300
 MAXPREVIEWS=40
+IMAGE_JOBS=3
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
@@ -1005,6 +1061,7 @@ TITLE=Selected\\ config
 HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=7
+IMAGE_JOBS=3
 RANDOM_SEED=''
 SHUFFLE=yes
 SPLASH_PAGE=yes
@@ -1041,6 +1098,7 @@ TITLE=Current\\ directory\\ config
 HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=8
+IMAGE_JOBS=3
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
@@ -1087,6 +1145,7 @@ test_print_config_applies_cli_overrides_without_writes() {
                 --height 456 \
                 --thumbheight 45 \
                 --maxpreviews 9 \
+                --image-jobs 2 \
                 --random-seed cli-seed \
                 --shuffle \
                 --no-splash \
@@ -1101,6 +1160,7 @@ TITLE=CLI\\ title
 HEIGHT=456
 THUMBHEIGHT=45
 MAXPREVIEWS=9
+IMAGE_JOBS=2
 RANDOM_SEED=cli-seed
 SHUFFLE=yes
 SPLASH_PAGE=no
@@ -1283,6 +1343,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
                 --height 456 \
                 --thumbheight 45 \
                 --maxpreviews 2 \
+                --image-jobs 2 \
                 --random-seed dry-seed \
                 --shuffle \
                 --no-splash \
@@ -1300,6 +1361,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains 'Height: 456' "$output"
     test::assert_contains 'Thumb height: 45' "$output"
     test::assert_contains 'Max previews per page: 2' "$output"
+    test::assert_contains 'Image jobs: 2' "$output"
     test::assert_contains 'Random seed: dry-seed' "$output"
     test::assert_contains 'Shuffle: yes' "$output"
     test::assert_contains 'Splash page: no' "$output"
@@ -1527,6 +1589,7 @@ test_generate_preflight_rejects_invalid_numbers() {
         HEIGHT
         THUMBHEIGHT
         MAXPREVIEWS
+        IMAGE_JOBS
     )
 
     test::setup
@@ -1796,6 +1859,8 @@ test_integration_generates_album_outputs_and_cleans() {
         "$(<"$TEST_TMPDIR/dist/page-2.html")"
     test::assert_contains 'Next 2 pictures' "$page_html"
     test::assert_contains 'No EXIF details available.' "$details_html"
+    test::assert_contains '<div class="details-layout">' "$details_html"
+    test::assert_contains "class='view details-photo" "$details_html"
     test::assert_contains 'href="1-1.html">Image view</a>' "$details_html"
     test::assert_contains '<title>Integration album</title>' "$top_index_html"
     test::assert_contains 'Enter album' "$top_index_html"
@@ -2475,6 +2540,7 @@ test_missing_option_values_fail() {
         --height
         --thumbheight
         --maxpreviews
+        --image-jobs
         --random-seed
     )
 
@@ -2543,6 +2609,9 @@ main() {
     test::run_case \
         '--verbose reports processing decisions' \
         test_verbose_output_reports_processing_decisions
+    test::run_case \
+        '--generate --image-jobs limits ImageMagick parallelism' \
+        test_generate_image_jobs_limits_parallel_imagemagick
     test::run_case \
         'repeated output flags use last value' \
         test_repeated_output_flags_use_last_value

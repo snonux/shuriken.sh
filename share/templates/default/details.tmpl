@@ -1,11 +1,13 @@
 cat <<END
 <div class='view'>
-    <a href="${render_page_num_html}-${render_preview_num_html}.html">
-        <img class='view ${render_animation_class_html}' border='0' src='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}' />
-    </a>
-    <div class="details-panel">
-        <h1>Details</h1>
-        ${render_exif_details_html}
+    <div class="details-layout">
+        <a class="details-photo-link" href="${render_page_num_html}-${render_preview_num_html}.html">
+            <img class='view details-photo ${render_animation_class_html}' border='0' src='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}' />
+        </a>
+        <div class="details-panel">
+            <h1>Details</h1>
+            ${render_exif_details_html}
+        </div>
     </div>
     <div class="navigator">
         <a href="${render_page_num_html}-${render_view_prev_html}.html" class="arrow">&lArr;</a>
