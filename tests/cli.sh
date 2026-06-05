@@ -2203,6 +2203,55 @@ test_refresh_splash_requires_existing_generated_assets() {
     test::teardown
 }
 
+test_refresh_splash_requires_existing_generated_blurs() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    mkdir -p "$TEST_TMPDIR/incoming" \
+        "$TEST_TMPDIR/dist" \
+        "$TEST_TMPDIR/dist/photos"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Missing splash blurs album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output "$TEST_PHOTOALBUM" --refresh-splash
+    )
+
+    test::assert_contains \
+        "ERROR: DIST_DIR blurs directory $TEST_TMPDIR/dist/blurs must exist" \
+        "$output"
+    test::assert_path_absent "$TEST_TMPDIR/dist/index.html"
+    test::teardown
+}
+
+test_refresh_splash_rejects_no_splash_config() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'No splash refresh album' 40
+    printf 'SPLASH_PAGE=no\n' >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output "$TEST_PHOTOALBUM" --refresh-splash
+    )
+
+    test::assert_contains \
+        'ERROR: SPLASH_PAGE must be yes to refresh the splash page' \
+        "$output"
+    test::assert_path_absent "$TEST_TMPDIR/dist/index.html"
+    test::teardown
+}
+
 test_generate_replaces_dist_after_success() {
     local config_file
     local fake_bin
@@ -3121,6 +3170,12 @@ main() {
     test::run_case \
         '--refresh-splash requires existing generated assets' \
         test_refresh_splash_requires_existing_generated_assets
+    test::run_case \
+        '--refresh-splash requires existing generated blurs' \
+        test_refresh_splash_requires_existing_generated_blurs
+    test::run_case \
+        '--refresh-splash rejects SPLASH_PAGE=no' \
+        test_refresh_splash_rejects_no_splash_config
     test::run_case \
         '--generate replaces final dist after success' \
         test_generate_replaces_dist_after_success
