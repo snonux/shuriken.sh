@@ -1979,6 +1979,12 @@ test_render_view_redirects_uses_numeric_last_view() {
     local dist_dir
     local html_dir
     local redirect_html
+    # Passed by name to record_rendered_view_page and render_view_redirects.
+    # shellcheck disable=SC2034
+    local -A rendered_last_views=()
+    # Passed by name to record_rendered_view_page and render_view_redirects.
+    # shellcheck disable=SC2034
+    local -a rendered_view_pages=()
     local view
 
     test::setup
@@ -1996,11 +2002,14 @@ test_render_view_redirects_uses_numeric_last_view() {
 
     for view in 1 2 3 4 5 6 7 8 9 10; do
         : > "$dist_dir/1-$view.html"
+        record_rendered_view_page rendered_view_pages rendered_last_views \
+            1 "$view"
     done
     : > "$dist_dir/2-1.html"
+    record_rendered_view_page rendered_view_pages rendered_last_views 2 1
     touch -t 202606050000 "$dist_dir"/1-*.html "$dist_dir/2-1.html"
 
-    render_view_redirects "$html_dir"
+    render_view_redirects "$html_dir" rendered_view_pages rendered_last_views
 
     test::assert_file_exists "$dist_dir/1-11.html"
     redirect_html=$(<"$dist_dir/1-11.html")
@@ -2014,6 +2023,12 @@ test_render_view_redirects_wraps_when_last_page_full() {
     local html_dir
     local next_redirect_html
     local prev_redirect_html
+    # Passed by name to record_rendered_view_page and render_view_redirects.
+    # shellcheck disable=SC2034
+    local -A rendered_last_views=()
+    # Passed by name to record_rendered_view_page and render_view_redirects.
+    # shellcheck disable=SC2034
+    local -a rendered_view_pages=()
     local view
 
     test::setup
@@ -2033,9 +2048,15 @@ test_render_view_redirects_wraps_when_last_page_full() {
         : > "$dist_dir/1-$view.html"
         : > "$dist_dir/2-$view.html"
         : > "$dist_dir/3-$view.html"
+        record_rendered_view_page rendered_view_pages rendered_last_views \
+            1 "$view"
+        record_rendered_view_page rendered_view_pages rendered_last_views \
+            2 "$view"
+        record_rendered_view_page rendered_view_pages rendered_last_views \
+            3 "$view"
     done
 
-    render_view_redirects "$html_dir"
+    render_view_redirects "$html_dir" rendered_view_pages rendered_last_views
 
     test::assert_file_exists "$dist_dir/0-2.html"
     test::assert_file_exists "$dist_dir/3-3.html"

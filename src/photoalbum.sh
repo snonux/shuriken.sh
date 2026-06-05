@@ -1152,20 +1152,6 @@ maybe_shuffle() {
     fi
 }
 
-last_view_number() {
-    local -r page="$1"; shift
-    local -r html_dir="$1"; shift
-
-    find "$DIST_DIR/$html_dir" \
-        -maxdepth 1 \
-        -regextype posix-egrep \
-        -regex ".*/${page}-[0-9]+\\.html" \
-        -printf '%f\n' \
-        | sed -n "s/^${page}-\\([0-9][0-9]*\\)\\.html$/\\1/p" \
-        | sort -n \
-        | tail -n 1
-}
-
 album_photo_files() {
     local -r photos_dir="$1"; shift
 
@@ -1466,36 +1452,40 @@ render_photo_view_and_details() {
         "$photo"
 }
 
+record_rendered_view_page() {
+    # shellcheck disable=SC2178
+    local -n view_pages_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n last_views_ref="$1"; shift
+    local -r page="$1"; shift
+    local -r preview="$1"; shift
+
+    if [ -z "${last_views_ref[$page]+set}" ]; then
+        view_pages_ref+=("$page")
+    fi
+    last_views_ref["$page"]="$preview"
+}
+
 render_view_redirects() {
     local -r html_dir="$1"; shift
-    local -i max_page=0
-    local -a prefixes=()
+    # shellcheck disable=SC2178
+    local -n view_pages_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n last_views_ref="$1"; shift
     local lastview
+    local max_page
     local nextredirect
     local page
     local prevredirect
-    local prefix
 
-    mapfile -t prefixes < <(
-        find "$DIST_DIR/$html_dir" \
-            -maxdepth 1 \
-            -regextype posix-egrep \
-            -regex '.*/[0-9]+-[0-9]+\.html' \
-            -printf '%f\n' \
-            | cut -d'-' -f1 \
-            | sort -n -u
-    )
-
-    if (( ${#prefixes[@]} == 0 )); then
+    if (( ${#view_pages_ref[@]} == 0 )); then
         return
     fi
 
-    max_page=${prefixes[$(( ${#prefixes[@]} - 1 ))]}
+    max_page=${view_pages_ref[$(( ${#view_pages_ref[@]} - 1 ))]}
 
-    for prefix in "${prefixes[@]}"; do
-        page="$prefix"
-        lastview=$(last_view_number "$page" "$html_dir")
-
+    for page in "${view_pages_ref[@]}"; do
+        lastview=${last_views_ref[$page]}
         prevredirect="${page}-0"
         nextredirect="${page}-$(( lastview + 1 ))"
 
@@ -1671,6 +1661,12 @@ render_album_pages() {
     # Passed by name to queue_album_view_render_job.
     # shellcheck disable=SC2034
     local -a render_job_pids=()
+    # Passed by name to record_rendered_view_page and render_view_redirects.
+    # shellcheck disable=SC2034
+    local -A rendered_last_views=()
+    # Passed by name to record_rendered_view_page and render_view_redirects.
+    # shellcheck disable=SC2034
+    local -a rendered_view_pages=()
 
     name=$(album_page_name "$num")
 
@@ -1712,13 +1708,15 @@ render_album_pages() {
             "$photo" \
             render_job_pids \
             render_failed
+        record_rendered_view_page rendered_view_pages rendered_last_views \
+            "$num" "$i"
     done < <(album_photo_files "$photos_dir")
 
     finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
     if ! wait_for_album_view_render_jobs render_job_pids render_failed; then
         return 1
     fi
-    render_view_redirects "$html_dir"
+    render_view_redirects "$html_dir" rendered_view_pages rendered_last_views
     render_album_index "$photos_dir" "$html_dir" "$blurs_dir" "$backhref"
 }
 
