@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 : "${TEST_REPO_ROOT:=${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
 : "${TEST_PHOTOALBUM:=${PHOTOALBUM:-$TEST_REPO_ROOT/bin/photoalbum}}"
