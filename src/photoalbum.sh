@@ -1159,14 +1159,11 @@ create_all_photo_derivatives() {
     fi
 }
 
-render_photo_entry() {
-    local -r photos_dir="$1"; shift
-    local -r thumbs_dir="$1"; shift
-    local -r blurs_dir="$1"; shift
-    local -r html_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r tarball_name="$1"; shift
+render_album_page_thumbnail() {
     local -r page_name="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
     local -r page_num="$1"; shift
     local -r preview_num="$1"; shift
     local -r photo="$1"; shift
@@ -1309,6 +1306,92 @@ render_album_index() {
     fi
 }
 
+album_page_name() {
+    local -r page_num="$1"; shift
+
+    printf 'page-%s\n' "$page_num"
+}
+
+advance_album_preview_page() {
+    local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n page_name_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n prev_page_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n page_num_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n preview_num_ref="$1"; shift
+    local next_page_name
+
+    next_page_name=$(album_page_name "$(( page_num_ref + 1 ))")
+    finish_preview_page_with_next \
+        "$page_name_ref" \
+        "$html_dir" \
+        "$backhref" \
+        "$tarball_name" \
+        "$next_page_name" \
+        "${prev_page_ref:-}"
+
+    prev_page_ref="$page_name_ref"
+    (( ++page_num_ref ))
+    # shellcheck disable=SC2034
+    preview_num_ref=1
+    page_name_ref=$(album_page_name "$page_num_ref")
+
+    start_preview_page \
+        "$photos_dir" \
+        "$html_dir" \
+        "$blurs_dir" \
+        "$backhref" \
+        "$page_name_ref" \
+        'no'
+    render_previous_page_link "$page_name_ref" "$html_dir" "$prev_page_ref"
+}
+
+queue_album_view_render_job() {
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    local -r page_num="$1"; shift
+    local -r preview_num="$1"; shift
+    local -r photo="$1"; shift
+    # shellcheck disable=SC2178
+    local -n render_job_pids_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n render_failed_ref="$1"; shift
+
+    wait_for_image_job_slot render_job_pids_ref render_failed_ref
+    render_photo_view_and_details \
+        "$photos_dir" \
+        "$blurs_dir" \
+        "$html_dir" \
+        "$backhref" \
+        "$tarball_name" \
+        "$page_num" \
+        "$preview_num" \
+        "$photo" &
+    render_job_pids_ref+=("$!")
+}
+
+wait_for_album_view_render_jobs() {
+    # shellcheck disable=SC2178
+    local -n render_job_pids_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n render_failed_ref="$1"; shift
+
+    wait_for_image_jobs render_job_pids_ref render_failed_ref
+    if (( render_failed_ref != 0 )); then
+        return 1
+    fi
+}
+
 render_album_pages() {
     local -r photos_dir="$1"; shift
     local -r html_dir="$1"; shift
@@ -1319,13 +1402,19 @@ render_album_pages() {
 
     local name
     local photo
+    # Passed by name to advance_album_preview_page.
+    # shellcheck disable=SC2034
     local prev
     local -i i=0
     local -i num=1
+    # Passed by name to queue_album_view_render_job.
+    # shellcheck disable=SC2034
     local -i render_failed=0
+    # Passed by name to queue_album_view_render_job.
+    # shellcheck disable=SC2034
     local -a render_job_pids=()
 
-    name="page-$num"
+    name=$(album_page_name "$num")
 
     start_preview_page \
         "$photos_dir" "$html_dir" "$blurs_dir" "$backhref" "$name" 'yes'
@@ -1334,42 +1423,27 @@ render_album_pages() {
         (( ++i ))
 
         if (( i > MAXPREVIEWS )); then
-            i=1
-            (( ++num ))
-            finish_preview_page_with_next \
-                "$name" \
-                "$html_dir" \
-                "$backhref" \
-                "$tarball_name" \
-                "page-$num" \
-                "${prev:-}"
-
-            prev="$name"
-            name="page-$num"
-
-            start_preview_page \
+            advance_album_preview_page \
                 "$photos_dir" \
                 "$html_dir" \
                 "$blurs_dir" \
                 "$backhref" \
-                "$name" \
-                'no'
-            render_previous_page_link "$name" "$html_dir" "$prev"
+                "$tarball_name" \
+                name \
+                prev \
+                num \
+                i
         fi
 
-        render_photo_entry \
-            "$photos_dir" \
-            "$thumbs_dir" \
-            "$blurs_dir" \
-            "$html_dir" \
-            "$backhref" \
-            "$tarball_name" \
+        render_album_page_thumbnail \
             "$name" \
+            "$html_dir" \
+            "$thumbs_dir" \
+            "$backhref" \
             "$num" \
             "$i" \
             "$photo"
-        wait_for_image_job_slot render_job_pids render_failed
-        render_photo_view_and_details \
+        queue_album_view_render_job \
             "$photos_dir" \
             "$blurs_dir" \
             "$html_dir" \
@@ -1377,13 +1451,13 @@ render_album_pages() {
             "$tarball_name" \
             "$num" \
             "$i" \
-            "$photo" &
-        render_job_pids+=("$!")
+            "$photo" \
+            render_job_pids \
+            render_failed
     done < <(album_photo_files "$photos_dir")
 
     finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
-    wait_for_image_jobs render_job_pids render_failed
-    if (( render_failed != 0 )); then
+    if ! wait_for_album_view_render_jobs render_job_pids render_failed; then
         return 1
     fi
     render_view_redirects "$html_dir"
