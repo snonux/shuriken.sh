@@ -272,6 +272,54 @@ MAGICK
     cp "$bin_dir/magick" "$bin_dir/convert"
 }
 
+test::install_wait_n_imagemagick_spy() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" = identify ]; then
+    exit 0
+fi
+
+lock_file="${TEST_WAIT_N_MAGICK_LOCK:?}"
+log_file="${TEST_WAIT_N_MAGICK_LOG:?}"
+dest="${@: -1}"
+dest_name="$(basename "$dest")"
+dest_dir="$(basename "$(dirname "$dest")")"
+dest_label="$dest_dir/$dest_name"
+
+(
+    flock 9
+    printf 'start %s\n' "$dest_label" >> "$log_file"
+) 9>"$lock_file"
+
+if [ "$dest_label" = 'photos/01.jpg' ]; then
+    sleep "${TEST_WAIT_N_SLOW_SECONDS:-0.4}"
+else
+    sleep "${TEST_WAIT_N_FAST_SECONDS:-0.02}"
+fi
+
+mkdir -p "$(dirname "$dest")"
+{
+    printf 'fake image\n'
+    printf 'args:'
+    printf ' %q' "$@"
+    printf '\n'
+} > "$dest"
+
+(
+    flock 9
+    printf 'finish %s\n' "$dest_label" >> "$log_file"
+) 9>"$lock_file"
+MAGICK
+    chmod 0755 "$bin_dir/magick"
+    cp "$bin_dir/magick" "$bin_dir/convert"
+}
+
 test::install_failing_imagemagick() {
     local -r bin_dir="$1"; shift
 

@@ -868,6 +868,62 @@ test_generate_image_jobs_limits_parallel_imagemagick() {
     test::teardown
 }
 
+test_generate_image_jobs_waits_for_any_finished_imagemagick() {
+    local config_file
+    local fake_bin
+    local finish_01_line
+    local lock_file
+    local log_file
+    local log_output
+    local start_03_line
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    lock_file="$TEST_TMPDIR/wait-n.lock"
+    log_file="$TEST_TMPDIR/wait-n.log"
+
+    test::install_wait_n_imagemagick_spy "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/02.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/03.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/04.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Wait n image jobs album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_WAIT_N_MAGICK_LOCK="$lock_file" \
+            TEST_WAIT_N_MAGICK_LOG="$log_file" \
+            "$TEST_PHOTOALBUM" --image-jobs 2 --generate
+    )
+
+    log_output=$(<"$log_file")
+    test::assert_contains 'start photos/03.jpg' "$log_output"
+    test::assert_contains 'finish photos/01.jpg' "$log_output"
+    start_03_line=$(
+        grep -n '^start photos/03\.jpg$' "$log_file" \
+            | head -n 1 \
+            | cut -d: -f1
+    )
+    finish_01_line=$(
+        grep -n '^finish photos/01\.jpg$' "$log_file" \
+            | head -n 1 \
+            | cut -d: -f1
+    )
+
+    if (( start_03_line >= finish_01_line )); then
+        echo 'FAIL: expected photos/03.jpg to start before photos/01.jpg finished' >&2
+        cat "$log_file" >&2
+        exit 1
+    fi
+
+    test::teardown
+}
+
 test_repeated_output_flags_use_last_value() {
     local config_file
     local fake_bin
@@ -2966,6 +3022,9 @@ main() {
     test::run_case \
         '--generate --image-jobs limits ImageMagick parallelism' \
         test_generate_image_jobs_limits_parallel_imagemagick
+    test::run_case \
+        '--generate --image-jobs waits for any finished ImageMagick job' \
+        test_generate_image_jobs_waits_for_any_finished_imagemagick
     test::run_case \
         'repeated output flags use last value' \
         test_repeated_output_flags_use_last_value

@@ -914,17 +914,81 @@ wait_for_image_job_pid() {
     return "$status"
 }
 
-wait_for_image_job_slot() {
+image_job_pid_is_running() {
+    local -r pid="$1"; shift
+    local running_pid
+
+    for running_pid in "$@"; do
+        if [ "$running_pid" = "$pid" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+reap_finished_image_jobs() {
+    local -r image_job_pids_name="$1"; shift
     # shellcheck disable=SC2178
-    local -n image_job_pids_ref="$1"; shift
+    local -n image_job_pids_ref="$image_job_pids_name"
     local -n failed_ref="$1"; shift
+    local -i reaped_status="$1"; shift
+    local -i has_reaped_status=1
+    local -i status=0
+    local -a remaining_pids=()
+    local -a running_pids=()
+    local pid
+
+    mapfile -t running_pids < <(jobs -rp)
+
+    for pid in "${image_job_pids_ref[@]}"; do
+        if image_job_pid_is_running "$pid" "${running_pids[@]}"; then
+            remaining_pids+=("$pid")
+            continue
+        fi
+
+        if wait_for_image_job_pid "$pid"; then
+            status=0
+        else
+            status=$?
+        fi
+        if (( status == 127 && has_reaped_status != 0 )); then
+            status=$reaped_status
+            has_reaped_status=0
+        fi
+
+        if (( status != 0 )); then
+            failed_ref=1
+        fi
+    done
+
+    image_job_pids_ref=("${remaining_pids[@]}")
+}
+
+wait_for_next_image_job() {
+    local -r image_job_pids_name="$1"; shift
+    local -r failed_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n image_job_pids_ref="$image_job_pids_name"
+    local -i status=0
+
+    set +e
+    wait -n "${image_job_pids_ref[@]}"
+    status=$?
+    set -e
+
+    reap_finished_image_jobs "$image_job_pids_name" "$failed_name" "$status"
+}
+
+wait_for_image_job_slot() {
+    local -r image_job_pids_name="$1"; shift
+    local -r failed_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n image_job_pids_ref="$image_job_pids_name"
     local -r max_jobs="${IMAGE_JOBS:-3}"
 
     while (( ${#image_job_pids_ref[@]} >= max_jobs )); do
-        if ! wait_for_image_job_pid "${image_job_pids_ref[0]}"; then
-            failed_ref=1
-        fi
-        image_job_pids_ref=("${image_job_pids_ref[@]:1}")
+        wait_for_next_image_job "$image_job_pids_name" "$failed_name"
     done
 }
 
