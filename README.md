@@ -40,6 +40,7 @@ modern `magick` command and falls back to `convert` when needed.
 ```
 photoalbum --init
 photoalbum --generate [--config PATH] [OPTIONS]
+photoalbum --refresh-splash [--config PATH] [OPTIONS]
 photoalbum --dry-run [--config PATH] [OPTIONS]
 photoalbum --print-config [--config PATH] [OPTIONS]
 photoalbum --clean [--config PATH] [OPTIONS]
@@ -49,6 +50,7 @@ photoalbum --version
 * `--init` creates `./photoalbum.conf` in the current working directory from the
   default config. It refuses to overwrite an existing file.
 * `--generate` builds the static album.
+* `--refresh-splash` rewrites only the generated root splash page.
 * `--dry-run` loads the config and overrides, validates the planned generation,
   and prints the effective paths, image count, tarball plan, and generated file
   plan without writing output or running ImageMagick or tar.
@@ -57,12 +59,12 @@ photoalbum --version
   ImageMagick, running tar, cleaning, or initializing.
 * `--clean` removes the configured output directory.
 * `--version` prints the program version.
-* `--config PATH` selects the config file for `--generate`, `--dry-run`,
-  `--print-config`, or `--clean`.
+* `--config PATH` selects the config file for `--generate`,
+  `--refresh-splash`, `--dry-run`, `--print-config`, or `--clean`.
 
 When `--config PATH` is not provided, `--generate`, `--dry-run`,
-`--print-config`, and `--clean` read `./photoalbum.conf`. If the file is
-missing, run `photoalbum --init` first.
+`--print-config`, `--refresh-splash`, and `--clean` read `./photoalbum.conf`.
+If the file is missing, run `photoalbum --init` first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
@@ -123,15 +125,21 @@ By default, the generated root `index.html` is a no-JavaScript splash page using
 a randomly selected album photo. Set `SPLASH_PAGE=no` or pass `--no-splash` to
 restore the top-level redirect to `page-1.html`.
 
+To quickly pick a new random splash photo for an already generated album, run
+`photoalbum --refresh-splash`. This rewrites only `DIST_DIR/index.html` using
+the existing `photos` and `blurs` output, so it avoids reprocessing images and
+rerendering album pages. It requires `SPLASH_PAGE=yes`; pass
+`--random-seed VALUE` when you need a repeatable pick.
+
 By default, splash and background photos, animation classes, generated
 timestamps, and `--shuffle` preview order remain non-deterministic. Set
 `RANDOM_SEED` in the config, or pass `--random-seed VALUE`, to make those
 choices repeatable for stable tests or reproducible album builds. Use the same
 seed and inputs to produce the same HTML.
 
-`--dry-run` and `--print-config` accept the same override options as
-`--generate`. `--clean` accepts the same override options, but only `--dist`
-changes what it removes.
+`--dry-run`, `--print-config`, and `--refresh-splash` accept the same override
+options as `--generate`. `--clean` accepts the same override options, but only
+`--dist` changes what it removes.
 
 Output is human-readable by default and reports routine generation progress.
 Use `--quiet` to suppress routine progress while still writing errors to stderr.

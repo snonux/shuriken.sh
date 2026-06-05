@@ -15,6 +15,7 @@ usage() {
     cat - <<USAGE >&2
     Usage:
     $0 --generate [--config PATH] [OPTIONS]
+    $0 --refresh-splash [--config PATH] [OPTIONS]
     $0 --dry-run [--config PATH] [OPTIONS]
     $0 --print-config [--config PATH] [OPTIONS]
     $0 --clean [--config PATH] [OPTIONS]
@@ -1266,10 +1267,16 @@ render_album_splash_page() {
     local -r html_dir="$1"; shift
     local -r blurs_dir="$1"; shift
     local -r backhref="$1"; shift
+    local html='index.html'
     local photo
 
-    photo=$(randomphoto "$photos_dir" splash)
-    template 'splash' 'index.html' \
+    if (( $# > 0 )); then
+        html="$1"
+        shift
+    fi
+
+    photo=$(random_splash_photo "$photos_dir" "$blurs_dir")
+    template 'splash' "$html" \
         html_dir "$html_dir" \
         backhref "$backhref" \
         blurs_dir "$blurs_dir" \
@@ -1372,6 +1379,43 @@ render_album_pages() {
     fi
     render_view_redirects "$html_dir"
     render_album_index "$photos_dir" "$html_dir" "$blurs_dir" "$backhref"
+}
+
+splash_photo_files() {
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local photo
+
+    while IFS= read -r photo; do
+        if [ -f "$DIST_DIR/$blurs_dir/$photo" ]; then
+            printf '%s\n' "$photo"
+        fi
+    done < <(
+        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
+            | sort
+    )
+}
+
+random_splash_photo() {
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -i index
+    local photo
+    local -a photos=()
+
+    while IFS= read -r photo; do
+        photos+=("$photo")
+    done < <(splash_photo_files "$photos_dir" "$blurs_dir")
+
+    if (( ${#photos[@]} == 0 )); then
+        printf 'ERROR: No splash photos found in %s with matching blurs in %s\n' \
+            "$(_display_path "$DIST_DIR/$photos_dir")" \
+            "$(_display_path "$DIST_DIR/$blurs_dir")" >&2
+        return 1
+    fi
+
+    index=$(random_index "photo:$photos_dir:splash" "${#photos[@]}")
+    printf '%s\n' "${photos[index]}"
 }
 
 randomphoto() {
@@ -1534,6 +1578,24 @@ generate() {
     render_album_pages 'photos' '.' 'thumbs' 'blurs' '.' "$tarball_name"
     create_generation_archive "$tarball_name"
     write_generation_metadata "$tarball_name"
+}
+
+refresh_splash() {
+    local tmp_html
+    local tmp_path
+
+    tmp_path=$(mktemp "$DIST_DIR/.index.html.XXXXXX")
+    tmp_html=$(basename "$tmp_path")
+    rm -f "$tmp_path"
+
+    if render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html"; then
+        mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
+        log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
+        return
+    fi
+
+    rm -f "$DIST_DIR/$tmp_html"
+    return 1
 }
 
 dry_run() {
@@ -1994,6 +2056,45 @@ validate_template_dir() {
     done
 }
 
+validate_refresh_splash_config() {
+    local required_var
+    local -a required_vars=(
+        TITLE
+        DIST_DIR
+        TEMPLATE_DIR
+    )
+
+    for required_var in "${required_vars[@]}"; do
+        require_config_var "$required_var"
+    done
+
+    validate_yes_no_config_var SPLASH_PAGE
+
+    if [ "${SPLASH_PAGE:-yes}" != yes ]; then
+        config_error 'SPLASH_PAGE must be yes to refresh the splash page'
+    fi
+
+    validate_dist_dir
+
+    if [[ ! -d "$TEMPLATE_DIR" || ! -r "$TEMPLATE_DIR" \
+        || ! -x "$TEMPLATE_DIR" ]]; then
+        config_error "TEMPLATE_DIR $TEMPLATE_DIR must be a readable directory"
+    fi
+
+    if [ ! -r "$TEMPLATE_DIR/splash.tmpl" ]; then
+        config_error \
+            "template file $TEMPLATE_DIR/splash.tmpl must be readable"
+    fi
+
+    if [ ! -d "$DIST_DIR/photos" ]; then
+        config_error "DIST_DIR photos directory $DIST_DIR/photos must exist"
+    fi
+
+    if [ ! -d "$DIST_DIR/blurs" ]; then
+        config_error "DIST_DIR blurs directory $DIST_DIR/blurs must exist"
+    fi
+}
+
 validate_imagemagick() {
     if command -v magick >/dev/null 2>&1; then
         return
@@ -2174,7 +2275,8 @@ parse_cli_arguments() {
             --quiet)
                 PHOTOALBUM_OUTPUT_MODE=quiet
                 ;;
-            --version|--init|--clean|--generate|--dry-run|--print-config)
+            --version|--init|--clean|--generate|--refresh-splash|--dry-run|\
+            --print-config)
                 set_cli_action "$option"
                 ;;
             *)
@@ -2258,6 +2360,10 @@ run_configured_action() {
             validate_generation_config
             generate_staged
             ;;
+        --refresh-splash)
+            validate_refresh_splash_config
+            refresh_splash
+            ;;
         --dry-run)
             validate_generation_config no
             dry_run
@@ -2274,7 +2380,7 @@ run_action() {
         --version|--init)
             run_simple_action
             ;;
-        --clean|--generate|--dry-run|--print-config)
+        --clean|--generate|--refresh-splash|--dry-run|--print-config)
             run_configured_action
             ;;
         *)

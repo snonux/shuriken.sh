@@ -1987,6 +1987,86 @@ test_generate_cli_no_splash_overrides_config() {
     test::teardown
 }
 
+test_refresh_splash_rewrites_only_index_from_existing_assets() {
+    local after_index
+    local after_metadata
+    local after_page
+    local before_index
+    local before_metadata
+    local before_page
+    local config_file
+    local failing_bin
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    failing_bin="$TEST_TMPDIR/failing-bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Refresh splash album' 2
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+            --generate --random-seed seed-one
+    )
+
+    before_index=$(<"$TEST_TMPDIR/dist/index.html")
+    before_page=$(<"$TEST_TMPDIR/dist/page-1.html")
+    before_metadata=$(<"$TEST_TMPDIR/dist/photoalbum.json")
+
+    test::install_failing_imagemagick "$failing_bin"
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$failing_bin:$PATH" "$TEST_PHOTOALBUM" \
+            --refresh-splash --random-seed seed-two
+    )
+
+    after_index=$(<"$TEST_TMPDIR/dist/index.html")
+    after_page=$(<"$TEST_TMPDIR/dist/page-1.html")
+    after_metadata=$(<"$TEST_TMPDIR/dist/photoalbum.json")
+
+    test::assert_contains 'Refreshed splash page' "$output"
+    test::assert_contains '<img class="splash-photo" src="./photos/' \
+        "$after_index"
+    if [ "$before_index" = "$after_index" ]; then
+        echo 'FAIL: expected --refresh-splash to choose a new splash image' >&2
+        exit 1
+    fi
+    test "$before_page" = "$after_page"
+    test "$before_metadata" = "$after_metadata"
+    test::teardown
+}
+
+test_refresh_splash_requires_existing_generated_assets() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Missing splash assets album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output "$TEST_PHOTOALBUM" --refresh-splash
+    )
+
+    test::assert_contains \
+        "ERROR: DIST_DIR photos directory $TEST_TMPDIR/dist/photos must exist" \
+        "$output"
+    test::assert_path_absent "$TEST_TMPDIR/dist/index.html"
+    test::teardown
+}
+
 test_generate_replaces_dist_after_success() {
     local config_file
     local fake_bin
@@ -2696,6 +2776,12 @@ main() {
     test::run_case \
         '--generate --no-splash keeps root index redirect' \
         test_generate_cli_no_splash_overrides_config
+    test::run_case \
+        '--refresh-splash rewrites only root index from existing assets' \
+        test_refresh_splash_rewrites_only_index_from_existing_assets
+    test::run_case \
+        '--refresh-splash requires existing generated assets' \
+        test_refresh_splash_requires_existing_generated_assets
     test::run_case \
         '--generate replaces final dist after success' \
         test_generate_replaces_dist_after_success
