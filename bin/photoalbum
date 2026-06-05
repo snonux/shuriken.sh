@@ -609,9 +609,23 @@ prepare_template_render_vars() {
     fi
 }
 
-template() {
+validate_template_render_request() {
+    local -r template_name="$1"; shift
+    local -r context_name="$1"; shift
+    local -r template_path="$TEMPLATE_DIR/$template_name.tmpl"
+
+    if [ ! -r "$template_path" ]; then
+        config_error "template file $template_path must be readable"
+        return 1
+    fi
+
+    validate_template_context "$template_name" "$context_name"
+}
+
+render_template() {
     local -r template_name="$1"; shift
     local -r html="$1"; shift
+    local -r context_name="$1"; shift
     local -r template_path="$TEMPLATE_DIR/$template_name.tmpl"
     local dist_html
     local render_animation_class_html
@@ -644,26 +658,26 @@ template() {
     local render_title_html
     local render_view_next_html
     local render_view_prev_html
-    # shellcheck disable=SC2034
-    local -A render_context=()
 
-    parse_template_context "$template_name" render_context "$@"
-
-    if [ ! -r "$template_path" ]; then
-        config_error "template file $template_path must be readable"
-        return 1
-    fi
-
-    validate_template_context "$template_name" render_context
-
-    render_html_dir=$(template_context_value render_context html_dir)
+    render_html_dir=$(template_context_value "$context_name" html_dir)
     dist_html="$DIST_DIR/$render_html_dir"
 
     log_info "Generating $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
-    prepare_template_render_vars render_context
+    prepare_template_render_vars "$context_name"
     source_template_file "$template_path" "$dist_html/$html"
+}
+
+template() {
+    local -r template_name="$1"; shift
+    local -r html="$1"; shift
+    # shellcheck disable=SC2034
+    local -A render_context=()
+
+    parse_template_context "$template_name" render_context "$@"
+    validate_template_render_request "$template_name" render_context
+    render_template "$template_name" "$html" render_context
 }
 
 cleanphotos() {
