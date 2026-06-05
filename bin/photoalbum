@@ -2345,6 +2345,22 @@ validate_dist_dir() {
     fi
 }
 
+validate_template_dir_access() {
+    if [[ ! -d "$TEMPLATE_DIR" || ! -r "$TEMPLATE_DIR" \
+        || ! -x "$TEMPLATE_DIR" ]]; then
+        config_error "TEMPLATE_DIR $TEMPLATE_DIR must be a readable directory"
+    fi
+}
+
+validate_template_file() {
+    local -r template_name="$1"; shift
+
+    if [ ! -r "$TEMPLATE_DIR/$template_name.tmpl" ]; then
+        config_error \
+            "template file $TEMPLATE_DIR/$template_name.tmpl must be readable"
+    fi
+}
+
 validate_template_dir() {
     local template_name
     local -a required_templates=(
@@ -2358,20 +2374,14 @@ validate_template_dir() {
         view
     )
 
-    if [[ ! -d "$TEMPLATE_DIR" || ! -r "$TEMPLATE_DIR" \
-        || ! -x "$TEMPLATE_DIR" ]]; then
-        config_error "TEMPLATE_DIR $TEMPLATE_DIR must be a readable directory"
-    fi
+    validate_template_dir_access
 
     if [ "${SPLASH_PAGE:-yes}" = yes ]; then
         required_templates+=(splash)
     fi
 
     for template_name in "${required_templates[@]}"; do
-        if [ ! -r "$TEMPLATE_DIR/$template_name.tmpl" ]; then
-            config_error \
-                "template file $TEMPLATE_DIR/$template_name.tmpl must be readable"
-        fi
+        validate_template_file "$template_name"
     done
 }
 
@@ -2395,15 +2405,8 @@ validate_refresh_splash_config() {
 
     validate_dist_dir
 
-    if [[ ! -d "$TEMPLATE_DIR" || ! -r "$TEMPLATE_DIR" \
-        || ! -x "$TEMPLATE_DIR" ]]; then
-        config_error "TEMPLATE_DIR $TEMPLATE_DIR must be a readable directory"
-    fi
-
-    if [ ! -r "$TEMPLATE_DIR/splash.tmpl" ]; then
-        config_error \
-            "template file $TEMPLATE_DIR/splash.tmpl must be readable"
-    fi
+    validate_template_dir_access
+    validate_template_file splash
 
     if [ ! -d "$DIST_DIR/photos" ]; then
         config_error "DIST_DIR photos directory $DIST_DIR/photos must exist"
