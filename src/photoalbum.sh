@@ -2387,8 +2387,7 @@ validate_imagemagick() {
     config_error 'ImageMagick is required; install magick or convert'
 }
 
-validate_generation_config() {
-    local -r require_imagemagick="${1:-yes}"
+validate_common_config() {
     local required_var
     local -a required_vars=(
         TITLE
@@ -2413,6 +2412,12 @@ validate_generation_config() {
     validate_yes_no_config_var SHUFFLE
     validate_yes_no_config_var SPLASH_PAGE
     validate_yes_no_config_var TARBALL_INCLUDE
+}
+
+validate_generation_config() {
+    local -r require_imagemagick="${1:-yes}"
+
+    validate_common_config
 
     if [ ! -d "$INCOMING_DIR" ]; then
         config_error "You have to create $INCOMING_DIR first"
@@ -2429,31 +2434,9 @@ validate_generation_config() {
 }
 
 validate_print_config() {
-    local required_var
-    local -a required_vars=(
-        TITLE
-        THUMBHEIGHT
-        MAXPREVIEWS
-        IMAGE_JOBS
-        INCOMING_DIR
-        DIST_DIR
-        TEMPLATE_DIR
-    )
     local -a tar_opts=()
 
-    for required_var in "${required_vars[@]}"; do
-        require_config_var "$required_var"
-    done
-
-    validate_optional_positive_integer_config_var HEIGHT
-    validate_positive_integer_config_var THUMBHEIGHT
-    validate_positive_integer_config_var MAXPREVIEWS
-    validate_positive_integer_config_var IMAGE_JOBS
-    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT
-    validate_positive_integer_config_var TAR_TIMEOUT
-    validate_yes_no_config_var SHUFFLE
-    validate_yes_no_config_var SPLASH_PAGE
-    validate_yes_no_config_var TARBALL_INCLUDE
+    validate_common_config
     resolve_tar_opts tar_opts
 }
 
