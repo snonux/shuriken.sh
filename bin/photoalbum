@@ -11,6 +11,83 @@ DEFAULT_TEMPLATE_DIR="${PHOTOALBUM_DEFAULT_TEMPLATE_DIR:-$PACKAGED_TEMPLATE_DIR}
 declare -r DEFAULT_TEMPLATE_DIR
 PHOTOALBUM_OUTPUT_MODE="${PHOTOALBUM_OUTPUT_MODE:-normal}"
 
+declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
+    INCOMING_DIR
+    DIST_DIR
+    TEMPLATE_DIR
+    TITLE
+    HEIGHT
+    THUMBHEIGHT
+    MAXPREVIEWS
+    IMAGE_JOBS
+    RANDOM_SEED
+    SHUFFLE
+    SPLASH_PAGE
+    TARBALL_INCLUDE
+)
+declare -Ar CLI_OPTION_KIND=(
+    [--config]=value
+    [--incoming]=value
+    [--dist]=value
+    [--template]=value
+    [--title]=value
+    [--height]=value
+    [--thumbheight]=value
+    [--maxpreviews]=value
+    [--image-jobs]=value
+    [--random-seed]=value
+    [--shuffle]=flag
+    [--no-shuffle]=flag
+    [--splash]=flag
+    [--no-splash]=flag
+    [--tarball]=flag
+    [--no-tarball]=flag
+    [--verbose]=output
+    [--quiet]=output
+    [--version]=action
+    [--init]=action
+    [--clean]=action
+    [--generate]=action
+    [--refresh-splash]=action
+    [--dry-run]=action
+    [--print-config]=action
+)
+declare -Ar CLI_OPTION_TARGET=(
+    [--config]=config_file
+    [--verbose]=PHOTOALBUM_OUTPUT_MODE
+    [--quiet]=PHOTOALBUM_OUTPUT_MODE
+)
+declare -Ar CLI_OPTION_VALUE=(
+    [--shuffle]=yes
+    [--no-shuffle]=no
+    [--splash]=yes
+    [--no-splash]=no
+    [--tarball]=yes
+    [--no-tarball]=no
+    [--verbose]=verbose
+    [--quiet]=quiet
+)
+declare -Ar CLI_OPTION_CONFIG_TARGET=(
+    [--incoming]=INCOMING_DIR
+    [--dist]=DIST_DIR
+    [--template]=TEMPLATE_DIR
+    [--title]=TITLE
+    [--height]=HEIGHT
+    [--thumbheight]=THUMBHEIGHT
+    [--maxpreviews]=MAXPREVIEWS
+    [--image-jobs]=IMAGE_JOBS
+    [--random-seed]=RANDOM_SEED
+    [--shuffle]=SHUFFLE
+    [--no-shuffle]=SHUFFLE
+    [--splash]=SPLASH_PAGE
+    [--no-splash]=SPLASH_PAGE
+    [--tarball]=TARBALL_INCLUDE
+    [--no-tarball]=TARBALL_INCLUDE
+)
+declare -Ar CLI_OPTION_ARGUMENT=(
+    [--config]=path
+)
+
 usage() {
     cat - <<USAGE >&2
     Usage:
@@ -1940,8 +2017,7 @@ generate_staged() {
         set -e
         PHOTOALBUM_FINAL_DIST_DIR="$final_dist"
         export PHOTOALBUM_FINAL_DIST_DIR
-        DIST_DIR="$staging_dir"
-        generate
+        DIST_DIR="$staging_dir" generate
     )
     status=$?
     set -e
@@ -2002,9 +2078,10 @@ apply_config_defaults() {
 
 option_value() {
     local -r option="$1"; shift
+    local -r argument="${CLI_OPTION_ARGUMENT[$option]:-value}"
 
     if (( $# == 0 )) || [ -z "$1" ]; then
-        printf 'Error: %s requires a value\n' "$option" >&2
+        printf 'Error: %s requires a %s\n' "$option" "$argument" >&2
         usage
         exit 1
     fi
@@ -2012,43 +2089,20 @@ option_value() {
     printf '%s\n' "$1"
 }
 
+apply_cli_override() {
+    local -r config_target="$1"; shift
+
+    if [[ -v "cli_overrides[$config_target]" ]]; then
+        printf -v "$config_target" '%s' "${cli_overrides[$config_target]}"
+    fi
+}
+
 apply_cli_overrides() {
-    if [ -n "$cli_incoming_dir" ]; then
-        INCOMING_DIR="$cli_incoming_dir"
-    fi
-    if [ -n "$cli_dist_dir" ]; then
-        DIST_DIR="$cli_dist_dir"
-    fi
-    if [ -n "$cli_template_dir" ]; then
-        TEMPLATE_DIR="$cli_template_dir"
-    fi
-    if [ -n "$cli_title" ]; then
-        TITLE="$cli_title"
-    fi
-    if [ -n "$cli_height" ]; then
-        HEIGHT="$cli_height"
-    fi
-    if [ -n "$cli_thumbheight" ]; then
-        THUMBHEIGHT="$cli_thumbheight"
-    fi
-    if [ -n "$cli_maxpreviews" ]; then
-        MAXPREVIEWS="$cli_maxpreviews"
-    fi
-    if [ -n "$cli_image_jobs" ]; then
-        IMAGE_JOBS="$cli_image_jobs"
-    fi
-    if [ -n "$cli_random_seed" ]; then
-        RANDOM_SEED="$cli_random_seed"
-    fi
-    if [ -n "$cli_shuffle" ]; then
-        SHUFFLE="$cli_shuffle"
-    fi
-    if [ -n "$cli_splash_page" ]; then
-        SPLASH_PAGE="$cli_splash_page"
-    fi
-    if [ -n "$cli_tarball_include" ]; then
-        TARBALL_INCLUDE="$cli_tarball_include"
-    fi
+    local config_target
+
+    for config_target in "${CLI_CONFIG_OVERRIDE_TARGETS[@]}"; do
+        apply_cli_override "$config_target"
+    done
 }
 
 config_error() {
@@ -2266,41 +2320,34 @@ validate_print_config() {
     resolve_tar_opts tar_opts
 }
 
-set_cli_override() {
+set_cli_option_value() {
     local -r option="$1"; shift
     local -r value="$1"; shift
+    local config_target
 
-    case "$option" in
-        --incoming)
-            cli_incoming_dir="$value"
-            ;;
-        --dist)
-            cli_dist_dir="$value"
-            ;;
-        --template)
-            cli_template_dir="$value"
-            ;;
-        --title)
-            cli_title="$value"
-            ;;
-        --height)
-            cli_height="$value"
-            ;;
-        --thumbheight)
-            cli_thumbheight="$value"
-            ;;
-        --maxpreviews)
-            cli_maxpreviews="$value"
-            ;;
-        --image-jobs)
-            cli_image_jobs="$value"
-            ;;
-        --random-seed)
-            cli_random_seed="$value"
-            ;;
-    esac
+    config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
+    if [ -n "$config_target" ]; then
+        cli_overrides["$config_target"]="$value"
+        has_config_overrides='yes'
+        return
+    fi
 
-    has_config_overrides='yes'
+    printf -v "${CLI_OPTION_TARGET[$option]}" '%s' "$value"
+}
+
+set_cli_constant_option() {
+    local -r option="$1"; shift
+    local -r value="${CLI_OPTION_VALUE[$option]}"
+    local config_target
+
+    config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
+    if [ -n "$config_target" ]; then
+        cli_overrides["$config_target"]="$value"
+        has_config_overrides='yes'
+        return
+    fi
+
+    printf -v "${CLI_OPTION_TARGET[$option]}" '%s' "$value"
 }
 
 set_cli_action() {
@@ -2317,60 +2364,23 @@ set_cli_action() {
 parse_cli_arguments() {
     local option_arg
     local option
+    local option_kind
 
     while (( $# > 0 )); do
         option="$1"
         shift
 
-        case "$option" in
-            --config)
-                if (( $# == 0 )) || [ -z "$1" ]; then
-                    printf 'Error: --config requires a path\n' >&2
-                    usage
-                    exit 1
-                fi
-
-                config_file="$1"
-                shift
-                ;;
-            --incoming|--dist|--template|--title|--height|--thumbheight|\
-            --maxpreviews|--image-jobs|--random-seed)
+        option_kind="${CLI_OPTION_KIND[$option]:-}"
+        case "$option_kind" in
+            value)
                 option_arg=$(option_value "$option" "$@")
-                set_cli_override "$option" "$option_arg"
+                set_cli_option_value "$option" "$option_arg"
                 shift
                 ;;
-            --shuffle)
-                cli_shuffle='yes'
-                has_config_overrides='yes'
+            flag|output)
+                set_cli_constant_option "$option"
                 ;;
-            --no-shuffle)
-                cli_shuffle='no'
-                has_config_overrides='yes'
-                ;;
-            --splash)
-                cli_splash_page='yes'
-                has_config_overrides='yes'
-                ;;
-            --no-splash)
-                cli_splash_page='no'
-                has_config_overrides='yes'
-                ;;
-            --tarball)
-                cli_tarball_include='yes'
-                has_config_overrides='yes'
-                ;;
-            --no-tarball)
-                cli_tarball_include='no'
-                has_config_overrides='yes'
-                ;;
-            --verbose)
-                PHOTOALBUM_OUTPUT_MODE=verbose
-                ;;
-            --quiet)
-                PHOTOALBUM_OUTPUT_MODE=quiet
-                ;;
-            --version|--init|--clean|--generate|--refresh-splash|--dry-run|\
-            --print-config)
+            action)
                 set_cli_action "$option"
                 ;;
             *)
@@ -2488,18 +2498,7 @@ main() {
     local action=''
     local config_file=''
     local has_config_overrides='no'
-    local cli_dist_dir=''
-    local cli_height=''
-    local cli_image_jobs=''
-    local cli_incoming_dir=''
-    local cli_maxpreviews=''
-    local cli_random_seed=''
-    local cli_shuffle=''
-    local cli_splash_page=''
-    local cli_tarball_include=''
-    local cli_template_dir=''
-    local cli_thumbheight=''
-    local cli_title=''
+    local -A cli_overrides=()
 
     if (( $# == 0 )); then
         usage
