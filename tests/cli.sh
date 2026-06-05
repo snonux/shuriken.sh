@@ -1911,6 +1911,40 @@ test_integration_generates_album_outputs_and_cleans() {
     test::teardown
 }
 
+test_render_view_redirects_uses_numeric_last_view() {
+    local dist_dir
+    local html_dir
+    local redirect_html
+    local view
+
+    test::setup
+    dist_dir="$TEST_TMPDIR/dist"
+    html_dir='.'
+    mkdir -p "$dist_dir"
+
+    # shellcheck source=/dev/null
+    source <(sed '$d' "$TEST_PHOTOALBUM")
+
+    export DIST_DIR="$dist_dir"
+    export TEMPLATE_DIR="$TEST_REPO_ROOT/share/templates/default"
+    export PHOTOALBUM_OUTPUT_MODE=quiet
+    export MAXPREVIEWS=10
+
+    for view in 1 2 3 4 5 6 7 8 9 10; do
+        : > "$dist_dir/1-$view.html"
+    done
+    : > "$dist_dir/2-1.html"
+    touch -t 202606050000 "$dist_dir"/1-*.html "$dist_dir/2-1.html"
+
+    render_view_redirects "$html_dir"
+
+    test::assert_file_exists "$dist_dir/1-11.html"
+    redirect_html=$(<"$dist_dir/1-11.html")
+    test::assert_contains 'url=2-1.html' "$redirect_html"
+    test "$(<"$dist_dir/1-10.html")" = ''
+    test::teardown
+}
+
 test_generate_config_no_splash_keeps_index_redirect() {
     local config_file
     local fake_bin
@@ -2770,6 +2804,9 @@ main() {
     test::run_case \
         '--generate creates output structure and --clean removes it' \
         test_integration_generates_album_outputs_and_cleans
+    test::run_case \
+        'view redirects use numeric last view' \
+        test_render_view_redirects_uses_numeric_last_view
     test::run_case \
         '--generate SPLASH_PAGE=no keeps root index redirect' \
         test_generate_config_no_splash_keeps_index_redirect

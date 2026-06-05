@@ -894,7 +894,7 @@ maybe_shuffle() {
     fi
 }
 
-newest_view_html() {
+last_view_number() {
     local -r page="$1"; shift
     local -r html_dir="$1"; shift
 
@@ -902,9 +902,10 @@ newest_view_html() {
         -maxdepth 1 \
         -regextype posix-egrep \
         -regex ".*/${page}-[0-9]+\\.html" \
-        -printf '%T@ %f\n' \
-        | sort -nr \
-        | sed -n '1{s/^[^ ]* //;p}'
+        -printf '%f\n' \
+        | sed -n "s/^${page}-\\([0-9][0-9]*\\)\\.html$/\\1/p" \
+        | sort -n \
+        | tail -n 1
 }
 
 album_photo_files() {
@@ -1219,10 +1220,8 @@ render_view_redirects() {
     local prevredirect
 
     while IFS= read -r prefix; do
-        page=$(newest_view_html "$prefix" "$html_dir" \
-            | sed 's#\(.*\)-.*.html#\1#')
-        lastview=$(newest_view_html "$prefix" "$html_dir" \
-            | sed 's/.*-\(.*\).html/\1/')
+        page="$prefix"
+        lastview=$(last_view_number "$page" "$html_dir")
 
         prevredirect="${page}-0"
         nextredirect="${page}-$(( lastview + 1 ))"
