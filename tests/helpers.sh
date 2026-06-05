@@ -303,6 +303,29 @@ MAGICK
     cp "$bin_dir/magick" "$bin_dir/convert"
 }
 
+test::install_blocking_imagemagick() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" = identify ]; then
+    exit 0
+fi
+
+printf 'started\n' > "${TEST_BLOCKING_MAGICK_STARTED:?}"
+while [ ! -e "${TEST_BLOCKING_MAGICK_RELEASE:?}" ]; do
+    sleep 0.1
+done
+exit "${TEST_BLOCKING_MAGICK_EXIT:-42}"
+MAGICK
+    chmod 0755 "$bin_dir/magick"
+    cp "$bin_dir/magick" "$bin_dir/convert"
+}
+
 test::install_failing_generation_tools() {
     local -r bin_dir="$1"; shift
     local name

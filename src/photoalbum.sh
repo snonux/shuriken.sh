@@ -1960,11 +1960,11 @@ cleanup_generation_staging_dir() {
 }
 
 clear_generation_staging_traps() {
-    trap - EXIT INT TERM
+    trap - EXIT INT TERM HUP PIPE
 }
 
 ignore_generation_staging_interrupts() {
-    trap '' INT TERM
+    trap '' INT TERM HUP PIPE
 }
 
 replace_dist_with_staging() {
@@ -2037,6 +2037,8 @@ generate_staged() {
     trap cleanup_generation_staging_dir EXIT
     trap 'cleanup_generation_staging_dir; exit 130' INT
     trap 'cleanup_generation_staging_dir; exit 143' TERM
+    trap 'cleanup_generation_staging_dir; exit 129' HUP
+    trap 'cleanup_generation_staging_dir; exit 141' PIPE
 
     if ! prepare_generation_staging_dir "$final_dist" "$staging_dir"; then
         cleanup_generation_staging_dir

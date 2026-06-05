@@ -2248,6 +2248,87 @@ test_generate_imagemagick_timeout_preserves_dist() {
     test::teardown
 }
 
+test_generate_sighup_cleans_staging_dir() {
+    local config_file
+    local fake_bin
+    local output_file
+    local release_file
+    local started_file
+    local -i release_pid=0
+    local -i status=0
+    local -i waited=0
+    local -i generate_pid=0
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    output_file="$TEST_TMPDIR/generate.out"
+    release_file="$TEST_TMPDIR/release-magick"
+    started_file="$TEST_TMPDIR/magick-started"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::install_blocking_imagemagick "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/dist"
+    printf 'old dist\n' > "$TEST_TMPDIR/dist/index.html"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'SIGHUP album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_BLOCKING_MAGICK_STARTED="$started_file" \
+            TEST_BLOCKING_MAGICK_RELEASE="$release_file" \
+            "$TEST_PHOTOALBUM" --generate
+    ) > "$output_file" 2>&1 &
+    generate_pid=$!
+
+    while [ ! -f "$started_file" ] && kill -0 "$generate_pid" 2>/dev/null; do
+        if (( waited >= 100 )); then
+            touch "$release_file"
+            wait "$generate_pid" || true
+            echo 'FAIL: timed out waiting for fake ImageMagick to start' >&2
+            cat "$output_file" >&2
+            exit 1
+        fi
+        (( ++waited ))
+        sleep 0.05
+    done
+
+    if [ ! -f "$started_file" ]; then
+        touch "$release_file"
+        wait "$generate_pid" || true
+        echo 'FAIL: generate exited before fake ImageMagick started' >&2
+        cat "$output_file" >&2
+        exit 1
+    fi
+
+    ( sleep 5; touch "$release_file" ) &
+    release_pid=$!
+
+    kill -HUP "$generate_pid"
+    set +e
+    wait "$generate_pid"
+    status=$?
+    set -e
+
+    touch "$release_file"
+    kill "$release_pid" 2>/dev/null || true
+    wait "$release_pid" 2>/dev/null || true
+
+    if (( status != 129 )); then
+        echo "FAIL: expected SIGHUP exit status 129, got $status" >&2
+        cat "$output_file" >&2
+        exit 1
+    fi
+
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
 test_generate_tar_timeout_preserves_dist() {
     local config_file
     local fake_bin
@@ -2951,6 +3032,9 @@ main() {
     test::run_case \
         '--generate ImageMagick timeout preserves final dist' \
         test_generate_imagemagick_timeout_preserves_dist
+    test::run_case \
+        '--generate SIGHUP cleans staging directory' \
+        test_generate_sighup_cleans_staging_dir
     test::run_case \
         '--generate tar timeout preserves final dist' \
         test_generate_tar_timeout_preserves_dist
