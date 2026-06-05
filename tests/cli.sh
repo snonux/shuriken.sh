@@ -1082,6 +1082,8 @@ TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
+SYNC_DELETE=yes
+SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
 )
@@ -1219,6 +1221,8 @@ TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
+SYNC_DELETE=yes
+SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
 )
@@ -1258,6 +1262,8 @@ TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
+SYNC_DELETE=yes
+SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
 )
@@ -1322,6 +1328,8 @@ TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
+SYNC_DELETE=yes
+SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
 )
@@ -3057,6 +3065,154 @@ test_generate_handles_space_and_underscore_names_distinctly() {
     test::teardown
 }
 
+test_sync_uses_config_destinations_with_delete() {
+    local config_file
+    local dist_dir
+    local fake_bin
+    local rsync_log
+    local rsync_output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    rsync_log="$TEST_TMPDIR/rsync.log"
+
+    test::install_rsync_spy "$fake_bin"
+    mkdir -p "$dist_dir"
+    printf 'generated\n' > "$dist_dir/index.html"
+    {
+        printf 'DIST_DIR=%q\n' "$dist_dir"
+        printf 'SYNC_DESTINATIONS=(\n'
+        printf '    %q\n' \
+            'admin@fishfinger.buetow.org:/var/www/htdocs/example.org/'
+        printf '    %q\n' \
+            'admin@blowfish.buetow.org:/var/www/htdocs/example.org/'
+        printf ')\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
+            "$TEST_PHOTOALBUM" --sync
+    )
+
+    rsync_output=$(<"$rsync_log")
+    test::assert_contains $'argc=4\narg0=-av\narg1=--delete' \
+        "$rsync_output"
+    test::assert_contains "arg2=$dist_dir/" "$rsync_output"
+    test::assert_contains \
+        'arg3=admin@fishfinger.buetow.org:/var/www/htdocs/example.org/' \
+        "$rsync_output"
+    test::assert_contains \
+        'arg3=admin@blowfish.buetow.org:/var/www/htdocs/example.org/' \
+        "$rsync_output"
+    test::teardown
+}
+
+test_sync_cli_destinations_override_config_without_delete() {
+    local config_file
+    local dist_dir
+    local fake_bin
+    local rsync_log
+    local rsync_output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    rsync_log="$TEST_TMPDIR/rsync.log"
+
+    test::install_rsync_spy "$fake_bin"
+    mkdir -p "$dist_dir"
+    printf 'generated\n' > "$dist_dir/index.html"
+    {
+        printf 'DIST_DIR=%q\n' "$dist_dir"
+        printf 'SYNC_DESTINATIONS=(%q)\n' \
+            'admin@config.example:/var/www/config/'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
+            "$TEST_PHOTOALBUM" \
+                --sync \
+                --no-sync-delete \
+                --sync-destination 'admin@one.example:/var/www/one/' \
+                --sync-destination 'admin@two.example:/var/www/two/'
+    )
+
+    rsync_output=$(<"$rsync_log")
+    test::assert_contains $'argc=3\narg0=-av' "$rsync_output"
+    test::assert_not_contains '--delete' "$rsync_output"
+    test::assert_not_contains 'admin@config.example' "$rsync_output"
+    test::assert_contains "arg1=$dist_dir/" "$rsync_output"
+    test::assert_contains 'arg2=admin@one.example:/var/www/one/' \
+        "$rsync_output"
+    test::assert_contains 'arg2=admin@two.example:/var/www/two/' \
+        "$rsync_output"
+    test::teardown
+}
+
+test_sync_rejects_empty_destinations() {
+    local config_file
+    local dist_dir
+    local fake_bin
+    local output
+    local rsync_log
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    rsync_log="$TEST_TMPDIR/rsync.log"
+
+    test::install_rsync_spy "$fake_bin"
+    mkdir -p "$dist_dir"
+    printf 'DIST_DIR=%q\n' "$dist_dir" > "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --sync
+    )
+
+    test::assert_contains \
+        'ERROR: SYNC_DESTINATIONS must contain at least one destination' \
+        "$output"
+    test::assert_path_absent "$rsync_log"
+    test::teardown
+}
+
+test_sync_rejects_missing_dist() {
+    local config_file
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+
+    test::install_rsync_spy "$fake_bin"
+    {
+        printf 'DIST_DIR=%q\n' "$TEST_TMPDIR/missing-dist"
+        printf 'SYNC_DESTINATIONS=(%q)\n' \
+            'admin@example.org:/var/www/example.org/'
+    } > "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$TEST_TMPDIR/rsync.log" \
+            test::capture_failure_output "$TEST_PHOTOALBUM" --sync
+    )
+
+    test::assert_contains \
+        "ERROR: DIST_DIR $TEST_TMPDIR/missing-dist must be a readable directory" \
+        "$output"
+    test::assert_path_absent "$TEST_TMPDIR/rsync.log"
+    test::teardown
+}
+
 test_positional_commands_fail_without_deprecation() {
     local output
     local old_command
@@ -3113,6 +3269,7 @@ test_missing_option_values_fail() {
         --maxpreviews
         --image-jobs
         --random-seed
+        --sync-destination
     )
 
     for option in "${value_options[@]}"; do
@@ -3342,6 +3499,18 @@ main() {
     test::run_case \
         '--generate handles spaces and underscores distinctly' \
         test_generate_handles_space_and_underscore_names_distinctly
+    test::run_case \
+        '--sync uses config destinations with delete' \
+        test_sync_uses_config_destinations_with_delete
+    test::run_case \
+        '--sync CLI destinations override config without delete' \
+        test_sync_cli_destinations_override_config_without_delete
+    test::run_case \
+        '--sync rejects empty destinations' \
+        test_sync_rejects_empty_destinations
+    test::run_case \
+        '--sync rejects missing dist' \
+        test_sync_rejects_missing_dist
     test::run_case \
         'positional commands fail without deprecation output' \
         test_positional_commands_fail_without_deprecation

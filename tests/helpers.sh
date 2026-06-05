@@ -479,6 +479,27 @@ TAR
     chmod 0755 "$bin_dir/tar"
 }
 
+test::install_rsync_spy() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/rsync" <<'RSYNC'
+#!/usr/bin/env bash
+set -euo pipefail
+
+{
+    printf 'argc=%s\n' "$#"
+    i=0
+    for arg in "$@"; do
+        printf 'arg%s=%q\n' "$i" "$arg"
+        i=$(( i + 1 ))
+    done
+} >> "$TEST_RSYNC_LOG"
+RSYNC
+    chmod 0755 "$bin_dir/rsync"
+}
+
 test::install_hanging_tar() {
     local -r bin_dir="$1"; shift
 

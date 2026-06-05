@@ -23,6 +23,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     RANDOM_SEED
     SHUFFLE
     SPLASH_PAGE
+    SYNC_DELETE
     TARBALL_INCLUDE
 )
 declare -Ar CLI_OPTION_KIND=(
@@ -42,6 +43,9 @@ declare -Ar CLI_OPTION_KIND=(
     [--no-splash]=flag
     [--tarball]=flag
     [--no-tarball]=flag
+    [--sync-delete]=flag
+    [--no-sync-delete]=flag
+    [--sync-destination]=value
     [--verbose]=output
     [--quiet]=output
     [--version]=action
@@ -49,6 +53,7 @@ declare -Ar CLI_OPTION_KIND=(
     [--clean]=action
     [--generate]=action
     [--refresh-splash]=action
+    [--sync]=action
     [--dry-run]=action
     [--print-config]=action
 )
@@ -64,6 +69,8 @@ declare -Ar CLI_OPTION_VALUE=(
     [--no-splash]=no
     [--tarball]=yes
     [--no-tarball]=no
+    [--sync-delete]=yes
+    [--no-sync-delete]=no
     [--verbose]=verbose
     [--quiet]=quiet
 )
@@ -83,9 +90,12 @@ declare -Ar CLI_OPTION_CONFIG_TARGET=(
     [--no-splash]=SPLASH_PAGE
     [--tarball]=TARBALL_INCLUDE
     [--no-tarball]=TARBALL_INCLUDE
+    [--sync-delete]=SYNC_DELETE
+    [--no-sync-delete]=SYNC_DELETE
 )
 declare -Ar CLI_OPTION_ARGUMENT=(
     [--config]=path
+    [--sync-destination]=destination
 )
 
 usage() {
@@ -93,6 +103,7 @@ usage() {
     Usage:
     $0 --generate [--config PATH] [OPTIONS]
     $0 --refresh-splash [--config PATH] [OPTIONS]
+    $0 --sync [--config PATH] [OPTIONS]
     $0 --dry-run [--config PATH] [OPTIONS]
     $0 --print-config [--config PATH] [OPTIONS]
     $0 --clean [--config PATH] [OPTIONS]
@@ -116,6 +127,9 @@ usage() {
     --no-shuffle
     --tarball
     --no-tarball
+    --sync-destination DEST
+    --sync-delete
+    --no-sync-delete
     --verbose
     --quiet
 USAGE
@@ -405,6 +419,29 @@ resolve_tar_opts() {
     if (( ${#options_ref[@]} == 0 )); then
         options_ref=(-c)
     fi
+}
+
+resolve_sync_destinations() {
+    local -n destinations_ref="$1"; shift
+    local destinations_decl
+
+    destinations_ref=()
+
+    if ! destinations_decl=$(declare -p SYNC_DESTINATIONS 2>/dev/null); then
+        return
+    fi
+
+    case "$destinations_decl" in
+        declare\ -a*\ SYNC_DESTINATIONS=*)
+            destinations_ref=("${SYNC_DESTINATIONS[@]}")
+            ;;
+        *)
+            if [ -n "${SYNC_DESTINATIONS:-}" ]; then
+                # shellcheck disable=SC2034
+                read -r -a destinations_ref <<< "$SYNC_DESTINATIONS"
+            fi
+            ;;
+    esac
 }
 
 _html_escape() {
@@ -2040,8 +2077,10 @@ print_shell_array_assignment() {
 
 print_config() {
     local -a tar_opts=()
+    local -a sync_destinations=()
 
     resolve_tar_opts tar_opts
+    resolve_sync_destinations sync_destinations
 
     print_shell_assignment CONFIG_SOURCE "${PHOTOALBUM_CONFIG_SOURCE:-}"
     print_shell_assignment INCOMING_DIR "$INCOMING_DIR"
@@ -2060,7 +2099,26 @@ print_config() {
     print_shell_assignment TARBALL_SUFFIX "${TARBALL_SUFFIX:-.tar}"
     print_shell_assignment TAR_TIMEOUT "$TAR_TIMEOUT"
     print_shell_array_assignment TAR_OPTS "${tar_opts[@]}"
+    print_shell_assignment SYNC_DELETE "${SYNC_DELETE:-yes}"
+    print_shell_array_assignment SYNC_DESTINATIONS "${sync_destinations[@]}"
     print_shell_assignment ORIGINAL_BASEPATH "${ORIGINAL_BASEPATH:-}"
+}
+
+sync_dist() {
+    local destination
+    local -a rsync_args=(-av)
+    local -a sync_destinations=()
+
+    resolve_sync_destinations sync_destinations
+
+    if [ "${SYNC_DELETE:-yes}" = yes ]; then
+        rsync_args+=(--delete)
+    fi
+
+    for destination in "${sync_destinations[@]}"; do
+        log_info "Syncing $DIST_DIR/ to $destination"
+        rsync "${rsync_args[@]}" "$DIST_DIR/" "$destination"
+    done
 }
 
 existing_parent_dir() {
@@ -2256,11 +2314,15 @@ apply_config_defaults() {
     RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
+    SYNC_DELETE="${SYNC_DELETE:-yes}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
     TAR_TIMEOUT="${TAR_TIMEOUT:-120}"
     if ! declare -p TAR_OPTS >/dev/null 2>&1; then
         TAR_OPTS=(-c)
+    fi
+    if ! declare -p SYNC_DESTINATIONS >/dev/null 2>&1; then
+        SYNC_DESTINATIONS=()
     fi
 }
 
@@ -2291,6 +2353,10 @@ apply_cli_overrides() {
     for config_target in "${CLI_CONFIG_OVERRIDE_TARGETS[@]}"; do
         apply_cli_override "$config_target"
     done
+
+    if (( ${#cli_sync_destinations[@]} > 0 )); then
+        SYNC_DESTINATIONS=("${cli_sync_destinations[@]}")
+    fi
 }
 
 config_error() {
@@ -2493,15 +2559,54 @@ validate_generation_config() {
 
 validate_print_config() {
     local -a tar_opts=()
+    local -a sync_destinations=()
 
     validate_common_config
     resolve_tar_opts tar_opts
+    resolve_sync_destinations sync_destinations
+    validate_yes_no_config_var SYNC_DELETE
+}
+
+validate_sync_destinations() {
+    local -a sync_destinations=()
+
+    resolve_sync_destinations sync_destinations
+
+    if (( ${#sync_destinations[@]} == 0 )); then
+        config_error 'SYNC_DESTINATIONS must contain at least one destination'
+    fi
+}
+
+validate_rsync() {
+    if command -v rsync >/dev/null 2>&1; then
+        return
+    fi
+
+    config_error 'rsync is required to sync generated output'
+}
+
+validate_sync_config() {
+    require_config_var DIST_DIR
+    validate_yes_no_config_var SYNC_DELETE
+    validate_sync_destinations
+
+    if [[ ! -d "$DIST_DIR" || ! -r "$DIST_DIR" || ! -x "$DIST_DIR" ]]; then
+        config_error "DIST_DIR $DIST_DIR must be a readable directory"
+    fi
+
+    validate_rsync
 }
 
 set_cli_option_value() {
     local -r option="$1"; shift
     local -r value="$1"; shift
     local config_target
+
+    if [ "$option" = --sync-destination ]; then
+        cli_sync_destinations+=("$value")
+        has_config_overrides='yes'
+        return
+    fi
 
     config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
     if [ -n "$config_target" ]; then
@@ -2622,6 +2727,7 @@ log_configured_action() {
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT:-120}s"
     log_verbose "Effective splash page setting: ${SPLASH_PAGE:-yes}"
     log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
+    log_verbose "Effective sync delete setting: ${SYNC_DELETE:-yes}"
 }
 
 run_configured_action() {
@@ -2648,6 +2754,10 @@ run_configured_action() {
             validate_refresh_splash_config
             refresh_splash
             ;;
+        --sync)
+            validate_sync_config
+            sync_dist
+            ;;
         --dry-run)
             validate_generation_config no
             dry_run
@@ -2664,7 +2774,7 @@ run_action() {
         --version|--init)
             run_simple_action
             ;;
-        --clean|--generate|--refresh-splash|--dry-run|--print-config)
+        --clean|--generate|--refresh-splash|--sync|--dry-run|--print-config)
             run_configured_action
             ;;
         *)
@@ -2679,6 +2789,7 @@ main() {
     local config_file=''
     local has_config_overrides='no'
     local -A cli_overrides=()
+    local -a cli_sync_destinations=()
 
     if (( $# == 0 )); then
         usage

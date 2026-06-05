@@ -41,6 +41,7 @@ modern `magick` command and falls back to `convert` when needed.
 photoalbum --init
 photoalbum --generate [--config PATH] [OPTIONS]
 photoalbum --refresh-splash [--config PATH] [OPTIONS]
+photoalbum --sync [--config PATH] [OPTIONS]
 photoalbum --dry-run [--config PATH] [OPTIONS]
 photoalbum --print-config [--config PATH] [OPTIONS]
 photoalbum --clean [--config PATH] [OPTIONS]
@@ -51,6 +52,8 @@ photoalbum --version
   default config. It refuses to overwrite an existing file.
 * `--generate` builds the static album.
 * `--refresh-splash` rewrites only the generated root splash page.
+* `--sync` publishes the generated output directory to configured rsync
+  destinations.
 * `--dry-run` loads the config and overrides, validates the planned generation,
   and prints the effective paths, image count, tarball plan, and generated file
   plan without writing output or running ImageMagick or tar.
@@ -69,7 +72,7 @@ If the file is missing, run `photoalbum --init` first.
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
 `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`,
-`TARBALL_INCLUDE`, and `TAR_TIMEOUT`.
+`TARBALL_INCLUDE`, `TAR_TIMEOUT`, `SYNC_DELETE`, and `SYNC_DESTINATIONS`.
 
 Before generating, `photoalbum` validates the loaded config and command-line
 overrides. It checks required values, positive integer settings, `yes`/`no`
@@ -90,9 +93,10 @@ tarball filename uses `<timestamp>` as a placeholder so the output is stable.
 `CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`,
 `THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`,
 `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `TARBALL_INCLUDE`,
-`TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, and `ORIGINAL_BASEPATH`.
-Scalar values use Bash `%q` quoting and `TAR_OPTS` is normalized to a Bash array
-assignment, so the output can be parsed by shell tooling. `--quiet` does not
+`TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, `SYNC_DELETE`,
+`SYNC_DESTINATIONS`, and `ORIGINAL_BASEPATH`. Scalar values use Bash `%q`
+quoting and `TAR_OPTS` and `SYNC_DESTINATIONS` are normalized to Bash array
+assignments, so the output can be parsed by shell tooling. `--quiet` does not
 suppress this output, and `--verbose` does not add human-readable diagnostics to
 it.
 
@@ -120,6 +124,11 @@ The following long options override config values:
 | `--no-splash` | `SPLASH_PAGE=no` |
 | `--tarball` | `TARBALL_INCLUDE=yes` |
 | `--no-tarball` | `TARBALL_INCLUDE=no` |
+| `--sync-delete` | `SYNC_DELETE=yes` |
+| `--no-sync-delete` | `SYNC_DELETE=no` |
+
+Pass `--sync-destination DEST` one or more times with `--sync` to override the
+configured sync destinations for that run.
 
 By default, the generated root `index.html` is a no-JavaScript splash page using
 a randomly selected album photo. Set `SPLASH_PAGE=no` or pass `--no-splash` to
@@ -136,6 +145,20 @@ timestamps, and `--shuffle` preview order remain non-deterministic. Set
 `RANDOM_SEED` in the config, or pass `--random-seed VALUE`, to make those
 choices repeatable for stable tests or reproducible album builds. Use the same
 seed and inputs to produce the same HTML.
+
+To publish generated output, configure destinations and run `photoalbum --sync`:
+
+```
+SYNC_DESTINATIONS=(
+    admin@fishfinger.buetow.org:/var/www/htdocs/example.org/
+    admin@blowfish.buetow.org:/var/www/htdocs/example.org/
+)
+```
+
+`--sync` runs `rsync -av --delete "$DIST_DIR/" "$destination"` for each
+destination by default. The trailing slash on `DIST_DIR/` means the generated
+contents are copied into the target directory. Set `SYNC_DELETE=no` or pass
+`--no-sync-delete` to omit `--delete`.
 
 `--dry-run`, `--print-config`, and `--refresh-splash` accept the same override
 options as `--generate`. `--clean` accepts the same override options, but only
@@ -163,7 +186,7 @@ value to a positive integer to adjust the limit for large images or archives.
    pictures and adjust `DIST_DIR`, `TITLE`, or template settings as needed.
 3. Run `photoalbum --dry-run` to inspect the planned generation.
 4. Run `photoalbum --generate` to generate the album.
-5. Distribute the `./dist` directory to a static web server.
+5. Run `photoalbum --sync` to publish `./dist`, or distribute it manually.
 6. Run `photoalbum --clean` to remove the generated output.
 
 ## HTML templates
