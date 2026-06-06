@@ -1016,6 +1016,62 @@ test_generate_image_jobs_waits_for_any_finished_imagemagick() {
     test::teardown
 }
 
+test_generate_image_jobs_limits_parallel_identify() {
+    local active_file
+    local config_file
+    local fake_bin
+    local identify_count
+    local lock_file
+    local log_file
+    local max_file
+    local max_seen
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    lock_file="$TEST_TMPDIR/identify.lock"
+    active_file="$TEST_TMPDIR/identify.active"
+    max_file="$TEST_TMPDIR/identify.max"
+    log_file="$TEST_TMPDIR/identify.log"
+
+    test::install_parallel_identify_spy "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/02.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/03.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/04.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Parallel identify album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_PARALLEL_IDENTIFY_LOCK="$lock_file" \
+            TEST_PARALLEL_IDENTIFY_ACTIVE="$active_file" \
+            TEST_PARALLEL_IDENTIFY_MAX="$max_file" \
+            TEST_PARALLEL_IDENTIFY_LOG="$log_file" \
+            "$TEST_PHOTOALBUM" --image-jobs 2 --generate
+    )
+
+    max_seen=$(<"$max_file")
+    if (( max_seen > 2 )); then
+        echo 'FAIL: expected at most 2 parallel ImageMagick identify jobs' >&2
+        echo "max_seen=$max_seen" >&2
+        cat "$log_file" >&2
+        exit 1
+    fi
+
+    identify_count=$(grep -c '^start ' "$log_file")
+    if (( identify_count != 4 )); then
+        echo 'FAIL: expected one identify call per source image' >&2
+        echo "identify_count=$identify_count" >&2
+        cat "$log_file" >&2
+        exit 1
+    fi
+    test::teardown
+}
+
 test_repeated_output_flags_use_last_value() {
     local config_file
     local fake_bin
@@ -3501,6 +3557,9 @@ main() {
     test::run_case \
         '--generate --image-jobs waits for any finished ImageMagick job' \
         test_generate_image_jobs_waits_for_any_finished_imagemagick
+    test::run_case \
+        '--generate --image-jobs limits ImageMagick identify parallelism' \
+        test_generate_image_jobs_limits_parallel_identify
     test::run_case \
         'repeated output flags use last value' \
         test_repeated_output_flags_use_last_value

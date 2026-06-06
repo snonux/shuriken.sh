@@ -324,6 +324,67 @@ MAGICK
     cp "$bin_dir/magick" "$bin_dir/convert"
 }
 
+test::install_parallel_identify_spy() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/magick" <<'MAGICK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" = identify ]; then
+    lock_file="${TEST_PARALLEL_IDENTIFY_LOCK:?}"
+    active_file="${TEST_PARALLEL_IDENTIFY_ACTIVE:?}"
+    max_file="${TEST_PARALLEL_IDENTIFY_MAX:?}"
+    log_file="${TEST_PARALLEL_IDENTIFY_LOG:?}"
+
+    (
+        flock 9
+        active=0
+        if [ -f "$active_file" ]; then
+            active=$(<"$active_file")
+        fi
+        active=$(( active + 1 ))
+        printf '%s\n' "$active" > "$active_file"
+
+        max=0
+        if [ -f "$max_file" ]; then
+            max=$(<"$max_file")
+        fi
+        if (( active > max )); then
+            printf '%s\n' "$active" > "$max_file"
+        fi
+
+        printf 'start %s %s\n' "$active" "$*" >> "$log_file"
+    ) 9>"$lock_file"
+
+    sleep 0.1
+    printf '  exif:Make: ParallelCam\n'
+
+    (
+        flock 9
+        active=$(<"$active_file")
+        active=$(( active - 1 ))
+        printf '%s\n' "$active" > "$active_file"
+        printf 'finish %s %s\n' "$active" "$*" >> "$log_file"
+    ) 9>"$lock_file"
+    exit 0
+fi
+
+dest="${@: -1}"
+mkdir -p "$(dirname "$dest")"
+{
+    printf 'fake image\n'
+    printf 'args:'
+    printf ' %q' "$@"
+    printf '\n'
+} > "$dest"
+MAGICK
+    chmod 0755 "$bin_dir/magick"
+    cp "$bin_dir/magick" "$bin_dir/convert"
+}
+
 test::install_failing_imagemagick() {
     local -r bin_dir="$1"; shift
 
