@@ -11,6 +11,7 @@ DEFAULT_TEMPLATE_DIR="${PHOTOALBUM_DEFAULT_TEMPLATE_DIR:-$PACKAGED_TEMPLATE_DIR}
 declare -r DEFAULT_TEMPLATE_DIR
 PHOTOALBUM_OUTPUT_MODE="${PHOTOALBUM_OUTPUT_MODE:-normal}"
 PHOTOALBUM_ACTIVE_GENERATION_PID=''
+PHOTOALBUM_FORCE_GENERATE="${PHOTOALBUM_FORCE_GENERATE:-no}"
 
 declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
@@ -44,6 +45,7 @@ declare -Ar CLI_OPTION_KIND=(
     [--no-splash]=flag
     [--tarball]=flag
     [--no-tarball]=flag
+    [--force]=flag
     [--sync-delete]=flag
     [--no-sync-delete]=flag
     [--sync-destination]=value
@@ -62,6 +64,7 @@ declare -Ar CLI_OPTION_TARGET=(
     [--config]=config_file
     [--verbose]=PHOTOALBUM_OUTPUT_MODE
     [--quiet]=PHOTOALBUM_OUTPUT_MODE
+    [--force]=PHOTOALBUM_FORCE_GENERATE
 )
 declare -Ar CLI_OPTION_VALUE=(
     [--shuffle]=yes
@@ -70,6 +73,7 @@ declare -Ar CLI_OPTION_VALUE=(
     [--no-splash]=no
     [--tarball]=yes
     [--no-tarball]=no
+    [--force]=yes
     [--sync-delete]=yes
     [--no-sync-delete]=no
     [--verbose]=verbose
@@ -128,6 +132,7 @@ usage() {
     --no-shuffle
     --tarball
     --no-tarball
+    --force
     --sync-destination DEST
     --sync-delete
     --no-sync-delete
@@ -1324,7 +1329,57 @@ render_view_page() {
         tarball_name "$tarball_name"
 }
 
+photo_cache_key() {
+    local -r photo="$1"; shift
+    local checksum
+    local safe_photo
+
+    checksum=$(printf '%s' "$photo" | cksum)
+    checksum=${checksum%% *}
+    safe_photo=${photo//[^[:alnum:]._-]/_}
+    printf '%s-%s\n' "$checksum" "$safe_photo"
+}
+
+photo_cache_signature() {
+    local -r photo="$1"; shift
+    local -r photo_path="$1"; shift
+    local stat_output
+
+    stat_output=$(stat -c '%s:%Y' "$photo_path")
+    printf '%s:%s\n' "$photo" "$stat_output"
+}
+
+cached_photo_identify_output() {
+    local -r photo="$1"; shift
+    local -r photo_path="$1"; shift
+    local cache_dir
+    local cache_file
+    local cache_key
+    local cached_signature=''
+    local current_signature
+
+    cache_dir="$DIST_DIR/.photoalbum-cache/exif"
+    cache_key=$(photo_cache_key "$photo")
+    cache_file="$cache_dir/$cache_key.txt"
+    current_signature=$(photo_cache_signature "$photo" "$photo_path")
+
+    if [ -f "$cache_file" ]; then
+        IFS= read -r cached_signature < "$cache_file" || true
+        if [ "$cached_signature" = "$current_signature" ]; then
+            tail -n +2 "$cache_file"
+            return
+        fi
+    fi
+
+    mkdir -p "$cache_dir"
+    printf '%s\n' "$current_signature" > "$cache_file"
+    imagemagick_identify -verbose "$photo_path" >> "$cache_file" 2>/dev/null \
+        || true
+    tail -n +2 "$cache_file"
+}
+
 photo_exif_details_html() {
+    local -r photo="$1"; shift
     local -r photo_path="$1"; shift
     local key
     local key_html
@@ -1350,7 +1405,7 @@ photo_exif_details_html() {
                 "$value_html"
             (( ++exif_count ))
         fi
-    done < <(imagemagick_identify -verbose "$photo_path" 2>/dev/null || true)
+    done < <(cached_photo_identify_output "$photo" "$photo_path")
 
     if (( exif_count == 0 )); then
         printf '<p class="details-empty">No EXIF details available.</p>\n'
@@ -1382,7 +1437,7 @@ render_details_page() {
 
     animation_class=$(random_animation_css_class fast "$photo_file")
     exif_details_html=$(
-        photo_exif_details_html "$INCOMING_DIR/$photo_file"
+        photo_exif_details_html "$photo_file" "$INCOMING_DIR/$photo_file"
     )
     template details "$page_num-$preview_num-details.html" \
         html_dir "$html_dir" \
@@ -2151,7 +2206,12 @@ prepare_generation_staging_dir() {
     local -r staging_dir="$1"; shift
     local cache_dir
 
-    for cache_dir in photos thumbs blurs; do
+    if [ "$PHOTOALBUM_FORCE_GENERATE" = yes ]; then
+        log_verbose 'Force generation enabled; not reusing existing output cache'
+        return
+    fi
+
+    for cache_dir in photos thumbs blurs .photoalbum-cache; do
         if [ -d "$final_dist/$cache_dir" ]; then
             if ! mkdir -p "$staging_dir/$cache_dir"; then
                 return 1
@@ -2736,7 +2796,8 @@ parse_cli_arguments() {
 run_simple_action() {
     case "$action" in
         --version)
-            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' ]]; then
+            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
+                || "$PHOTOALBUM_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
             fi
@@ -2744,7 +2805,8 @@ run_simple_action() {
             printf 'This is Photoalbum Version %s\n' "$VERSION"
             ;;
         --init)
-            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' ]]; then
+            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
+                || "$PHOTOALBUM_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
             fi
@@ -2787,10 +2849,16 @@ log_configured_action() {
     log_verbose "Effective splash page setting: ${SPLASH_PAGE:-yes}"
     log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
     log_verbose "Effective sync delete setting: ${SYNC_DELETE:-yes}"
+    log_verbose "Effective force generation setting: $PHOTOALBUM_FORCE_GENERATE"
 }
 
 run_configured_action() {
     local rc_file
+
+    if [[ "$PHOTOALBUM_FORCE_GENERATE" = yes && "$action" != --generate ]]; then
+        usage
+        exit 1
+    fi
 
     rc_file="$(resolve_config_file "$config_file")"
     load_configured_action "$rc_file"

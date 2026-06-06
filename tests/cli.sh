@@ -3031,6 +3031,67 @@ test_generate_renders_exif_details() {
     test::teardown
 }
 
+test_generate_reuses_cached_exif_details_unless_forced() {
+    local config_file
+    local details_html
+    local fake_bin
+    local identify_log
+    local -i identify_count=0
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    identify_log="$TEST_TMPDIR/identify.log"
+
+    test::install_fake_imagemagick "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Cached EXIF album' 1
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_IMAGEMAGICK_IDENTIFY_LOG="$identify_log" \
+            TEST_IMAGEMAGICK_IDENTIFY_OUTPUT=$'  exif:Make: FirstCam' \
+            "$TEST_PHOTOALBUM" --generate
+    )
+
+    details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
+    test::assert_contains '<td>FirstCam</td>' "$details_html"
+    identify_count=$(wc -l < "$identify_log")
+    test "$identify_count" -eq 1
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_IMAGEMAGICK_IDENTIFY_LOG="$identify_log" \
+            TEST_IMAGEMAGICK_IDENTIFY_OUTPUT=$'  exif:Make: SecondCam' \
+            "$TEST_PHOTOALBUM" --generate
+    )
+
+    details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
+    test::assert_contains '<td>FirstCam</td>' "$details_html"
+    test::assert_not_contains '<td>SecondCam</td>' "$details_html"
+    identify_count=$(wc -l < "$identify_log")
+    test "$identify_count" -eq 1
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_IMAGEMAGICK_IDENTIFY_LOG="$identify_log" \
+            TEST_IMAGEMAGICK_IDENTIFY_OUTPUT=$'  exif:Make: SecondCam' \
+            "$TEST_PHOTOALBUM" --generate --force
+    )
+
+    details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
+    test::assert_contains '<td>SecondCam</td>' "$details_html"
+    identify_count=$(wc -l < "$identify_log")
+    test "$identify_count" -eq 2
+    test::teardown
+}
+
 test_generate_metadata_escapes_json_and_custom_tarball_suffix() {
     local config_file
     local fake_bin
@@ -3326,6 +3387,8 @@ test_unknown_options_and_conflicting_actions_fail() {
         "$TEST_PHOTOALBUM" --clean --version
     test::assert_failure 'print-config/dry-run conflict is rejected' \
         "$TEST_PHOTOALBUM" --print-config --dry-run
+    test::assert_failure '--force without generate is rejected' \
+        "$TEST_PHOTOALBUM" --sync --force
 }
 
 test_empty_args_fail() {
@@ -3582,6 +3645,9 @@ main() {
     test::run_case \
         '--generate renders image EXIF details' \
         test_generate_renders_exif_details
+    test::run_case \
+        '--generate reuses cached EXIF details unless forced' \
+        test_generate_reuses_cached_exif_details_unless_forced
     test::run_case \
         '--generate metadata escapes JSON and custom tarball suffix' \
         test_generate_metadata_escapes_json_and_custom_tarball_suffix

@@ -193,6 +193,9 @@ test::install_fake_imagemagick() {
 set -euo pipefail
 
 if [ "${1:-}" = identify ]; then
+    if [ -n "${TEST_IMAGEMAGICK_IDENTIFY_LOG:-}" ]; then
+        printf '%s\n' "$*" >> "$TEST_IMAGEMAGICK_IDENTIFY_LOG"
+    fi
     if [ -n "${TEST_IMAGEMAGICK_IDENTIFY_OUTPUT:-}" ]; then
         printf '%s\n' "$TEST_IMAGEMAGICK_IDENTIFY_OUTPUT"
     fi

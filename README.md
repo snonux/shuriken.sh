@@ -51,6 +51,8 @@ photoalbum --version
 * `--init` creates `./photoalbum.conf` in the current working directory from the
   default config. It refuses to overwrite an existing file.
 * `--generate` builds the static album.
+* `--force` with `--generate` rebuilds from scratch instead of reusing cached
+  scaled photos, thumbnails, blurs, or EXIF data from the existing output.
 * `--refresh-splash` rewrites only the generated root splash page.
 * `--sync` publishes the generated output directory to configured rsync
   destinations.
@@ -104,6 +106,13 @@ Successful generation writes `photoalbum.json` into the output directory. This
 metadata records the generator version and timestamp, config source, template
 directory, supported source image and generated file counts, tarball status, and
 effective settings useful for debugging a published album.
+
+Normal generation preserves reusable generated artifacts from the previous
+`DIST_DIR` while still rerendering HTML, random splash/background choices,
+animation classes, timestamps, and shuffled preview order. Existing scaled
+photos, thumbnails, blurs, and cached EXIF identify output are reused when the
+source image is unchanged. Pass `--force` with `--generate` to skip that cache
+copy and rebuild all generated image artifacts and EXIF data from scratch.
 
 The following long options override config values:
 
