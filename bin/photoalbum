@@ -10,6 +10,7 @@ declare -r PACKAGED_TEMPLATE_DIR='/usr/share/photoalbum/templates/default'
 DEFAULT_TEMPLATE_DIR="${PHOTOALBUM_DEFAULT_TEMPLATE_DIR:-$PACKAGED_TEMPLATE_DIR}"
 declare -r DEFAULT_TEMPLATE_DIR
 PHOTOALBUM_OUTPUT_MODE="${PHOTOALBUM_OUTPUT_MODE:-normal}"
+PHOTOALBUM_ACTIVE_GENERATION_PID=''
 
 declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
@@ -897,7 +898,7 @@ render_template() {
     render_html_dir=$(template_context_value "$context_name" html_dir)
     dist_html="$DIST_DIR/$render_html_dir"
 
-    log_info "Generating $(_display_path "$dist_html")/$html"
+    log_info "Rendering $template_name template into $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
     prepare_template_render_vars "$context_name"
@@ -2169,6 +2170,61 @@ cleanup_generation_staging_dir() {
     fi
 }
 
+terminate_process_tree() {
+    local -r signal="$1"; shift
+    local -r pid="$1"; shift
+    local child
+
+    if [ -z "$pid" ]; then
+        return
+    fi
+
+    while IFS= read -r child; do
+        if [ -n "$child" ]; then
+            terminate_process_tree "$signal" "$child"
+        fi
+    done < <(pgrep -P "$pid" 2>/dev/null || true)
+
+    kill "-$signal" "$pid" 2>/dev/null || true
+}
+
+wait_for_process_exit() {
+    local -r pid="$1"; shift
+    local -i attempts=0
+
+    while kill -0 "$pid" 2>/dev/null; do
+        if (( attempts >= 20 )); then
+            return 1
+        fi
+        (( ++attempts ))
+        sleep 0.05
+    done
+}
+
+terminate_active_generation() {
+    local -r pid="${PHOTOALBUM_ACTIVE_GENERATION_PID:-}"
+
+    if [ -z "$pid" ]; then
+        return
+    fi
+
+    terminate_process_tree TERM "$pid"
+    if ! wait_for_process_exit "$pid"; then
+        terminate_process_tree KILL "$pid"
+    fi
+    wait "$pid" 2>/dev/null || true
+    PHOTOALBUM_ACTIVE_GENERATION_PID=''
+}
+
+handle_generation_staging_signal() {
+    local -r status="$1"; shift
+
+    clear_generation_staging_traps
+    terminate_active_generation
+    cleanup_generation_staging_dir
+    exit "$status"
+}
+
 clear_generation_staging_traps() {
     trap - EXIT INT TERM HUP PIPE
 }
@@ -2245,10 +2301,10 @@ generate_staged() {
     log_verbose "Generation staging directory: $staging_dir"
     PHOTOALBUM_ACTIVE_STAGING_DIR="$staging_dir"
     trap cleanup_generation_staging_dir EXIT
-    trap 'cleanup_generation_staging_dir; exit 130' INT
-    trap 'cleanup_generation_staging_dir; exit 143' TERM
-    trap 'cleanup_generation_staging_dir; exit 129' HUP
-    trap 'cleanup_generation_staging_dir; exit 141' PIPE
+    trap 'handle_generation_staging_signal 130' INT
+    trap 'handle_generation_staging_signal 143' TERM
+    trap 'handle_generation_staging_signal 129' HUP
+    trap 'handle_generation_staging_signal 141' PIPE
 
     if ! prepare_generation_staging_dir "$final_dist" "$staging_dir"; then
         cleanup_generation_staging_dir
@@ -2262,8 +2318,11 @@ generate_staged() {
         PHOTOALBUM_FINAL_DIST_DIR="$final_dist"
         export PHOTOALBUM_FINAL_DIST_DIR
         DIST_DIR="$staging_dir" generate
-    )
+    ) &
+    PHOTOALBUM_ACTIVE_GENERATION_PID=$!
+    wait "$PHOTOALBUM_ACTIVE_GENERATION_PID"
     status=$?
+    PHOTOALBUM_ACTIVE_GENERATION_PID=''
     set -e
 
     if (( status != 0 )); then

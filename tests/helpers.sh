@@ -365,6 +365,11 @@ if [ "${1:-}" = identify ]; then
     exit 0
 fi
 
+if [ -n "${TEST_BLOCKING_MAGICK_TERMINATED:-}" ]; then
+    trap 'printf "terminated\n" > "$TEST_BLOCKING_MAGICK_TERMINATED"; exit 143' \
+        INT TERM HUP
+fi
+
 printf 'started\n' > "${TEST_BLOCKING_MAGICK_STARTED:?}"
 while [ ! -e "${TEST_BLOCKING_MAGICK_RELEASE:?}" ]; do
     sleep 0.1
