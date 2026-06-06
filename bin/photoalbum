@@ -12,6 +12,7 @@ declare -r DEFAULT_TEMPLATE_DIR
 PHOTOALBUM_OUTPUT_MODE="${PHOTOALBUM_OUTPUT_MODE:-normal}"
 PHOTOALBUM_ACTIVE_GENERATION_PID=''
 PHOTOALBUM_FORCE_GENERATE="${PHOTOALBUM_FORCE_GENERATE:-no}"
+PHOTOALBUM_CURRENT_DATE_TEXT=''
 
 declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
@@ -462,6 +463,19 @@ _html_escape() {
     printf '%s\n' "$text"
 }
 
+html_escape_to() {
+    local -n output_ref="$1"; shift
+    local text="$1"; shift
+
+    text=${text//&/\&amp;}
+    text=${text//</\&lt;}
+    text=${text//>/\&gt;}
+    text=${text//\"/\&quot;}
+    text=${text//\'/\&#39;}
+
+    output_ref="$text"
+}
+
 _css_string_escape() {
     local text="$1"; shift
 
@@ -473,6 +487,20 @@ _css_string_escape() {
     text=${text//\'/\\000027}
 
     printf '%s\n' "$text"
+}
+
+css_string_escape_to() {
+    local -n output_ref="$1"; shift
+    local text="$1"; shift
+
+    text=${text//\\/\\\\}
+    text=${text//&/\\000026}
+    text=${text//</\\00003c}
+    text=${text//>/\\00003e}
+    text=${text//\"/\\000022}
+    text=${text//\'/\\000027}
+
+    output_ref="$text"
 }
 
 _json_string_escape() {
@@ -561,6 +589,20 @@ current_date_text() {
     fi
 }
 
+current_date_text_to() {
+    local -n output_ref="$1"; shift
+
+    if [ -z "$PHOTOALBUM_CURRENT_DATE_TEXT" ]; then
+        if random_seed_is_set; then
+            PHOTOALBUM_CURRENT_DATE_TEXT='Thu Jan  1 00:00:00 UTC 1970'
+        else
+            PHOTOALBUM_CURRENT_DATE_TEXT=$(command date)
+        fi
+    fi
+
+    output_ref="$PHOTOALBUM_CURRENT_DATE_TEXT"
+}
+
 current_timestamp_slug() {
     if random_seed_is_set; then
         printf '1970-01-01-000000\n'
@@ -582,6 +624,15 @@ template_context_value() {
     local -r name="$1"; shift
 
     printf '%s\n' "${context_ref[$name]:-}"
+}
+
+template_context_value_to() {
+    local -n output_ref="$1"; shift
+    local -n context_ref="$1"; shift
+    local -r name="$1"; shift
+
+    # shellcheck disable=SC2034
+    output_ref="${context_ref[$name]:-}"
 }
 
 require_template_context_vars() {
@@ -773,77 +824,59 @@ serialize_template_render_context() {
 
 prepare_template_render_vars() {
     local -r context_name="$1"; shift
+    local context_value
 
-    render_animation_class_html=$(
-        _html_escape "$(template_context_value "$context_name" animation_class)"
-    )
-    render_backhref_css=$(
-        _css_string_escape "$(template_context_value "$context_name" backhref)"
-    )
-    render_backhref_html=$(
-        _html_escape "$(template_context_value "$context_name" backhref)"
-    )
-    render_background_image_css=$(
-        _css_string_escape \
-            "$(template_context_value "$context_name" background_image)"
-    )
-    render_blurs_dir_css=$(
-        _css_string_escape "$(template_context_value "$context_name" blurs_dir)"
-    )
-    render_current_date_text=$(_html_escape "$(current_date_text)")
-    render_enter_page_html=$(
-        _html_escape "$(template_context_value "$context_name" enter_page)"
-    )
-    render_exif_details_html=$(
-        template_context_value "$context_name" exif_details
-    )
-    render_height_html=$(_html_escape "${HEIGHT:-}")
-    render_html_dir_html=$(_html_escape "$render_html_dir")
-    render_maxpreviews_html=$(_html_escape "${MAXPREVIEWS:-}")
-    render_next_html=$(
-        _html_escape "$(template_context_value "$context_name" next)"
-    )
+    template_context_value_to context_value "$context_name" animation_class
+    html_escape_to render_animation_class_html "$context_value"
+    template_context_value_to context_value "$context_name" backhref
+    css_string_escape_to render_backhref_css "$context_value"
+    html_escape_to render_backhref_html "$context_value"
+    template_context_value_to context_value "$context_name" background_image
+    css_string_escape_to render_background_image_css "$context_value"
+    template_context_value_to context_value "$context_name" blurs_dir
+    css_string_escape_to render_blurs_dir_css "$context_value"
+    current_date_text_to context_value
+    html_escape_to render_current_date_text "$context_value"
+    template_context_value_to context_value "$context_name" enter_page
+    html_escape_to render_enter_page_html "$context_value"
+    template_context_value_to render_exif_details_html \
+        "$context_name" exif_details
+    html_escape_to render_height_html "${HEIGHT:-}"
+    html_escape_to render_html_dir_html "$render_html_dir"
+    html_escape_to render_maxpreviews_html "${MAXPREVIEWS:-}"
+    template_context_value_to context_value "$context_name" next
+    html_escape_to render_next_html "$context_value"
     if [ -n "${ORIGINAL_BASEPATH:-}" ]; then
         render_original_basepath_is_set='yes'
     else
         render_original_basepath_is_set='no'
     fi
-    render_original_basepath_html=$(_html_escape "${ORIGINAL_BASEPATH:-}")
-    render_page_num_html=$(
-        _html_escape "$(template_context_value "$context_name" page_num)"
-    )
-    render_photo_html=$(
-        _html_escape "$(template_context_value "$context_name" photo)"
-    )
-    render_photos_dir_html=$(
-        _html_escape "$(template_context_value "$context_name" photos_dir)"
-    )
-    render_prev_html=$(
-        _html_escape "$(template_context_value "$context_name" prev)"
-    )
-    render_preview_num=$(
-        template_context_value "$context_name" preview_num
-    )
-    render_preview_num_html=$(_html_escape "$render_preview_num")
-    render_redirect_page_html=$(
-        _html_escape "$(template_context_value "$context_name" redirect_page)"
-    )
-    render_show_header_bar=$(
-        template_context_value "$context_name" show_header_bar
-    )
+    html_escape_to render_original_basepath_html "${ORIGINAL_BASEPATH:-}"
+    template_context_value_to context_value "$context_name" page_num
+    html_escape_to render_page_num_html "$context_value"
+    template_context_value_to context_value "$context_name" photo
+    html_escape_to render_photo_html "$context_value"
+    template_context_value_to context_value "$context_name" photos_dir
+    html_escape_to render_photos_dir_html "$context_value"
+    template_context_value_to context_value "$context_name" prev
+    html_escape_to render_prev_html "$context_value"
+    template_context_value_to render_preview_num "$context_name" preview_num
+    html_escape_to render_preview_num_html "$render_preview_num"
+    template_context_value_to context_value "$context_name" redirect_page
+    html_escape_to render_redirect_page_html "$context_value"
+    template_context_value_to render_show_header_bar \
+        "$context_name" show_header_bar
     render_tarball_include="${TARBALL_INCLUDE:-no}"
-    render_tarball_name_html=$(
-        _html_escape "$(template_context_value "$context_name" tarball_name)"
-    )
-    render_thumbheight_html=$(_html_escape "${THUMBHEIGHT:-}")
-    render_thumbs_dir_html=$(
-        _html_escape "$(template_context_value "$context_name" thumbs_dir)"
-    )
-    render_title_html=$(_html_escape "${TITLE:-}")
+    template_context_value_to context_value "$context_name" tarball_name
+    html_escape_to render_tarball_name_html "$context_value"
+    html_escape_to render_thumbheight_html "${THUMBHEIGHT:-}"
+    template_context_value_to context_value "$context_name" thumbs_dir
+    html_escape_to render_thumbs_dir_html "$context_value"
+    html_escape_to render_title_html "${TITLE:-}"
 
     if [ -n "$render_preview_num" ]; then
-        render_view_next_html=$(_html_escape "$(( render_preview_num + 1 ))")
-        render_view_prev_html=$(_html_escape "$(( render_preview_num - 1 ))")
+        html_escape_to render_view_next_html "$(( render_preview_num + 1 ))"
+        html_escape_to render_view_prev_html "$(( render_preview_num - 1 ))"
     else
         render_view_next_html=''
         render_view_prev_html=''
@@ -1329,17 +1362,6 @@ render_view_page() {
         tarball_name "$tarball_name"
 }
 
-photo_cache_key() {
-    local -r photo="$1"; shift
-    local checksum
-    local safe_photo
-
-    checksum=$(printf '%s' "$photo" | cksum)
-    checksum=${checksum%% *}
-    safe_photo=${photo//[^[:alnum:]._-]/_}
-    printf '%s-%s\n' "$checksum" "$safe_photo"
-}
-
 photo_cache_signature() {
     local -r photo="$1"; shift
     local -r photo_path="$1"; shift
@@ -1349,24 +1371,36 @@ photo_cache_signature() {
     printf '%s:%s\n' "$photo" "$stat_output"
 }
 
+print_cached_photo_identify_output() {
+    local -r cache_file="$1"; shift
+    local line
+    local skipped_signature=no
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ "$skipped_signature" = no ]; then
+            skipped_signature=yes
+            continue
+        fi
+        printf '%s\n' "$line"
+    done < "$cache_file"
+}
+
 cached_photo_identify_output() {
     local -r photo="$1"; shift
     local -r photo_path="$1"; shift
     local cache_dir
     local cache_file
-    local cache_key
     local cached_signature=''
     local current_signature
 
     cache_dir="$DIST_DIR/.photoalbum-cache/exif"
-    cache_key=$(photo_cache_key "$photo")
-    cache_file="$cache_dir/$cache_key.txt"
+    cache_file="$cache_dir/$photo.txt"
     current_signature=$(photo_cache_signature "$photo" "$photo_path")
 
     if [ -f "$cache_file" ]; then
         IFS= read -r cached_signature < "$cache_file" || true
         if [ "$cached_signature" = "$current_signature" ]; then
-            tail -n +2 "$cache_file"
+            print_cached_photo_identify_output "$cache_file"
             return
         fi
     fi
@@ -1375,7 +1409,7 @@ cached_photo_identify_output() {
     printf '%s\n' "$current_signature" > "$cache_file"
     imagemagick_identify -verbose "$photo_path" >> "$cache_file" 2>/dev/null \
         || true
-    tail -n +2 "$cache_file"
+    print_cached_photo_identify_output "$cache_file"
 }
 
 photo_exif_details_html() {
