@@ -637,6 +637,38 @@ current_date_text_to() {
     output_ref="$SHURIKEN_CURRENT_DATE_TEXT"
 }
 
+declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
+    'render_animation_class_html|context_html|animation_class|preview details view'
+    'render_backhref_css|context_css|backhref|header splash'
+    'render_backhref_html|context_html|backhref|footer header preview splash details view'
+    'render_background_image_css|context_css|background_image|header splash'
+    'render_blurs_dir_css|context_css|blurs_dir|header splash'
+    'render_current_date_text|current_date_html||'
+    'render_enter_page_html|context_html|enter_page|splash'
+    'render_exif_details_html|context_raw|exif_details|details'
+    'render_exif_tooltip_html|context_html|exif_tooltip|details'
+    'render_height_html|config_html|HEIGHT|'
+    'render_html_dir_html|context_html|html_dir|*'
+    'render_maxpreviews_html|config_html|MAXPREVIEWS|'
+    'render_next_html|context_html|next|next'
+    'render_original_basepath_is_set|original_basepath_is_set||'
+    'render_original_basepath_html|config_html|ORIGINAL_BASEPATH|'
+    'render_page_num_html|context_html|page_num|preview details view'
+    'render_photo_html|context_html|photo|preview splash details view'
+    'render_photos_dir_html|context_html|photos_dir|splash details view'
+    'render_prev_html|context_html|prev|prev next'
+    'render_preview_num_html|context_html|preview_num|preview details view'
+    'render_redirect_page_html|context_html|redirect_page|redirect'
+    'render_show_header_bar|context_raw|show_header_bar|header'
+    'render_tarball_include|tarball_include||'
+    'render_tarball_name_html|context_html|tarball_name|footer'
+    'render_thumbheight_html|config_html|THUMBHEIGHT|'
+    'render_thumbs_dir_html|context_html|thumbs_dir|preview'
+    'render_title_html|config_html|TITLE|'
+    'render_view_next_html|preview_num_next_html|preview_num|'
+    'render_view_prev_html|preview_num_prev_html|preview_num|'
+)
+
 current_timestamp_slug() {
     if random_seed_is_set; then
         printf '1970-01-01-000000\n'
@@ -685,76 +717,49 @@ require_template_context_vars() {
     return "$missing"
 }
 
+template_render_field_is_required_for() {
+    local -r template_name="$1"; shift
+    local -r required_templates="$1"; shift
+
+    case "$required_templates" in
+        '*')
+            return 0
+            ;;
+        '')
+            return 1
+            ;;
+        *)
+            [[ " $required_templates " == *" $template_name "* ]]
+            ;;
+    esac
+}
+
 validate_template_context() {
     local -r template_name="$1"; shift
     local -r context_name="$1"; shift
-    local -n context_ref="$context_name"
-    local -a required_vars=(html_dir)
+    local -A required_var_seen=()
+    local -a required_vars=()
+    local field_spec
+    local kind
+    local _render_var
+    local required_templates
+    local source_name
 
-    case "$template_name" in
-        footer)
-            required_vars+=(backhref tarball_name)
-            ;;
-        header)
-            required_vars+=(
-                backhref
-                background_image
-                blurs_dir
-                show_header_bar
-            )
-            ;;
-        next)
-            required_vars+=(next prev)
-            ;;
-        prev)
-            required_vars+=(prev)
-            ;;
-        preview)
-            required_vars+=(
-                animation_class
-                backhref
-                page_num
-                photo
-                preview_num
-                thumbs_dir
-            )
-            ;;
-        redirect)
-            required_vars+=(redirect_page)
-            ;;
-        splash)
-            required_vars+=(
-                backhref
-                background_image
-                blurs_dir
-                enter_page
-                photo
-                photos_dir
-            )
-            ;;
-        details)
-            required_vars+=(
-                animation_class
-                backhref
-                exif_details
-                exif_tooltip
-                page_num
-                photo
-                photos_dir
-                preview_num
-            )
-            ;;
-        view)
-            required_vars+=(
-                animation_class
-                backhref
-                page_num
-                photo
-                photos_dir
-                preview_num
-            )
-            ;;
-    esac
+    for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
+        IFS='|' read -r _render_var kind source_name required_templates \
+            <<< "$field_spec"
+
+        case "$kind" in
+            context_*)
+                if template_render_field_is_required_for \
+                    "$template_name" "$required_templates" \
+                    && [ -z "${required_var_seen[$source_name]+x}" ]; then
+                    required_vars+=("$source_name")
+                    required_var_seen["$source_name"]=yes
+                fi
+                ;;
+        esac
+    done
 
     require_template_context_vars "$template_name" "$context_name" \
         "${required_vars[@]}"
@@ -763,12 +768,13 @@ validate_template_context() {
 source_template_file() {
     local -r template_path="$1"; shift
     local -r output_path="$1"; shift
+    local -r render_vars_name="$1"; shift
     local context_file
     local -i status=0
 
     context_file=$(mktemp)
     {
-        serialize_template_render_context
+        serialize_template_render_context "$render_vars_name"
         printf 'unset BASH_ENV\n'
     } > "$context_file"
 
@@ -817,109 +823,120 @@ serialize_template_render_var() {
 }
 
 serialize_template_render_context() {
-    serialize_template_render_var \
-        render_animation_class_html "$render_animation_class_html"
-    serialize_template_render_var render_backhref_css "$render_backhref_css"
-    serialize_template_render_var render_backhref_html "$render_backhref_html"
-    serialize_template_render_var \
-        render_background_image_css "$render_background_image_css"
-    serialize_template_render_var render_blurs_dir_css "$render_blurs_dir_css"
-    serialize_template_render_var \
-        render_current_date_text "$render_current_date_text"
-    serialize_template_render_var render_enter_page_html "$render_enter_page_html"
-    serialize_template_render_var \
-        render_exif_details_html "$render_exif_details_html"
-    serialize_template_render_var \
-        render_exif_tooltip_html "$render_exif_tooltip_html"
-    serialize_template_render_var render_height_html "$render_height_html"
-    serialize_template_render_var render_html_dir_html "$render_html_dir_html"
-    serialize_template_render_var \
-        render_maxpreviews_html "$render_maxpreviews_html"
-    serialize_template_render_var render_next_html "$render_next_html"
-    serialize_template_render_var \
-        render_original_basepath_is_set "$render_original_basepath_is_set"
-    serialize_template_render_var \
-        render_original_basepath_html "$render_original_basepath_html"
-    serialize_template_render_var render_page_num_html "$render_page_num_html"
-    serialize_template_render_var render_photo_html "$render_photo_html"
-    serialize_template_render_var render_photos_dir_html "$render_photos_dir_html"
-    serialize_template_render_var render_prev_html "$render_prev_html"
-    serialize_template_render_var \
-        render_preview_num_html "$render_preview_num_html"
-    serialize_template_render_var \
-        render_redirect_page_html "$render_redirect_page_html"
-    serialize_template_render_var render_show_header_bar "$render_show_header_bar"
-    serialize_template_render_var render_tarball_include "$render_tarball_include"
-    serialize_template_render_var \
-        render_tarball_name_html "$render_tarball_name_html"
-    serialize_template_render_var render_thumbheight_html "$render_thumbheight_html"
-    serialize_template_render_var render_thumbs_dir_html "$render_thumbs_dir_html"
-    serialize_template_render_var render_title_html "$render_title_html"
-    serialize_template_render_var render_view_next_html "$render_view_next_html"
-    serialize_template_render_var render_view_prev_html "$render_view_prev_html"
+    local -r render_vars_name="$1"; shift
+    local -n render_vars_ref="$render_vars_name"
+    local field_spec
+    local _kind
+    local render_var
+    local _required_templates
+    local _source_name
+
+    for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
+        IFS='|' read -r render_var _kind _source_name _required_templates \
+            <<< "$field_spec"
+        serialize_template_render_var \
+            "$render_var" "${render_vars_ref[$render_var]}"
+    done
 }
 
 prepare_template_render_vars() {
+    local -r render_vars_name="$1"; shift
     local -r context_name="$1"; shift
+    local -n render_vars_ref="$render_vars_name"
     local context_value
+    local field_spec
+    local kind
+    local render_value
+    local render_var
+    local _required_templates
+    local source_name
 
-    template_context_value_to context_value "$context_name" animation_class
-    html_escape_to render_animation_class_html "$context_value"
-    template_context_value_to context_value "$context_name" backhref
-    css_string_escape_to render_backhref_css "$context_value"
-    html_escape_to render_backhref_html "$context_value"
-    template_context_value_to context_value "$context_name" background_image
-    css_string_escape_to render_background_image_css "$context_value"
-    template_context_value_to context_value "$context_name" blurs_dir
-    css_string_escape_to render_blurs_dir_css "$context_value"
-    current_date_text_to context_value
-    html_escape_to render_current_date_text "$context_value"
-    template_context_value_to context_value "$context_name" enter_page
-    html_escape_to render_enter_page_html "$context_value"
-    template_context_value_to render_exif_details_html \
-        "$context_name" exif_details
-    template_context_value_to context_value "$context_name" exif_tooltip
-    html_escape_to render_exif_tooltip_html "$context_value"
-    html_escape_to render_height_html "${HEIGHT:-}"
-    html_escape_to render_html_dir_html "$render_html_dir"
-    html_escape_to render_maxpreviews_html "${MAXPREVIEWS:-}"
-    template_context_value_to context_value "$context_name" next
-    html_escape_to render_next_html "$context_value"
-    if [ -n "${ORIGINAL_BASEPATH:-}" ]; then
-        render_original_basepath_is_set='yes'
-    else
-        render_original_basepath_is_set='no'
-    fi
-    html_escape_to render_original_basepath_html "${ORIGINAL_BASEPATH:-}"
-    template_context_value_to context_value "$context_name" page_num
-    html_escape_to render_page_num_html "$context_value"
-    template_context_value_to context_value "$context_name" photo
-    html_escape_to render_photo_html "$context_value"
-    template_context_value_to context_value "$context_name" photos_dir
-    html_escape_to render_photos_dir_html "$context_value"
-    template_context_value_to context_value "$context_name" prev
-    html_escape_to render_prev_html "$context_value"
-    template_context_value_to render_preview_num "$context_name" preview_num
-    html_escape_to render_preview_num_html "$render_preview_num"
-    template_context_value_to context_value "$context_name" redirect_page
-    html_escape_to render_redirect_page_html "$context_value"
-    template_context_value_to render_show_header_bar \
-        "$context_name" show_header_bar
-    render_tarball_include="${TARBALL_INCLUDE:-no}"
-    template_context_value_to context_value "$context_name" tarball_name
-    html_escape_to render_tarball_name_html "$context_value"
-    html_escape_to render_thumbheight_html "${THUMBHEIGHT:-}"
-    template_context_value_to context_value "$context_name" thumbs_dir
-    html_escape_to render_thumbs_dir_html "$context_value"
-    html_escape_to render_title_html "${TITLE:-}"
+    render_vars_ref=()
 
-    if [ -n "$render_preview_num" ]; then
-        html_escape_to render_view_next_html "$(( render_preview_num + 1 ))"
-        html_escape_to render_view_prev_html "$(( render_preview_num - 1 ))"
-    else
-        render_view_next_html=''
-        render_view_prev_html=''
-    fi
+    for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
+        IFS='|' read -r render_var kind source_name _required_templates \
+            <<< "$field_spec"
+
+        case "$kind" in
+            context_css)
+                template_context_value_to \
+                    context_value "$context_name" "$source_name"
+                css_string_escape_to render_value "$context_value"
+                ;;
+            context_html)
+                template_context_value_to \
+                    context_value "$context_name" "$source_name"
+                html_escape_to render_value "$context_value"
+                ;;
+            context_raw)
+                template_context_value_to \
+                    render_value "$context_name" "$source_name"
+                ;;
+            current_date_html)
+                current_date_text_to context_value
+                html_escape_to render_value "$context_value"
+                ;;
+            config_html)
+                case "$source_name" in
+                    HEIGHT)
+                        context_value="${HEIGHT:-}"
+                        ;;
+                    MAXPREVIEWS)
+                        context_value="${MAXPREVIEWS:-}"
+                        ;;
+                    ORIGINAL_BASEPATH)
+                        context_value="${ORIGINAL_BASEPATH:-}"
+                        ;;
+                    THUMBHEIGHT)
+                        context_value="${THUMBHEIGHT:-}"
+                        ;;
+                    TITLE)
+                        context_value="${TITLE:-}"
+                        ;;
+                    *)
+                        config_error \
+                            "unknown template render config $source_name"
+                        return 1
+                        ;;
+                esac
+                html_escape_to render_value "$context_value"
+                ;;
+            original_basepath_is_set)
+                if [ -n "${ORIGINAL_BASEPATH:-}" ]; then
+                    render_value='yes'
+                else
+                    render_value='no'
+                fi
+                ;;
+            preview_num_next_html)
+                template_context_value_to \
+                    context_value "$context_name" "$source_name"
+                if [ -n "$context_value" ]; then
+                    html_escape_to render_value "$(( context_value + 1 ))"
+                else
+                    render_value=''
+                fi
+                ;;
+            preview_num_prev_html)
+                template_context_value_to \
+                    context_value "$context_name" "$source_name"
+                if [ -n "$context_value" ]; then
+                    html_escape_to render_value "$(( context_value - 1 ))"
+                else
+                    render_value=''
+                fi
+                ;;
+            tarball_include)
+                render_value="${TARBALL_INCLUDE:-no}"
+                ;;
+            *)
+                config_error "unknown template render field kind $kind"
+                return 1
+                ;;
+        esac
+
+        render_vars_ref["$render_var"]="$render_value"
+    done
 }
 
 validate_template_render_request() {
@@ -941,46 +958,20 @@ render_template() {
     local -r context_name="$1"; shift
     local -r template_path="$TEMPLATE_DIR/$template_name.tmpl"
     local dist_html
-    local render_animation_class_html
-    local render_backhref_css
-    local render_backhref_html
-    local render_background_image_css
-    local render_blurs_dir_css
-    local render_current_date_text
-    local render_enter_page_html
-    local render_exif_details_html
-    local render_exif_tooltip_html
-    local render_height_html
-    local render_html_dir
-    local render_html_dir_html
-    local render_maxpreviews_html
-    local render_next_html
-    local render_original_basepath_is_set
-    local render_original_basepath_html
-    local render_page_num_html
-    local render_photo_html
-    local render_photos_dir_html
-    local render_prev_html
-    local render_preview_num
-    local render_preview_num_html
-    local render_redirect_page_html
-    local render_show_header_bar
-    local render_tarball_include
-    local render_tarball_name_html
-    local render_thumbheight_html
-    local render_thumbs_dir_html
-    local render_title_html
-    local render_view_next_html
-    local render_view_prev_html
+    local html_dir
+    # Passed by name to prepare_template_render_vars and source_template_file.
+    # shellcheck disable=SC2034
+    local -A render_vars=()
 
-    render_html_dir=$(template_context_value "$context_name" html_dir)
-    dist_html="$DIST_DIR/$render_html_dir"
+    html_dir=$(template_context_value "$context_name" html_dir)
+    dist_html="$DIST_DIR/$html_dir"
 
-    log_info "Rendering $template_name template into $(_display_path "$dist_html")/$html"
+    log_info \
+        "Rendering $template_name template into $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
-    prepare_template_render_vars "$context_name"
-    source_template_file "$template_path" "$dist_html/$html"
+    prepare_template_render_vars render_vars "$context_name"
+    source_template_file "$template_path" "$dist_html/$html" render_vars
 }
 
 template() {
