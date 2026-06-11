@@ -7,7 +7,7 @@ PREFIX := env_var_or_default("PREFIX", "/usr")
 BINDIR := env_var_or_default("BINDIR", PREFIX + "/bin")
 DATADIR := env_var_or_default("DATADIR", PREFIX + "/share")
 SYSCONFDIR := env_var_or_default("SYSCONFDIR", "/etc/default")
-LIB_SOURCES := "src/lib/bootstrap.source.sh src/lib/system.source.sh src/lib/template.source.sh src/lib/image.source.sh src/lib/album.source.sh src/lib/config.source.sh src/lib/action.source.sh"
+LIB_SOURCES := "src/lib/bootstrap.source.sh src/lib/system.source.sh src/lib/template.source.sh src/lib/image.source.sh src/lib/album.source.sh src/lib/config.source.sh src/lib/config.print.source.sh src/lib/config.sync.source.sh src/lib/config.staging.source.sh src/lib/config.validate.source.sh src/lib/config.cli.source.sh src/lib/action.source.sh"
 
 default: build
 

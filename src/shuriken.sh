@@ -123,6 +123,16 @@ source "$SHURIKEN_SOURCE_DIR/lib/image.source.sh"
 source "$SHURIKEN_SOURCE_DIR/lib/album.source.sh"
 # shellcheck source=src/lib/config.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/config.source.sh"
+# shellcheck source=src/lib/config.print.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/config.print.source.sh"
+# shellcheck source=src/lib/config.sync.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/config.sync.source.sh"
+# shellcheck source=src/lib/config.staging.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/config.staging.source.sh"
+# shellcheck source=src/lib/config.validate.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/config.validate.source.sh"
+# shellcheck source=src/lib/config.cli.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/config.cli.source.sh"
 # shellcheck source=src/lib/action.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/action.source.sh"
 # SHURIKEN_LIB_SOURCES_END

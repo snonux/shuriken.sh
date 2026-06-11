@@ -2347,6 +2347,58 @@ dry_run() {
 }
 
 # Inlined from src/lib/config.source.sh
+existing_parent_dir() {
+    local -r path="$1"; shift
+    local existing_parent
+
+    existing_parent=$(dirname "$path")
+
+    while [ ! -e "$existing_parent" ]; do
+        existing_parent=$(dirname "$existing_parent")
+    done
+
+    printf '%s\n' "$existing_parent"
+}
+
+resolve_config_file() {
+    local -r config_file="${1:-}"
+
+    if [ -n "$config_file" ]; then
+        printf '%s\n' "$config_file"
+    else
+        printf '%s\n' ./shuriken.conf
+    fi
+}
+
+missing_config() {
+    local -r config_file="$1"; shift
+
+    printf 'Error: Can not find config file %s\n' "$config_file" >&2
+    printf 'Run shuriken --init to create ./shuriken.conf.\n' >&2
+    exit 1
+}
+
+apply_config_defaults() {
+    HEIGHT="${HEIGHT:-}"
+    IMAGE_JOBS="${IMAGE_JOBS:-3}"
+    IMAGEMAGICK_TIMEOUT="${IMAGEMAGICK_TIMEOUT:-60}"
+    ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
+    RANDOM_SEED="${RANDOM_SEED:-}"
+    SHUFFLE="${SHUFFLE:-no}"
+    SPLASH_PAGE="${SPLASH_PAGE:-yes}"
+    SYNC_DELETE="${SYNC_DELETE:-yes}"
+    TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
+    TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
+    TAR_TIMEOUT="${TAR_TIMEOUT:-120}"
+    if ! declare -p TAR_OPTS >/dev/null 2>&1; then
+        TAR_OPTS=(-c)
+    fi
+    if ! declare -p SYNC_DESTINATIONS >/dev/null 2>&1; then
+        SYNC_DESTINATIONS=()
+    fi
+}
+
+# Inlined from src/lib/config.print.source.sh
 print_shell_assignment() {
     local -r name="$1"; shift
     local -r value="$1"; shift
@@ -2394,6 +2446,7 @@ print_config() {
     print_shell_assignment ORIGINAL_BASEPATH "${ORIGINAL_BASEPATH:-}"
 }
 
+# Inlined from src/lib/config.sync.source.sh
 sync_dist() {
     local destination
     local -a rsync_args=(-av)
@@ -2411,19 +2464,7 @@ sync_dist() {
     done
 }
 
-existing_parent_dir() {
-    local -r path="$1"; shift
-    local existing_parent
-
-    existing_parent=$(dirname "$path")
-
-    while [ ! -e "$existing_parent" ]; do
-        existing_parent=$(dirname "$existing_parent")
-    done
-
-    printf '%s\n' "$existing_parent"
-}
-
+# Inlined from src/lib/config.staging.source.sh
 generation_staging_dir() {
     local -r final_dist="$1"; shift
     local final_base
@@ -2641,77 +2682,7 @@ generate_staged() {
     clear_generation_staging_traps
 }
 
-resolve_config_file() {
-    local -r config_file="${1:-}"
-
-    if [ -n "$config_file" ]; then
-        printf '%s\n' "$config_file"
-    else
-        printf '%s\n' ./shuriken.conf
-    fi
-}
-
-missing_config() {
-    local -r config_file="$1"; shift
-
-    printf 'Error: Can not find config file %s\n' "$config_file" >&2
-    printf 'Run shuriken --init to create ./shuriken.conf.\n' >&2
-    exit 1
-}
-
-apply_config_defaults() {
-    HEIGHT="${HEIGHT:-}"
-    IMAGE_JOBS="${IMAGE_JOBS:-3}"
-    IMAGEMAGICK_TIMEOUT="${IMAGEMAGICK_TIMEOUT:-60}"
-    ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
-    RANDOM_SEED="${RANDOM_SEED:-}"
-    SHUFFLE="${SHUFFLE:-no}"
-    SPLASH_PAGE="${SPLASH_PAGE:-yes}"
-    SYNC_DELETE="${SYNC_DELETE:-yes}"
-    TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
-    TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
-    TAR_TIMEOUT="${TAR_TIMEOUT:-120}"
-    if ! declare -p TAR_OPTS >/dev/null 2>&1; then
-        TAR_OPTS=(-c)
-    fi
-    if ! declare -p SYNC_DESTINATIONS >/dev/null 2>&1; then
-        SYNC_DESTINATIONS=()
-    fi
-}
-
-option_value() {
-    local -r option="$1"; shift
-    local -r argument="${CLI_OPTION_ARGUMENT[$option]:-value}"
-
-    if (( $# == 0 )) || [ -z "$1" ]; then
-        printf 'Error: %s requires a %s\n' "$option" "$argument" >&2
-        usage
-        exit 1
-    fi
-
-    printf '%s\n' "$1"
-}
-
-apply_cli_override() {
-    local -r config_target="$1"; shift
-
-    if [[ -v "cli_overrides[$config_target]" ]]; then
-        printf -v "$config_target" '%s' "${cli_overrides[$config_target]}"
-    fi
-}
-
-apply_cli_overrides() {
-    local config_target
-
-    for config_target in "${CLI_CONFIG_OVERRIDE_TARGETS[@]}"; do
-        apply_cli_override "$config_target"
-    done
-
-    if (( ${#cli_sync_destinations[@]} > 0 )); then
-        SYNC_DESTINATIONS=("${cli_sync_destinations[@]}")
-    fi
-}
-
+# Inlined from src/lib/config.validate.source.sh
 config_error() {
     local -r message="$1"; shift
 
@@ -2948,6 +2919,40 @@ validate_sync_config() {
     fi
 
     validate_rsync
+}
+
+# Inlined from src/lib/config.cli.source.sh
+option_value() {
+    local -r option="$1"; shift
+    local -r argument="${CLI_OPTION_ARGUMENT[$option]:-value}"
+
+    if (( $# == 0 )) || [ -z "$1" ]; then
+        printf 'Error: %s requires a %s\n' "$option" "$argument" >&2
+        usage
+        exit 1
+    fi
+
+    printf '%s\n' "$1"
+}
+
+apply_cli_override() {
+    local -r config_target="$1"; shift
+
+    if [[ -v "cli_overrides[$config_target]" ]]; then
+        printf -v "$config_target" '%s' "${cli_overrides[$config_target]}"
+    fi
+}
+
+apply_cli_overrides() {
+    local config_target
+
+    for config_target in "${CLI_CONFIG_OVERRIDE_TARGETS[@]}"; do
+        apply_cli_override "$config_target"
+    done
+
+    if (( ${#cli_sync_destinations[@]} > 0 )); then
+        SYNC_DESTINATIONS=("${cli_sync_destinations[@]}")
+    fi
 }
 
 set_cli_option_value() {
