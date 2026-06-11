@@ -1780,18 +1780,30 @@ render_view_redirects() {
         template redirect "$prevredirect.html" \
             html_dir "$html_dir" \
             redirect_page "$(( page - 1 ))-${MAXPREVIEWS}"
+        template redirect "$prevredirect-details.html" \
+            html_dir "$html_dir" \
+            redirect_page "$(( page - 1 ))-${MAXPREVIEWS}-details"
 
         if (( page == max_page )); then
             template redirect "0-$MAXPREVIEWS.html" \
                 html_dir "$html_dir" \
                 redirect_page "${page}-$lastview"
+            template redirect "0-$MAXPREVIEWS-details.html" \
+                html_dir "$html_dir" \
+                redirect_page "${page}-$lastview-details"
             template redirect "$nextredirect.html" \
                 html_dir "$html_dir" \
                 redirect_page '1-1'
+            template redirect "$nextredirect-details.html" \
+                html_dir "$html_dir" \
+                redirect_page '1-1-details'
         else
             template redirect "$nextredirect.html" \
                 html_dir "$html_dir" \
                 redirect_page "$(( page + 1 ))-1"
+            template redirect "$nextredirect-details.html" \
+                html_dir "$html_dir" \
+                redirect_page "$(( page + 1 ))-1-details"
         fi
     done
 }
@@ -2236,7 +2248,7 @@ dry_run() {
     if (( image_count > 0 )); then
         details_count=$image_count
         page_count=$(( (image_count + MAXPREVIEWS - 1) / MAXPREVIEWS ))
-        redirect_count=$(( page_count * 2 + 1 ))
+        redirect_count=$(( page_count * 4 + 1 ))
     fi
 
     printf 'Dry run: no files will be written.\n'

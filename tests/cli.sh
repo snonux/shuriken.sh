@@ -1670,7 +1670,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
         "  $dist_dir/[page]-[image]-details.html (6 details pages)" \
         "$output"
     test::assert_contains \
-        "  $dist_dir/[redirect].html (7 navigation redirects)" \
+        "  $dist_dir/[redirect].html (13 navigation redirects)" \
         "$output"
     test::assert_not_contains "$dist_dir/html" "$output"
     test::assert_contains "  $dist_dir/incoming-<timestamp>.tar" "$output"
@@ -2146,7 +2146,15 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_contains '<div class="navigator details-navigator">' \
         "$details_html"
     test::assert_contains "class='view details-photo" "$details_html"
+    test::assert_contains 'class="details-photo-link" href="1-2-details.html"' \
+        "$details_html"
+    test::assert_contains 'href="1-0-details.html" class="arrow">&lArr;</a>' \
+        "$details_html"
     test::assert_contains 'href="1-1.html">Image view</a>' "$details_html"
+    test::assert_contains 'href="1-2-details.html" class="arrow">&rArr;</a>' \
+        "$details_html"
+    test::assert_not_contains 'class="details-photo-link" href="1-2.html"' \
+        "$details_html"
     test::assert_contains '<title>Integration album</title>' "$top_index_html"
     test::assert_contains 'Enter album' "$top_index_html"
     test::assert_contains 'href="page-1.html"' "$top_index_html"
@@ -2233,8 +2241,11 @@ test_render_view_redirects_uses_numeric_last_view() {
     render_view_redirects "$html_dir" rendered_view_pages rendered_last_views
 
     test::assert_file_exists "$dist_dir/1-11.html"
+    test::assert_file_exists "$dist_dir/1-11-details.html"
     redirect_html=$(<"$dist_dir/1-11.html")
     test::assert_contains 'url=2-1.html' "$redirect_html"
+    redirect_html=$(<"$dist_dir/1-11-details.html")
+    test::assert_contains 'url=2-1-details.html' "$redirect_html"
     test "$(<"$dist_dir/1-10.html")" = ''
     test::teardown
 }
@@ -2281,10 +2292,16 @@ test_render_view_redirects_wraps_when_last_page_full() {
 
     test::assert_file_exists "$dist_dir/0-2.html"
     test::assert_file_exists "$dist_dir/3-3.html"
+    test::assert_file_exists "$dist_dir/0-2-details.html"
+    test::assert_file_exists "$dist_dir/3-3-details.html"
     prev_redirect_html=$(<"$dist_dir/0-2.html")
     next_redirect_html=$(<"$dist_dir/3-3.html")
     test::assert_contains 'url=3-2.html' "$prev_redirect_html"
     test::assert_contains 'url=1-1.html' "$next_redirect_html"
+    prev_redirect_html=$(<"$dist_dir/0-2-details.html")
+    next_redirect_html=$(<"$dist_dir/3-3-details.html")
+    test::assert_contains 'url=3-2-details.html' "$prev_redirect_html"
+    test::assert_contains 'url=1-1-details.html' "$next_redirect_html"
     test::assert_path_absent "$dist_dir/4-1.html"
     test::teardown
 }
