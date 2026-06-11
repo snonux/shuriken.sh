@@ -3156,6 +3156,32 @@ test_generate_missing_imagemagick_fails() {
     test::teardown
 }
 
+test_template_stdout_escape_helpers_match_nameref_helpers() {
+    local css_text
+    local css_to
+    local css_stdout
+    local html_text
+    local html_to
+    local html_stdout
+
+    # shellcheck source=src/lib/template.source.sh
+    source "$TEST_REPO_ROOT/src/lib/template.source.sh"
+
+    html_text=$'A & "quoted" <title> \'ok\''
+    html_escape_to html_to "$html_text"
+    html_stdout=$(_html_escape "$html_text")
+    test "$html_stdout" = "$html_to"
+    test "$html_stdout" = \
+        'A &amp; &quot;quoted&quot; &lt;title&gt; &#39;ok&#39;'
+
+    css_text=$'path\\kid\'s_"<tag>&.jpg'
+    css_string_escape_to css_to "$css_text"
+    css_stdout=$(_css_string_escape "$css_text")
+    test "$css_stdout" = "$css_to"
+    test "$css_stdout" = \
+        'path\\kid\000027s_\000022\00003ctag\00003e\000026.jpg'
+}
+
 test_generate_escapes_html_values() {
     local config_file
     local css_photo
@@ -3924,6 +3950,9 @@ main() {
     test::run_case \
         '--generate fails when ImageMagick is missing' \
         test_generate_missing_imagemagick_fails
+    test::run_case \
+        'template stdout escapers match nameref helpers' \
+        test_template_stdout_escape_helpers_match_nameref_helpers
     test::run_case \
         '--generate escapes generated HTML values' \
         test_generate_escapes_html_values

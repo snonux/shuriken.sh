@@ -1,13 +1,9 @@
 _html_escape() {
-    local text="$1"; shift
+    local -r text="$1"; shift
+    local escaped_text
 
-    text=${text//&/\&amp;}
-    text=${text//</\&lt;}
-    text=${text//>/\&gt;}
-    text=${text//\"/\&quot;}
-    text=${text//\'/\&#39;}
-
-    printf '%s\n' "$text"
+    html_escape_to escaped_text "$text"
+    printf '%s\n' "$escaped_text"
 }
 
 html_escape_to() {
@@ -24,16 +20,11 @@ html_escape_to() {
 }
 
 _css_string_escape() {
-    local text="$1"; shift
+    local -r text="$1"; shift
+    local escaped_text
 
-    text=${text//\\/\\\\}
-    text=${text//&/\\000026}
-    text=${text//</\\00003c}
-    text=${text//>/\\00003e}
-    text=${text//\"/\\000022}
-    text=${text//\'/\\000027}
-
-    printf '%s\n' "$text"
+    css_string_escape_to escaped_text "$text"
+    printf '%s\n' "$escaped_text"
 }
 
 css_string_escape_to() {
