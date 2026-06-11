@@ -7,6 +7,7 @@ PREFIX := env_var_or_default("PREFIX", "/usr")
 BINDIR := env_var_or_default("BINDIR", PREFIX + "/bin")
 DATADIR := env_var_or_default("DATADIR", PREFIX + "/share")
 SYSCONFDIR := env_var_or_default("SYSCONFDIR", "/etc/default")
+LIB_SOURCES := "src/lib/bootstrap.source.sh src/lib/system.source.sh src/lib/template.source.sh src/lib/image.source.sh src/lib/album.source.sh src/lib/config.source.sh src/lib/action.source.sh"
 
 default: build
 
@@ -20,8 +21,46 @@ build:
     mkdir -p ./bin
     generated=$(mktemp "./bin/.{{NAME}}.XXXXXX")
     trap 'rm -f "$generated"' EXIT
-    sed "s/PHOTOALBUMVERSION/{{VERSION}}/" \
-        "src/{{NAME}}.sh" > "$generated"
+
+    render_lib_sources() {
+        local lib_source
+        local line
+
+        for lib_source in {{LIB_SOURCES}}; do
+            printf '\n# Inlined from %s\n' "$lib_source"
+            while IFS= read -r line; do
+                line=${line//PHOTOALBUMVERSION/{{VERSION}}}
+                printf '%s\n' "$line"
+            done < "$lib_source"
+        done
+    }
+
+    render_photoalbum() {
+        local in_lib_sources=no
+        local line
+
+        while IFS= read -r line; do
+            case "$line" in
+                '# PHOTOALBUM_LIB_SOURCES_BEGIN')
+                    printf '%s\n' "$line"
+                    render_lib_sources
+                    in_lib_sources=yes
+                    ;;
+                '# PHOTOALBUM_LIB_SOURCES_END')
+                    in_lib_sources=no
+                    printf '\n%s\n' "$line"
+                    ;;
+                *)
+                    if [ "$in_lib_sources" = no ]; then
+                        line=${line//PHOTOALBUMVERSION/{{VERSION}}}
+                        printf '%s\n' "$line"
+                    fi
+                    ;;
+            esac
+        done < "src/{{NAME}}.sh"
+    }
+
+    render_photoalbum > "$generated"
     chmod 0755 "$generated"
     if [ -f "./bin/{{NAME}}" ] && cmp -s "$generated" "./bin/{{NAME}}"; then
         chmod 0755 "./bin/{{NAME}}"
@@ -34,8 +73,46 @@ build:
 check-generated:
     generated=$(mktemp)
     trap 'rm -f "$generated"' EXIT
-    sed "s/PHOTOALBUMVERSION/{{VERSION}}/" \
-        "src/{{NAME}}.sh" > "$generated"
+
+    render_lib_sources() {
+        local lib_source
+        local line
+
+        for lib_source in {{LIB_SOURCES}}; do
+            printf '\n# Inlined from %s\n' "$lib_source"
+            while IFS= read -r line; do
+                line=${line//PHOTOALBUMVERSION/{{VERSION}}}
+                printf '%s\n' "$line"
+            done < "$lib_source"
+        done
+    }
+
+    render_photoalbum() {
+        local in_lib_sources=no
+        local line
+
+        while IFS= read -r line; do
+            case "$line" in
+                '# PHOTOALBUM_LIB_SOURCES_BEGIN')
+                    printf '%s\n' "$line"
+                    render_lib_sources
+                    in_lib_sources=yes
+                    ;;
+                '# PHOTOALBUM_LIB_SOURCES_END')
+                    in_lib_sources=no
+                    printf '\n%s\n' "$line"
+                    ;;
+                *)
+                    if [ "$in_lib_sources" = no ]; then
+                        line=${line//PHOTOALBUMVERSION/{{VERSION}}}
+                        printf '%s\n' "$line"
+                    fi
+                    ;;
+            esac
+        done < "src/{{NAME}}.sh"
+    }
+
+    render_photoalbum > "$generated"
     chmod 0755 "$generated"
     if [ ! -f "./bin/{{NAME}}" ]; then
         printf '%s\n' \
@@ -81,6 +158,8 @@ clean:
 
 shellcheck:
     shellcheck \
+        --external-sources \
+        --check-sourced \
         ./src/photoalbum.sh \
         ./tests/cli.sh \
         ./tests/helpers.sh

@@ -104,6 +104,12 @@ declare -Ar CLI_OPTION_ARGUMENT=(
     [--sync-destination]=destination
 )
 
+PHOTOALBUM_SOURCE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+declare -r PHOTOALBUM_SOURCE_DIR
+
+# PHOTOALBUM_LIB_SOURCES_BEGIN
+
+# Inlined from src/lib/bootstrap.source.sh
 usage() {
     cat - <<USAGE >&2
     Usage:
@@ -188,7 +194,7 @@ resolve_source_root() {
     local script_dir
     local source_root
 
-    script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+    script_dir="$PHOTOALBUM_SOURCE_DIR"
     source_root=$(cd "$script_dir/.." && pwd)
 
     if [[ -f "$source_root/src/photoalbum.default.conf" \
@@ -278,6 +284,7 @@ init_config() {
     log_info "Created ./$rc_file"
 }
 
+# Inlined from src/lib/system.source.sh
 # shellcheck disable=SC2034
 resolve_imagemagick_command() {
     local -r operation="$1"; shift
@@ -451,6 +458,7 @@ resolve_sync_destinations() {
     esac
 }
 
+# Inlined from src/lib/template.source.sh
 _html_escape() {
     local text="$1"; shift
 
@@ -954,6 +962,7 @@ template() {
     render_template "$template_name" "$html" render_context
 }
 
+# Inlined from src/lib/image.source.sh
 cleanphotos() {
     local basename
     local photo
@@ -1246,6 +1255,7 @@ maybe_shuffle() {
     fi
 }
 
+# Inlined from src/lib/album.source.sh
 album_photo_files() {
     local -r photos_dir="$1"; shift
 
@@ -2147,6 +2157,7 @@ dry_run() {
     fi
 }
 
+# Inlined from src/lib/config.source.sh
 print_shell_assignment() {
     local -r name="$1"; shift
     local -r value="$1"; shift
@@ -2827,6 +2838,7 @@ parse_cli_arguments() {
     done
 }
 
+# Inlined from src/lib/action.source.sh
 run_simple_action() {
     case "$action" in
         --version)
@@ -2944,6 +2956,8 @@ run_action() {
             ;;
     esac
 }
+
+# PHOTOALBUM_LIB_SOURCES_END
 
 main() {
     local action=''
