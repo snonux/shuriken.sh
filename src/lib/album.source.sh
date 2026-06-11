@@ -950,7 +950,7 @@ dry_run() {
     if (( image_count > 0 )); then
         details_count=$image_count
         page_count=$(( (image_count + MAXPREVIEWS - 1) / MAXPREVIEWS ))
-        redirect_count=$(( page_count * 4 + 1 ))
+        redirect_count=$(( page_count * 4 + 2 ))
     fi
 
     printf 'Dry run: no files will be written.\n'

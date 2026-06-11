@@ -1670,7 +1670,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
         "  $dist_dir/[page]-[image]-details.html (6 details pages)" \
         "$output"
     test::assert_contains \
-        "  $dist_dir/[redirect].html (13 navigation redirects)" \
+        "  $dist_dir/[redirect].html (14 navigation redirects)" \
         "$output"
     test::assert_not_contains "$dist_dir/html" "$output"
     test::assert_contains "  $dist_dir/incoming-<timestamp>.tar" "$output"
