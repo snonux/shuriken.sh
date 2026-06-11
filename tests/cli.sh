@@ -3157,29 +3157,51 @@ test_generate_missing_imagemagick_fails() {
 }
 
 test_template_stdout_escape_helpers_match_nameref_helpers() {
+    local css_expected
     local css_text
     local css_to
-    local css_stdout
+    local css_stdout_file
+    local html_expected
     local html_text
     local html_to
-    local html_stdout
+    local html_stdout_file
 
     # shellcheck source=src/lib/template.source.sh
     source "$TEST_REPO_ROOT/src/lib/template.source.sh"
 
+    test::setup
+    html_stdout_file="$TEST_TMPDIR/html-stdout"
+    html_expected="$TEST_TMPDIR/html-expected"
+    css_stdout_file="$TEST_TMPDIR/css-stdout"
+    css_expected="$TEST_TMPDIR/css-expected"
+
     html_text=$'A & "quoted" <title> \'ok\''
     html_escape_to html_to "$html_text"
-    html_stdout=$(_html_escape "$html_text")
-    test "$html_stdout" = "$html_to"
-    test "$html_stdout" = \
+    _html_escape "$html_text" > "$html_stdout_file"
+    printf '%s\n' "$html_to" > "$html_expected"
+    cmp -s "$html_expected" "$html_stdout_file"
+    test "$(<"$html_stdout_file")" = \
         'A &amp; &quot;quoted&quot; &lt;title&gt; &#39;ok&#39;'
+
+    html_escape_to html_to ''
+    _html_escape '' > "$html_stdout_file"
+    printf '%s\n' "$html_to" > "$html_expected"
+    cmp -s "$html_expected" "$html_stdout_file"
 
     css_text=$'path\\kid\'s_"<tag>&.jpg'
     css_string_escape_to css_to "$css_text"
-    css_stdout=$(_css_string_escape "$css_text")
-    test "$css_stdout" = "$css_to"
-    test "$css_stdout" = \
+    _css_string_escape "$css_text" > "$css_stdout_file"
+    printf '%s\n' "$css_to" > "$css_expected"
+    cmp -s "$css_expected" "$css_stdout_file"
+    test "$(<"$css_stdout_file")" = \
         'path\\kid\000027s_\000022\00003ctag\00003e\000026.jpg'
+
+    css_string_escape_to css_to ''
+    _css_string_escape '' > "$css_stdout_file"
+    printf '%s\n' "$css_to" > "$css_expected"
+    cmp -s "$css_expected" "$css_stdout_file"
+
+    test::teardown
 }
 
 test_generate_escapes_html_values() {
