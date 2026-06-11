@@ -1,7 +1,8 @@
 run_simple_action() {
-    case "$action" in
+    case "$SHURIKEN_CLI_ACTION" in
         --version)
-            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
+            if [[ -n "$SHURIKEN_CLI_CONFIG_FILE" \
+                || "$SHURIKEN_CLI_HAS_CONFIG_OVERRIDES" = 'yes' \
                 || "$SHURIKEN_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
@@ -10,7 +11,8 @@ run_simple_action() {
             printf 'This is Shuriken Version %s\n' "$VERSION"
             ;;
         --init)
-            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
+            if [[ -n "$SHURIKEN_CLI_CONFIG_FILE" \
+                || "$SHURIKEN_CLI_HAS_CONFIG_OVERRIDES" = 'yes' \
                 || "$SHURIKEN_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
@@ -40,7 +42,7 @@ load_configured_action() {
 log_configured_action() {
     local -r rc_file="$1"; shift
 
-    if [ "$action" = --print-config ]; then
+    if [ "$SHURIKEN_CLI_ACTION" = --print-config ]; then
         return
     fi
 
@@ -60,16 +62,17 @@ log_configured_action() {
 run_configured_action() {
     local rc_file
 
-    if [[ "$SHURIKEN_FORCE_GENERATE" = yes && "$action" != --generate ]]; then
+    if [[ "$SHURIKEN_FORCE_GENERATE" = yes \
+        && "$SHURIKEN_CLI_ACTION" != --generate ]]; then
         usage
         exit 1
     fi
 
-    rc_file="$(resolve_config_file "$config_file")"
+    rc_file="$(resolve_config_file "$SHURIKEN_CLI_CONFIG_FILE")"
     load_configured_action "$rc_file"
     log_configured_action "$rc_file"
 
-    case "$action" in
+    case "$SHURIKEN_CLI_ACTION" in
         --clean)
             if [ -d "$DIST_DIR" ]; then
                 log_info "Cleaning $DIST_DIR"
@@ -102,7 +105,7 @@ run_configured_action() {
 }
 
 run_action() {
-    case "$action" in
+    case "$SHURIKEN_CLI_ACTION" in
         --version|--init)
             run_simple_action
             ;;

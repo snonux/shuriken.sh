@@ -16,6 +16,11 @@ SHURIKEN_OUTPUT_MODE="${SHURIKEN_OUTPUT_MODE:-normal}"
 SHURIKEN_ACTIVE_GENERATION_PID=''
 SHURIKEN_FORCE_GENERATE="${SHURIKEN_FORCE_GENERATE:-no}"
 SHURIKEN_CURRENT_DATE_TEXT=''
+SHURIKEN_CLI_ACTION=''
+SHURIKEN_CLI_CONFIG_FILE=''
+SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
+declare -A SHURIKEN_CLI_OVERRIDES=()
+declare -a SHURIKEN_CLI_SYNC_DESTINATIONS=()
 
 declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
@@ -65,7 +70,7 @@ declare -Ar CLI_OPTION_KIND=(
     [--print-config]=action
 )
 declare -Ar CLI_OPTION_TARGET=(
-    [--config]=config_file
+    [--config]=SHURIKEN_CLI_CONFIG_FILE
     [--verbose]=SHURIKEN_OUTPUT_MODE
     [--quiet]=SHURIKEN_OUTPUT_MODE
     [--force]=SHURIKEN_FORCE_GENERATE
@@ -138,11 +143,11 @@ source "$SHURIKEN_SOURCE_DIR/lib/action.source.sh"
 # SHURIKEN_LIB_SOURCES_END
 
 main() {
-    local action=''
-    local config_file=''
-    local has_config_overrides='no'
-    local -A cli_overrides=()
-    local -a cli_sync_destinations=()
+    SHURIKEN_CLI_ACTION=''
+    SHURIKEN_CLI_CONFIG_FILE=''
+    SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
+    SHURIKEN_CLI_OVERRIDES=()
+    SHURIKEN_CLI_SYNC_DESTINATIONS=()
 
     if (( $# == 0 )); then
         usage

@@ -16,6 +16,11 @@ SHURIKEN_OUTPUT_MODE="${SHURIKEN_OUTPUT_MODE:-normal}"
 SHURIKEN_ACTIVE_GENERATION_PID=''
 SHURIKEN_FORCE_GENERATE="${SHURIKEN_FORCE_GENERATE:-no}"
 SHURIKEN_CURRENT_DATE_TEXT=''
+SHURIKEN_CLI_ACTION=''
+SHURIKEN_CLI_CONFIG_FILE=''
+SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
+declare -A SHURIKEN_CLI_OVERRIDES=()
+declare -a SHURIKEN_CLI_SYNC_DESTINATIONS=()
 
 declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
@@ -65,7 +70,7 @@ declare -Ar CLI_OPTION_KIND=(
     [--print-config]=action
 )
 declare -Ar CLI_OPTION_TARGET=(
-    [--config]=config_file
+    [--config]=SHURIKEN_CLI_CONFIG_FILE
     [--verbose]=SHURIKEN_OUTPUT_MODE
     [--quiet]=SHURIKEN_OUTPUT_MODE
     [--force]=SHURIKEN_FORCE_GENERATE
@@ -2938,8 +2943,9 @@ option_value() {
 apply_cli_override() {
     local -r config_target="$1"; shift
 
-    if [[ -v "cli_overrides[$config_target]" ]]; then
-        printf -v "$config_target" '%s' "${cli_overrides[$config_target]}"
+    if [[ -v "SHURIKEN_CLI_OVERRIDES[$config_target]" ]]; then
+        printf -v "$config_target" '%s' \
+            "${SHURIKEN_CLI_OVERRIDES[$config_target]}"
     fi
 }
 
@@ -2950,8 +2956,8 @@ apply_cli_overrides() {
         apply_cli_override "$config_target"
     done
 
-    if (( ${#cli_sync_destinations[@]} > 0 )); then
-        SYNC_DESTINATIONS=("${cli_sync_destinations[@]}")
+    if (( ${#SHURIKEN_CLI_SYNC_DESTINATIONS[@]} > 0 )); then
+        SYNC_DESTINATIONS=("${SHURIKEN_CLI_SYNC_DESTINATIONS[@]}")
     fi
 }
 
@@ -2961,15 +2967,15 @@ set_cli_option_value() {
     local config_target
 
     if [ "$option" = --sync-destination ]; then
-        cli_sync_destinations+=("$value")
-        has_config_overrides='yes'
+        SHURIKEN_CLI_SYNC_DESTINATIONS+=("$value")
+        SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
     config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
     if [ -n "$config_target" ]; then
-        cli_overrides["$config_target"]="$value"
-        has_config_overrides='yes'
+        SHURIKEN_CLI_OVERRIDES["$config_target"]="$value"
+        SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
@@ -2983,8 +2989,8 @@ set_cli_constant_option() {
 
     config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
     if [ -n "$config_target" ]; then
-        cli_overrides["$config_target"]="$value"
-        has_config_overrides='yes'
+        SHURIKEN_CLI_OVERRIDES["$config_target"]="$value"
+        SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
@@ -2994,12 +3000,12 @@ set_cli_constant_option() {
 set_cli_action() {
     local -r selected_action="$1"; shift
 
-    if [ -n "$action" ]; then
+    if [ -n "$SHURIKEN_CLI_ACTION" ]; then
         usage
         exit 1
     fi
 
-    action="$selected_action"
+    SHURIKEN_CLI_ACTION="$selected_action"
 }
 
 parse_cli_arguments() {
@@ -3034,9 +3040,10 @@ parse_cli_arguments() {
 
 # Inlined from src/lib/action.source.sh
 run_simple_action() {
-    case "$action" in
+    case "$SHURIKEN_CLI_ACTION" in
         --version)
-            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
+            if [[ -n "$SHURIKEN_CLI_CONFIG_FILE" \
+                || "$SHURIKEN_CLI_HAS_CONFIG_OVERRIDES" = 'yes' \
                 || "$SHURIKEN_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
@@ -3045,7 +3052,8 @@ run_simple_action() {
             printf 'This is Shuriken Version %s\n' "$VERSION"
             ;;
         --init)
-            if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
+            if [[ -n "$SHURIKEN_CLI_CONFIG_FILE" \
+                || "$SHURIKEN_CLI_HAS_CONFIG_OVERRIDES" = 'yes' \
                 || "$SHURIKEN_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
@@ -3075,7 +3083,7 @@ load_configured_action() {
 log_configured_action() {
     local -r rc_file="$1"; shift
 
-    if [ "$action" = --print-config ]; then
+    if [ "$SHURIKEN_CLI_ACTION" = --print-config ]; then
         return
     fi
 
@@ -3095,16 +3103,17 @@ log_configured_action() {
 run_configured_action() {
     local rc_file
 
-    if [[ "$SHURIKEN_FORCE_GENERATE" = yes && "$action" != --generate ]]; then
+    if [[ "$SHURIKEN_FORCE_GENERATE" = yes \
+        && "$SHURIKEN_CLI_ACTION" != --generate ]]; then
         usage
         exit 1
     fi
 
-    rc_file="$(resolve_config_file "$config_file")"
+    rc_file="$(resolve_config_file "$SHURIKEN_CLI_CONFIG_FILE")"
     load_configured_action "$rc_file"
     log_configured_action "$rc_file"
 
-    case "$action" in
+    case "$SHURIKEN_CLI_ACTION" in
         --clean)
             if [ -d "$DIST_DIR" ]; then
                 log_info "Cleaning $DIST_DIR"
@@ -3137,7 +3146,7 @@ run_configured_action() {
 }
 
 run_action() {
-    case "$action" in
+    case "$SHURIKEN_CLI_ACTION" in
         --version|--init)
             run_simple_action
             ;;
@@ -3154,11 +3163,11 @@ run_action() {
 # SHURIKEN_LIB_SOURCES_END
 
 main() {
-    local action=''
-    local config_file=''
-    local has_config_overrides='no'
-    local -A cli_overrides=()
-    local -a cli_sync_destinations=()
+    SHURIKEN_CLI_ACTION=''
+    SHURIKEN_CLI_CONFIG_FILE=''
+    SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
+    SHURIKEN_CLI_OVERRIDES=()
+    SHURIKEN_CLI_SYNC_DESTINATIONS=()
 
     if (( $# == 0 )); then
         usage

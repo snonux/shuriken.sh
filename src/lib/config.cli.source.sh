@@ -14,8 +14,9 @@ option_value() {
 apply_cli_override() {
     local -r config_target="$1"; shift
 
-    if [[ -v "cli_overrides[$config_target]" ]]; then
-        printf -v "$config_target" '%s' "${cli_overrides[$config_target]}"
+    if [[ -v "SHURIKEN_CLI_OVERRIDES[$config_target]" ]]; then
+        printf -v "$config_target" '%s' \
+            "${SHURIKEN_CLI_OVERRIDES[$config_target]}"
     fi
 }
 
@@ -26,8 +27,8 @@ apply_cli_overrides() {
         apply_cli_override "$config_target"
     done
 
-    if (( ${#cli_sync_destinations[@]} > 0 )); then
-        SYNC_DESTINATIONS=("${cli_sync_destinations[@]}")
+    if (( ${#SHURIKEN_CLI_SYNC_DESTINATIONS[@]} > 0 )); then
+        SYNC_DESTINATIONS=("${SHURIKEN_CLI_SYNC_DESTINATIONS[@]}")
     fi
 }
 
@@ -37,15 +38,15 @@ set_cli_option_value() {
     local config_target
 
     if [ "$option" = --sync-destination ]; then
-        cli_sync_destinations+=("$value")
-        has_config_overrides='yes'
+        SHURIKEN_CLI_SYNC_DESTINATIONS+=("$value")
+        SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
     config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
     if [ -n "$config_target" ]; then
-        cli_overrides["$config_target"]="$value"
-        has_config_overrides='yes'
+        SHURIKEN_CLI_OVERRIDES["$config_target"]="$value"
+        SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
@@ -59,8 +60,8 @@ set_cli_constant_option() {
 
     config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
     if [ -n "$config_target" ]; then
-        cli_overrides["$config_target"]="$value"
-        has_config_overrides='yes'
+        SHURIKEN_CLI_OVERRIDES["$config_target"]="$value"
+        SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
@@ -70,12 +71,12 @@ set_cli_constant_option() {
 set_cli_action() {
     local -r selected_action="$1"; shift
 
-    if [ -n "$action" ]; then
+    if [ -n "$SHURIKEN_CLI_ACTION" ]; then
         usage
         exit 1
     fi
 
-    action="$selected_action"
+    SHURIKEN_CLI_ACTION="$selected_action"
 }
 
 parse_cli_arguments() {
