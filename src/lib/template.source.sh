@@ -250,6 +250,7 @@ validate_template_context() {
                 animation_class
                 backhref
                 exif_details
+                exif_tooltip
                 page_num
                 photo
                 photos_dir
@@ -341,6 +342,8 @@ serialize_template_render_context() {
     serialize_template_render_var render_enter_page_html "$render_enter_page_html"
     serialize_template_render_var \
         render_exif_details_html "$render_exif_details_html"
+    serialize_template_render_var \
+        render_exif_tooltip_html "$render_exif_tooltip_html"
     serialize_template_render_var render_height_html "$render_height_html"
     serialize_template_render_var render_html_dir_html "$render_html_dir_html"
     serialize_template_render_var \
@@ -388,6 +391,8 @@ prepare_template_render_vars() {
     html_escape_to render_enter_page_html "$context_value"
     template_context_value_to render_exif_details_html \
         "$context_name" exif_details
+    template_context_value_to context_value "$context_name" exif_tooltip
+    html_escape_to render_exif_tooltip_html "$context_value"
     html_escape_to render_height_html "${HEIGHT:-}"
     html_escape_to render_html_dir_html "$render_html_dir"
     html_escape_to render_maxpreviews_html "${MAXPREVIEWS:-}"
@@ -457,6 +462,7 @@ render_template() {
     local render_current_date_text
     local render_enter_page_html
     local render_exif_details_html
+    local render_exif_tooltip_html
     local render_height_html
     local render_html_dir
     local render_html_dir_html

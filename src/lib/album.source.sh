@@ -202,6 +202,94 @@ photo_exif_details_html() {
     printf '</table>\n'
 }
 
+_first_exif_value_to() {
+    local -n output_ref="$1"; shift
+    local -n exif_ref="$1"; shift
+    local key
+
+    output_ref=''
+    for key in "$@"; do
+        if [ -n "${exif_ref[$key]:-}" ]; then
+            # shellcheck disable=SC2034
+            output_ref="${exif_ref[$key]}"
+            return
+        fi
+    done
+}
+
+photo_exif_tooltip_text() {
+    local -r photo="$1"; shift
+    local -r photo_path="$1"; shift
+    local aperture
+    local camera
+    local date_time
+    local iso
+    local key
+    local line
+    local make
+    local model
+    local separator=''
+    local shutter_speed
+    local -A exif_values=()
+    local -a tooltip_parts=()
+
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*exif:([^:]+):[[:space:]]*(.*)$ ]]; then
+            exif_values["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+        fi
+    done < <(cached_photo_identify_output "$photo" "$photo_path")
+
+    make="${exif_values[Make]:-}"
+    model="${exif_values[Model]:-}"
+    camera="$make"
+    if [ -n "$model" ]; then
+        if [ -n "$make" ]; then
+            case "$model" in
+                "$make"|"$make "*)
+                    camera="$model"
+                    ;;
+                *)
+                    camera="$make $model"
+                    ;;
+            esac
+        else
+            camera="$model"
+        fi
+    fi
+
+    _first_exif_value_to aperture exif_values FNumber ApertureValue
+    _first_exif_value_to iso exif_values \
+        ISOSpeedRatings PhotographicSensitivity ISO
+    _first_exif_value_to shutter_speed exif_values \
+        ExposureTime ShutterSpeedValue
+    _first_exif_value_to date_time exif_values \
+        DateTimeOriginal DateTimeDigitized DateTime
+
+    if [ -n "$camera" ]; then
+        tooltip_parts+=("Camera: $camera")
+    fi
+    if [ -n "$aperture" ]; then
+        tooltip_parts+=("Aperture: $aperture")
+    fi
+    if [ -n "$iso" ]; then
+        tooltip_parts+=("ISO: $iso")
+    fi
+    if [ -n "$shutter_speed" ]; then
+        tooltip_parts+=("Shutter speed: $shutter_speed")
+    fi
+    if [ -n "$date_time" ]; then
+        tooltip_parts+=("Taken: $date_time")
+    fi
+
+    for key in "${tooltip_parts[@]}"; do
+        printf '%s%s' "$separator" "$key"
+        separator='; '
+    done
+    if (( ${#tooltip_parts[@]} > 0 )); then
+        printf '\n'
+    fi
+}
+
 render_details_page() {
     local -r html_dir="$1"; shift
     local -r photos_dir="$1"; shift
@@ -213,6 +301,7 @@ render_details_page() {
     local -r photo_file="$1"; shift
     local animation_class
     local exif_details_html
+    local exif_tooltip_text
 
     template header "$page_num-$preview_num-details.html" \
         html_dir "$html_dir" \
@@ -225,6 +314,9 @@ render_details_page() {
     exif_details_html=$(
         photo_exif_details_html "$photo_file" "$INCOMING_DIR/$photo_file"
     )
+    exif_tooltip_text=$(
+        photo_exif_tooltip_text "$photo_file" "$INCOMING_DIR/$photo_file"
+    )
     template details "$page_num-$preview_num-details.html" \
         html_dir "$html_dir" \
         backhref "$backhref" \
@@ -233,7 +325,8 @@ render_details_page() {
         preview_num "$preview_num" \
         photo "$photo_file" \
         animation_class "$animation_class" \
-        exif_details "$exif_details_html"
+        exif_details "$exif_details_html" \
+        exif_tooltip "$exif_tooltip_text"
     template footer "$page_num-$preview_num-details.html" \
         html_dir "$html_dir" \
         backhref "$backhref" \

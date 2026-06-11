@@ -3100,6 +3100,8 @@ test_generate_escapes_html_values() {
     test::assert_contains '<th>exif:Artist</th>' "$details_html"
     test::assert_contains "<td>$exif_value_html</td>" "$details_html"
     test::assert_contains "href=\"1-1.html\">Image view</a>" "$details_html"
+    test::assert_not_contains 'title="Camera:' "$details_html"
+    test::assert_not_contains 'title=""' "$details_html"
     test::assert_not_contains '<title>A & "quoted" <title>' "$page_html"
     test::assert_not_contains "$photo_name" "$top_index_html"
     test::assert_not_contains "$photo_name" "$view_html"
@@ -3118,7 +3120,14 @@ test_generate_renders_exif_details() {
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
     config_file="$TEST_TMPDIR/photoalbum.conf"
-    identify_output=$'Image:\n  exif:DateTime: 2026:06:04 12:34:56\n  exif:Make: ExampleCam\n  geometry: 120x90'
+    identify_output=$'Image:\n'
+    identify_output+=$'  exif:DateTimeOriginal: 2026:06:04 12:34:56\n'
+    identify_output+=$'  exif:Make: ExampleCam\n'
+    identify_output+=$'  exif:Model: Model & "X"\n'
+    identify_output+=$'  exif:FNumber: f/2.8\n'
+    identify_output+=$'  exif:ISOSpeedRatings: 400\n'
+    identify_output+=$'  exif:ExposureTime: 1/125\n'
+    identify_output+=$'  geometry: 120x90'
 
     test::install_fake_imagemagick "$fake_bin"
     mkdir -p "$TEST_TMPDIR/incoming"
@@ -3139,11 +3148,23 @@ test_generate_renders_exif_details() {
 
     test::assert_contains 'href="1-1-details.html">Details</a>' "$view_html"
     test::assert_contains '<table class="details">' "$details_html"
-    test::assert_contains '<th>exif:DateTime</th>' "$details_html"
+    test::assert_contains \
+        'title="Camera: ExampleCam Model &amp; &quot;X&quot;; Aperture: f/2.8; ISO: 400; Shutter speed: 1/125; Taken: 2026:06:04 12:34:56"' \
+        "$details_html"
+    test::assert_contains '<th>exif:DateTimeOriginal</th>' "$details_html"
     test::assert_contains '<td>2026:06:04 12:34:56</td>' "$details_html"
     test::assert_contains '<th>exif:Make</th>' "$details_html"
     test::assert_contains '<td>ExampleCam</td>' "$details_html"
+    test::assert_contains '<th>exif:Model</th>' "$details_html"
+    test::assert_contains '<td>Model &amp; &quot;X&quot;</td>' "$details_html"
+    test::assert_contains '<th>exif:FNumber</th>' "$details_html"
+    test::assert_contains '<td>f/2.8</td>' "$details_html"
+    test::assert_contains '<th>exif:ISOSpeedRatings</th>' "$details_html"
+    test::assert_contains '<td>400</td>' "$details_html"
+    test::assert_contains '<th>exif:ExposureTime</th>' "$details_html"
+    test::assert_contains '<td>1/125</td>' "$details_html"
     test::assert_not_contains 'geometry: 120x90' "$details_html"
+    test::assert_not_contains 'Model & "X"' "$details_html"
     test::assert_not_contains 'No EXIF details available.' "$details_html"
 
     test::teardown

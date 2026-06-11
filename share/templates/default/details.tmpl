@@ -1,9 +1,15 @@
+if [ -n "$render_exif_tooltip_html" ]; then
+    render_exif_tooltip_attr=" title=\"$render_exif_tooltip_html\""
+else
+    render_exif_tooltip_attr=''
+fi
+
 cat <<END
 <div class='view'>
     <div class="details-layout">
         <div class="details-photo-column">
             <a class="details-photo-link" href="${render_page_num_html}-${render_preview_num_html}.html">
-                <img class='view details-photo ${render_animation_class_html}' border='0' src='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}' />
+                <img class='view details-photo ${render_animation_class_html}' border='0' src='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}'${render_exif_tooltip_attr} />
             </a>
             <div class="navigator details-navigator">
                 <a href="${render_page_num_html}-${render_view_prev_html}.html" class="arrow">&lArr;</a>
