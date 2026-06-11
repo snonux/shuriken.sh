@@ -949,7 +949,8 @@ refresh_splash() {
     tmp_path=$(mktemp "$DIST_DIR/.index.html.XXXXXX")
     tmp_html=$(basename "$tmp_path")
 
-    if render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html"; then
+    if render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html" \
+        && prepare_generation_site_assets; then
         mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
         log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
         return

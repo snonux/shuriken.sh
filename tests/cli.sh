@@ -2456,6 +2456,37 @@ test_refresh_splash_rewrites_only_index_from_existing_assets() {
     test::teardown
 }
 
+test_refresh_splash_copies_favicon_for_legacy_dist() {
+    local config_file
+    local output
+    local top_index_html
+
+    test::setup
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    mkdir -p \
+        "$TEST_TMPDIR/incoming" \
+        "$TEST_TMPDIR/dist/photos" \
+        "$TEST_TMPDIR/dist/blurs"
+    printf 'legacy photo\n' > "$TEST_TMPDIR/dist/photos/legacy.jpg"
+    printf 'legacy blur\n' > "$TEST_TMPDIR/dist/blurs/legacy.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Legacy refresh album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_PHOTOALBUM" --refresh-splash
+    )
+
+    top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
+    test::assert_contains 'Refreshed splash page' "$output"
+    test::assert_contains \
+        '<link rel="icon" href="./favicon.ico" type="image/x-icon">' \
+        "$top_index_html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/favicon.ico"
+    test::teardown
+}
+
 test_refresh_splash_requires_existing_generated_assets() {
     local config_file
     local output
@@ -3773,6 +3804,9 @@ main() {
     test::run_case \
         '--refresh-splash rewrites only root index from existing assets' \
         test_refresh_splash_rewrites_only_index_from_existing_assets
+    test::run_case \
+        '--refresh-splash copies favicon for legacy dist' \
+        test_refresh_splash_copies_favicon_for_legacy_dist
     test::run_case \
         '--refresh-splash requires existing generated assets' \
         test_refresh_splash_requires_existing_generated_assets
