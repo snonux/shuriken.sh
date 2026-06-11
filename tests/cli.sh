@@ -1072,6 +1072,68 @@ test_generate_image_jobs_limits_parallel_identify() {
     test::teardown
 }
 
+test_generate_image_jobs_limits_parallel_template_rendering() {
+    local active_file
+    local config_file
+    local fake_bin
+    local lock_file
+    local log_file
+    local max_file
+    local max_seen
+    local render_count
+    local template_dir
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/photoalbum.conf"
+    template_dir="$TEST_TMPDIR/templates"
+    lock_file="$TEST_TMPDIR/template.lock"
+    active_file="$TEST_TMPDIR/template.active"
+    max_file="$TEST_TMPDIR/template.max"
+    log_file="$TEST_TMPDIR/template.log"
+
+    test::install_fake_imagemagick "$fake_bin"
+    test::install_parallel_template_spy \
+        "$template_dir" \
+        "$lock_file" \
+        "$active_file" \
+        "$max_file" \
+        "$log_file"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/02.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/03.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/04.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Parallel template album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+            --image-jobs 2 \
+            --template "$template_dir" \
+            --generate
+    )
+
+    max_seen=$(<"$max_file")
+    if (( max_seen != 2 )); then
+        echo 'FAIL: expected max parallel template render jobs to be 2' >&2
+        echo "max_seen=$max_seen" >&2
+        cat "$log_file" >&2
+        exit 1
+    fi
+
+    render_count=$(grep -c '^start ' "$log_file")
+    if (( render_count != 8 )); then
+        echo 'FAIL: expected view and details templates for each image' >&2
+        echo "render_count=$render_count" >&2
+        cat "$log_file" >&2
+        exit 1
+    fi
+    test::teardown
+}
+
 test_repeated_output_flags_use_last_value() {
     local config_file
     local fake_bin
@@ -3560,6 +3622,9 @@ main() {
     test::run_case \
         '--generate --image-jobs limits ImageMagick identify parallelism' \
         test_generate_image_jobs_limits_parallel_identify
+    test::run_case \
+        '--generate --image-jobs limits template rendering parallelism' \
+        test_generate_image_jobs_limits_parallel_template_rendering
     test::run_case \
         'repeated output flags use last value' \
         test_repeated_output_flags_use_last_value

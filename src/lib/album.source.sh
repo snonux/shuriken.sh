@@ -512,7 +512,7 @@ queue_album_view_render_job() {
     # shellcheck disable=SC2178
     local -n render_failed_ref="$1"; shift
 
-    wait_for_image_job_slot render_job_pids_ref render_failed_ref
+    wait_for_template_render_job_slot render_job_pids_ref render_failed_ref
     render_photo_view_and_details \
         "$photos_dir" \
         "$blurs_dir" \
@@ -531,7 +531,7 @@ wait_for_album_view_render_jobs() {
     # shellcheck disable=SC2178
     local -n render_failed_ref="$1"; shift
 
-    wait_for_image_jobs render_job_pids_ref render_failed_ref
+    wait_for_template_render_jobs render_job_pids_ref render_failed_ref
     if (( render_failed_ref != 0 )); then
         return 1
     fi

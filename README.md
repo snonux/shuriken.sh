@@ -180,9 +180,9 @@ effective paths, skipped existing files, staging output directory, and tarball
 decisions. If `--quiet` and `--verbose` are repeated or combined, the last output
 flag wins.
 
-ImageMagick photo processing runs in parallel. The default is `IMAGE_JOBS=3`.
-Set `IMAGE_JOBS` in the config, or pass `--image-jobs N`, to tune the number of
-concurrent ImageMagick jobs.
+ImageMagick photo processing and per-photo HTML template rendering run in
+parallel. The default is `IMAGE_JOBS=3`. Set `IMAGE_JOBS` in the config, or pass
+`--image-jobs N`, to tune the number of concurrent image and template jobs.
 
 Each ImageMagick command is bounded by `IMAGEMAGICK_TIMEOUT=60` seconds, and
 tarball creation is bounded by `TAR_TIMEOUT=120` seconds. Set either config

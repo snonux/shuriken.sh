@@ -385,6 +385,83 @@ MAGICK
     cp "$bin_dir/magick" "$bin_dir/convert"
 }
 
+test::write_parallel_template_spy_file() {
+    local -r template_path="$1"; shift
+    local -r template_label="$1"; shift
+    local -r lock_file="$1"; shift
+    local -r active_file="$1"; shift
+    local -r max_file="$1"; shift
+    local -r log_file="$1"; shift
+
+    {
+        printf 'template_label=%q\n' "$template_label"
+        printf 'lock_file=%q\n' "$lock_file"
+        printf 'active_file=%q\n' "$active_file"
+        printf 'max_file=%q\n' "$max_file"
+        printf 'log_file=%q\n' "$log_file"
+        cat <<'TEMPLATE'
+
+(
+    flock 9
+    active=0
+    if [ -f "$active_file" ]; then
+        active=$(<"$active_file")
+    fi
+    active=$(( active + 1 ))
+    printf '%s\n' "$active" > "$active_file"
+
+    max=0
+    if [ -f "$max_file" ]; then
+        max=$(<"$max_file")
+    fi
+    if (( active > max )); then
+        printf '%s\n' "$active" > "$max_file"
+    fi
+
+    printf 'start %s %s %s\n' \
+        "$active" "$template_label" "$render_photo_html" >> "$log_file"
+) 9>"$lock_file"
+
+sleep 0.1
+printf '<div class="%s">%s</div>\n' "$template_label" "$render_photo_html"
+
+(
+    flock 9
+    active=$(<"$active_file")
+    active=$(( active - 1 ))
+    printf '%s\n' "$active" > "$active_file"
+    printf 'finish %s %s %s\n' \
+        "$active" "$template_label" "$render_photo_html" >> "$log_file"
+) 9>"$lock_file"
+TEMPLATE
+    } > "$template_path"
+}
+
+test::install_parallel_template_spy() {
+    local -r template_dir="$1"; shift
+    local -r lock_file="$1"; shift
+    local -r active_file="$1"; shift
+    local -r max_file="$1"; shift
+    local -r log_file="$1"; shift
+
+    mkdir -p "$template_dir"
+    cp "$TEST_REPO_ROOT"/share/templates/default/*.tmpl "$template_dir/"
+    test::write_parallel_template_spy_file \
+        "$template_dir/view.tmpl" \
+        view \
+        "$lock_file" \
+        "$active_file" \
+        "$max_file" \
+        "$log_file"
+    test::write_parallel_template_spy_file \
+        "$template_dir/details.tmpl" \
+        details \
+        "$lock_file" \
+        "$active_file" \
+        "$max_file" \
+        "$log_file"
+}
+
 test::install_failing_imagemagick() {
     local -r bin_dir="$1"; shift
 
