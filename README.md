@@ -1,8 +1,8 @@
-# photoalbum
+# shuriken
 
 ![Shuriken logo](assets/docs/shuriken-logo.svg)
 
-photoalbum is a minimal Bash script for Unix like operating systems (such as Linux) to generate static web photo albums.
+shuriken is a minimal Bash script for Unix like operating systems (such as Linux) to generate static web photo albums.
 The resulting static photo album is pure HTML+CSS (without any JavaScript!).
 
 ## Installation
@@ -15,15 +15,15 @@ just build
 sudo just install
 ```
 
-`bin/photoalbum` is a committed generated artifact for compatibility with
-existing checkouts and packaging. Its source of truth is `src/photoalbum.sh`
+`bin/shuriken` is a committed generated artifact for compatibility with
+existing checkouts and packaging. Its source of truth is `src/shuriken.sh`
 rendered through the `VERSION` value in `Justfile`. Run `just build` after
 changing either file, and use `just check-generated` to verify that the tracked
 script has not drifted. `just test` and `just install` run that drift check
 before rebuilding so stale committed output is not hidden.
 
-`just install` installs `photoalbum` to `/usr/bin`, templates and static assets
-to `/usr/share/photoalbum`, and the default config to `/etc/default/photoalbum`.
+`just install` installs `shuriken` to `/usr/bin`, templates and static assets
+to `/usr/share/shuriken`, and the default config to `/etc/default/shuriken`.
 Override paths with `DESTDIR`, `PREFIX`, `BINDIR`, `DATADIR`, or `SYSCONFDIR`
 when packaging or staging an install:
 
@@ -40,17 +40,17 @@ modern `magick` command and falls back to `convert` when needed.
 ## Usage
 
 ```
-photoalbum --init
-photoalbum --generate [--config PATH] [OPTIONS]
-photoalbum --refresh-splash [--config PATH] [OPTIONS]
-photoalbum --sync [--config PATH] [OPTIONS]
-photoalbum --dry-run [--config PATH] [OPTIONS]
-photoalbum --print-config [--config PATH] [OPTIONS]
-photoalbum --clean [--config PATH] [OPTIONS]
-photoalbum --version
+shuriken --init
+shuriken --generate [--config PATH] [OPTIONS]
+shuriken --refresh-splash [--config PATH] [OPTIONS]
+shuriken --sync [--config PATH] [OPTIONS]
+shuriken --dry-run [--config PATH] [OPTIONS]
+shuriken --print-config [--config PATH] [OPTIONS]
+shuriken --clean [--config PATH] [OPTIONS]
+shuriken --version
 ```
 
-* `--init` creates `./photoalbum.conf` in the current working directory from the
+* `--init` creates `./shuriken.conf` in the current working directory from the
   default config. It refuses to overwrite an existing file.
 * `--generate` builds the static album.
 * `--force` with `--generate` rebuilds from scratch instead of reusing cached
@@ -70,15 +70,15 @@ photoalbum --version
   `--refresh-splash`, `--dry-run`, `--print-config`, or `--clean`.
 
 When `--config PATH` is not provided, `--generate`, `--dry-run`,
-`--print-config`, `--refresh-splash`, and `--clean` read `./photoalbum.conf`.
-If the file is missing, run `photoalbum --init` first.
+`--print-config`, `--refresh-splash`, and `--clean` read `./shuriken.conf`.
+If the file is missing, run `shuriken --init` first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
 `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`,
 `TARBALL_INCLUDE`, `TAR_TIMEOUT`, `SYNC_DELETE`, and `SYNC_DESTINATIONS`.
 
-Before generating, `photoalbum` validates the loaded config and command-line
+Before generating, `shuriken` validates the loaded config and command-line
 overrides. It checks required values, positive integer settings, `yes`/`no`
 settings, readable input and template directories, a writable output location,
 and ImageMagick availability. Generation stops before writing album output when
@@ -104,7 +104,7 @@ assignments, so the output can be parsed by shell tooling. `--quiet` does not
 suppress this output, and `--verbose` does not add human-readable diagnostics to
 it.
 
-Successful generation writes `photoalbum.json` into the output directory. This
+Successful generation writes `shuriken.json` into the output directory. This
 metadata records the generator version and timestamp, config source, template
 directory, supported source image and generated file counts, tarball status, and
 effective settings useful for debugging a published album.
@@ -148,7 +148,7 @@ a randomly selected album photo. Set `SPLASH_PAGE=no` or pass `--no-splash` to
 restore the top-level redirect to `page-1.html`.
 
 To quickly pick a new random splash photo for an already generated album, run
-`photoalbum --refresh-splash`. This rewrites only `DIST_DIR/index.html` using
+`shuriken --refresh-splash`. This rewrites only `DIST_DIR/index.html` using
 the existing `photos` and `blurs` output, so it avoids reprocessing images and
 rerendering album pages. It requires `SPLASH_PAGE=yes`; pass
 `--random-seed VALUE` when you need a repeatable pick.
@@ -159,7 +159,7 @@ timestamps, and `--shuffle` preview order remain non-deterministic. Set
 choices repeatable for stable tests or reproducible album builds. Use the same
 seed and inputs to produce the same HTML.
 
-To publish generated output, configure destinations and run `photoalbum --sync`:
+To publish generated output, configure destinations and run `shuriken --sync`:
 
 ```
 SYNC_DESTINATIONS=(
@@ -194,13 +194,13 @@ value to a positive integer to adjust the limit for large images or archives.
 
 ## Example usage
 
-1. Run `photoalbum --init`.
-2. Edit `photoalbum.conf`. Set `INCOMING_DIR` to the directory containing the
+1. Run `shuriken --init`.
+2. Edit `shuriken.conf`. Set `INCOMING_DIR` to the directory containing the
    pictures and adjust `DIST_DIR`, `TITLE`, or template settings as needed.
-3. Run `photoalbum --dry-run` to inspect the planned generation.
-4. Run `photoalbum --generate` to generate the album.
-5. Run `photoalbum --sync` to publish `./dist`, or distribute it manually.
-6. Run `photoalbum --clean` to remove the generated output.
+3. Run `shuriken --dry-run` to inspect the planned generation.
+4. Run `shuriken --generate` to generate the album.
+5. Run `shuriken --sync` to publish `./dist`, or distribute it manually.
+6. Run `shuriken --clean` to remove the generated output.
 
 ## HTML templates
 

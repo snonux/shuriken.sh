@@ -37,11 +37,11 @@ USAGE
 }
 
 output_is_quiet() {
-    [ "$PHOTOALBUM_OUTPUT_MODE" = quiet ]
+    [ "$SHURIKEN_OUTPUT_MODE" = quiet ]
 }
 
 output_is_verbose() {
-    [ "$PHOTOALBUM_OUTPUT_MODE" = verbose ]
+    [ "$SHURIKEN_OUTPUT_MODE" = verbose ]
 }
 
 log_info() {
@@ -71,7 +71,7 @@ resolve_default_rc_file() {
     source_root=$(resolve_source_root)
 
     if [ -n "$source_root" ]; then
-        printf '%s\n' "$source_root/src/photoalbum.default.conf"
+        printf '%s\n' "$source_root/src/shuriken.default.conf"
         return
     fi
 
@@ -82,10 +82,10 @@ resolve_source_root() {
     local script_dir
     local source_root
 
-    script_dir="$PHOTOALBUM_SOURCE_DIR"
+    script_dir="$SHURIKEN_SOURCE_DIR"
     source_root=$(cd "$script_dir/.." && pwd)
 
-    if [[ -f "$source_root/src/photoalbum.default.conf" \
+    if [[ -f "$source_root/src/shuriken.default.conf" \
         && -d "$source_root/share/templates/default" ]]; then
         printf '%s\n' "$source_root"
     fi
@@ -149,7 +149,7 @@ apply_template_dir_default() {
 }
 
 init_config() {
-    local -r rc_file=photoalbum.conf
+    local -r rc_file=shuriken.conf
     local default_rc_file
     local rewritten_rc_file
     local source_root
@@ -171,7 +171,7 @@ init_config() {
 
     source_root=$(resolve_source_root)
     if [[ -n "$source_root" \
-        && "$default_rc_file" = "$source_root/src/photoalbum.default.conf" ]]; then
+        && "$default_rc_file" = "$source_root/src/shuriken.default.conf" ]]; then
         source_template_dir="$source_root/share/templates/default"
         rewritten_rc_file=$(mktemp "${rc_file}.XXXXXX")
         if ! awk -v template_dir="$source_template_dir" \

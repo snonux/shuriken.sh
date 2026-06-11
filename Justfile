@@ -1,6 +1,6 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-NAME := "photoalbum"
+NAME := "shuriken"
 VERSION := "0.7.0"
 DESTDIR := env_var_or_default("DESTDIR", "")
 PREFIX := env_var_or_default("PREFIX", "/usr")
@@ -29,30 +29,30 @@ build:
         for lib_source in {{LIB_SOURCES}}; do
             printf '\n# Inlined from %s\n' "$lib_source"
             while IFS= read -r line; do
-                line=${line//PHOTOALBUMVERSION/{{VERSION}}}
+                line=${line//SHURIKENVERSION/{{VERSION}}}
                 printf '%s\n' "$line"
             done < "$lib_source"
         done
     }
 
-    render_photoalbum() {
+    render_shuriken() {
         local in_lib_sources=no
         local line
 
         while IFS= read -r line; do
             case "$line" in
-                '# PHOTOALBUM_LIB_SOURCES_BEGIN')
+                '# SHURIKEN_LIB_SOURCES_BEGIN')
                     printf '%s\n' "$line"
                     render_lib_sources
                     in_lib_sources=yes
                     ;;
-                '# PHOTOALBUM_LIB_SOURCES_END')
+                '# SHURIKEN_LIB_SOURCES_END')
                     in_lib_sources=no
                     printf '\n%s\n' "$line"
                     ;;
                 *)
                     if [ "$in_lib_sources" = no ]; then
-                        line=${line//PHOTOALBUMVERSION/{{VERSION}}}
+                        line=${line//SHURIKENVERSION/{{VERSION}}}
                         printf '%s\n' "$line"
                     fi
                     ;;
@@ -60,7 +60,7 @@ build:
         done < "src/{{NAME}}.sh"
     }
 
-    render_photoalbum > "$generated"
+    render_shuriken > "$generated"
     chmod 0755 "$generated"
     if [ -f "./bin/{{NAME}}" ] && cmp -s "$generated" "./bin/{{NAME}}"; then
         chmod 0755 "./bin/{{NAME}}"
@@ -81,30 +81,30 @@ check-generated:
         for lib_source in {{LIB_SOURCES}}; do
             printf '\n# Inlined from %s\n' "$lib_source"
             while IFS= read -r line; do
-                line=${line//PHOTOALBUMVERSION/{{VERSION}}}
+                line=${line//SHURIKENVERSION/{{VERSION}}}
                 printf '%s\n' "$line"
             done < "$lib_source"
         done
     }
 
-    render_photoalbum() {
+    render_shuriken() {
         local in_lib_sources=no
         local line
 
         while IFS= read -r line; do
             case "$line" in
-                '# PHOTOALBUM_LIB_SOURCES_BEGIN')
+                '# SHURIKEN_LIB_SOURCES_BEGIN')
                     printf '%s\n' "$line"
                     render_lib_sources
                     in_lib_sources=yes
                     ;;
-                '# PHOTOALBUM_LIB_SOURCES_END')
+                '# SHURIKEN_LIB_SOURCES_END')
                     in_lib_sources=no
                     printf '\n%s\n' "$line"
                     ;;
                 *)
                     if [ "$in_lib_sources" = no ]; then
-                        line=${line//PHOTOALBUMVERSION/{{VERSION}}}
+                        line=${line//SHURIKENVERSION/{{VERSION}}}
                         printf '%s\n' "$line"
                     fi
                     ;;
@@ -112,7 +112,7 @@ check-generated:
         done < "src/{{NAME}}.sh"
     }
 
-    render_photoalbum > "$generated"
+    render_shuriken > "$generated"
     chmod 0755 "$generated"
     if [ ! -f "./bin/{{NAME}}" ]; then
         printf '%s\n' \
@@ -144,7 +144,7 @@ install: check-generated build
     cp -R ./assets/site "{{DESTDIR}}{{DATADIR}}/{{NAME}}/assets"
     install -d "{{DESTDIR}}{{SYSCONFDIR}}"
     install -m 0644 \
-        ./src/photoalbum.default.conf \
+        ./src/shuriken.default.conf \
         "{{DESTDIR}}{{SYSCONFDIR}}/{{NAME}}"
 
 deinstall:
@@ -162,6 +162,6 @@ shellcheck:
     shellcheck \
         --external-sources \
         --check-sourced \
-        ./src/photoalbum.sh \
+        ./src/shuriken.sh \
         ./tests/cli.sh \
         ./tests/helpers.sh

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 : "${TEST_REPO_ROOT:=${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
-: "${TEST_PHOTOALBUM:=${PHOTOALBUM:-$TEST_REPO_ROOT/bin/photoalbum}}"
+: "${TEST_SHURIKEN:=${SHURIKEN:-$TEST_REPO_ROOT/bin/shuriken}}"
 : "${TEST_IMAGEMAGICK:=magick}"
 : "${TEST_TMPDIR:=}"
 
@@ -169,7 +169,7 @@ test::assert_no_staging_dirs() {
     local -r dir="$1"; shift
     local found
 
-    found=$(find "$dir" -type d -name '.photoalbum.*' -print -quit)
+    found=$(find "$dir" -type d -name '.shuriken.*' -print -quit)
 
     if [ -n "$found" ]; then
         echo "FAIL: expected no staging directories under $dir" >&2
@@ -178,8 +178,8 @@ test::assert_no_staging_dirs() {
     fi
 }
 
-test::run_photoalbum() {
-    "$TEST_PHOTOALBUM" "$@" 2>&1
+test::run_shuriken() {
+    "$TEST_SHURIKEN" "$@" 2>&1
 }
 
 test::install_fake_imagemagick() {

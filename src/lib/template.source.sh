@@ -119,7 +119,7 @@ _json_bool() {
 
 _display_path() {
     local -r path="$1"; shift
-    local -r final_dist="${PHOTOALBUM_FINAL_DIST_DIR:-}"
+    local -r final_dist="${SHURIKEN_FINAL_DIST_DIR:-}"
 
     if [[ -n "$final_dist" && "$path" == "$DIST_DIR"* ]]; then
         printf '%s%s\n' "$final_dist" "${path#"$DIST_DIR"}"
@@ -139,15 +139,15 @@ current_date_text() {
 current_date_text_to() {
     local -n output_ref="$1"; shift
 
-    if [ -z "$PHOTOALBUM_CURRENT_DATE_TEXT" ]; then
+    if [ -z "$SHURIKEN_CURRENT_DATE_TEXT" ]; then
         if random_seed_is_set; then
-            PHOTOALBUM_CURRENT_DATE_TEXT='Thu Jan  1 00:00:00 UTC 1970'
+            SHURIKEN_CURRENT_DATE_TEXT='Thu Jan  1 00:00:00 UTC 1970'
         else
-            PHOTOALBUM_CURRENT_DATE_TEXT=$(command date)
+            SHURIKEN_CURRENT_DATE_TEXT=$(command date)
         fi
     fi
 
-    output_ref="$PHOTOALBUM_CURRENT_DATE_TEXT"
+    output_ref="$SHURIKEN_CURRENT_DATE_TEXT"
 }
 
 current_timestamp_slug() {

@@ -2,16 +2,16 @@ run_simple_action() {
     case "$action" in
         --version)
             if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
-                || "$PHOTOALBUM_FORCE_GENERATE" = yes ]]; then
+                || "$SHURIKEN_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
             fi
 
-            printf 'This is Photoalbum Version %s\n' "$VERSION"
+            printf 'This is Shuriken Version %s\n' "$VERSION"
             ;;
         --init)
             if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
-                || "$PHOTOALBUM_FORCE_GENERATE" = yes ]]; then
+                || "$SHURIKEN_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
             fi
@@ -33,8 +33,8 @@ load_configured_action() {
     apply_config_defaults
     apply_template_dir_default
     apply_cli_overrides
-    PHOTOALBUM_CONFIG_SOURCE="$rc_file"
-    export PHOTOALBUM_CONFIG_SOURCE
+    SHURIKEN_CONFIG_SOURCE="$rc_file"
+    export SHURIKEN_CONFIG_SOURCE
 }
 
 log_configured_action() {
@@ -54,13 +54,13 @@ log_configured_action() {
     log_verbose "Effective splash page setting: ${SPLASH_PAGE:-yes}"
     log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
     log_verbose "Effective sync delete setting: ${SYNC_DELETE:-yes}"
-    log_verbose "Effective force generation setting: $PHOTOALBUM_FORCE_GENERATE"
+    log_verbose "Effective force generation setting: $SHURIKEN_FORCE_GENERATE"
 }
 
 run_configured_action() {
     local rc_file
 
-    if [[ "$PHOTOALBUM_FORCE_GENERATE" = yes && "$action" != --generate ]]; then
+    if [[ "$SHURIKEN_FORCE_GENERATE" = yes && "$action" != --generate ]]; then
         usage
         exit 1
     fi

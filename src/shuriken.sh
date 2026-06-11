@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# photoalbum (c) 2011 - 2014, 2022 by Paul Buetow
+# shuriken (c) 2011 - 2014, 2022 by Paul Buetow
 # https://codeberg.org/snonux/shuriken.sh
 
-declare -r VERSION='PHOTOALBUMVERSION'
-declare -r DEFAULTRC="${PHOTOALBUM_DEFAULT_RC:-/etc/default/photoalbum}"
-declare -r PACKAGED_TEMPLATE_DIR='/usr/share/photoalbum/templates/default'
-declare -r PACKAGED_ASSET_DIR='/usr/share/photoalbum/assets'
-DEFAULT_TEMPLATE_DIR="${PHOTOALBUM_DEFAULT_TEMPLATE_DIR:-$PACKAGED_TEMPLATE_DIR}"
+declare -r VERSION='SHURIKENVERSION'
+declare -r DEFAULTRC="${SHURIKEN_DEFAULT_RC:-/etc/default/shuriken}"
+declare -r PACKAGED_TEMPLATE_DIR='/usr/share/shuriken/templates/default'
+declare -r PACKAGED_ASSET_DIR='/usr/share/shuriken/assets'
+DEFAULT_TEMPLATE_DIR="${SHURIKEN_DEFAULT_TEMPLATE_DIR:-$PACKAGED_TEMPLATE_DIR}"
 declare -r DEFAULT_TEMPLATE_DIR
-DEFAULT_ASSET_DIR="${PHOTOALBUM_DEFAULT_ASSET_DIR:-$PACKAGED_ASSET_DIR}"
+DEFAULT_ASSET_DIR="${SHURIKEN_DEFAULT_ASSET_DIR:-$PACKAGED_ASSET_DIR}"
 declare -r DEFAULT_ASSET_DIR
-PHOTOALBUM_OUTPUT_MODE="${PHOTOALBUM_OUTPUT_MODE:-normal}"
-PHOTOALBUM_ACTIVE_GENERATION_PID=''
-PHOTOALBUM_FORCE_GENERATE="${PHOTOALBUM_FORCE_GENERATE:-no}"
-PHOTOALBUM_CURRENT_DATE_TEXT=''
+SHURIKEN_OUTPUT_MODE="${SHURIKEN_OUTPUT_MODE:-normal}"
+SHURIKEN_ACTIVE_GENERATION_PID=''
+SHURIKEN_FORCE_GENERATE="${SHURIKEN_FORCE_GENERATE:-no}"
+SHURIKEN_CURRENT_DATE_TEXT=''
 
 declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
@@ -66,9 +66,9 @@ declare -Ar CLI_OPTION_KIND=(
 )
 declare -Ar CLI_OPTION_TARGET=(
     [--config]=config_file
-    [--verbose]=PHOTOALBUM_OUTPUT_MODE
-    [--quiet]=PHOTOALBUM_OUTPUT_MODE
-    [--force]=PHOTOALBUM_FORCE_GENERATE
+    [--verbose]=SHURIKEN_OUTPUT_MODE
+    [--quiet]=SHURIKEN_OUTPUT_MODE
+    [--force]=SHURIKEN_FORCE_GENERATE
 )
 declare -Ar CLI_OPTION_VALUE=(
     [--shuffle]=yes
@@ -107,25 +107,25 @@ declare -Ar CLI_OPTION_ARGUMENT=(
     [--sync-destination]=destination
 )
 
-PHOTOALBUM_SOURCE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-declare -r PHOTOALBUM_SOURCE_DIR
+SHURIKEN_SOURCE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+declare -r SHURIKEN_SOURCE_DIR
 
-# PHOTOALBUM_LIB_SOURCES_BEGIN
+# SHURIKEN_LIB_SOURCES_BEGIN
 # shellcheck source=src/lib/bootstrap.source.sh
-source "$PHOTOALBUM_SOURCE_DIR/lib/bootstrap.source.sh"
+source "$SHURIKEN_SOURCE_DIR/lib/bootstrap.source.sh"
 # shellcheck source=src/lib/system.source.sh
-source "$PHOTOALBUM_SOURCE_DIR/lib/system.source.sh"
+source "$SHURIKEN_SOURCE_DIR/lib/system.source.sh"
 # shellcheck source=src/lib/template.source.sh
-source "$PHOTOALBUM_SOURCE_DIR/lib/template.source.sh"
+source "$SHURIKEN_SOURCE_DIR/lib/template.source.sh"
 # shellcheck source=src/lib/image.source.sh
-source "$PHOTOALBUM_SOURCE_DIR/lib/image.source.sh"
+source "$SHURIKEN_SOURCE_DIR/lib/image.source.sh"
 # shellcheck source=src/lib/album.source.sh
-source "$PHOTOALBUM_SOURCE_DIR/lib/album.source.sh"
+source "$SHURIKEN_SOURCE_DIR/lib/album.source.sh"
 # shellcheck source=src/lib/config.source.sh
-source "$PHOTOALBUM_SOURCE_DIR/lib/config.source.sh"
+source "$SHURIKEN_SOURCE_DIR/lib/config.source.sh"
 # shellcheck source=src/lib/action.source.sh
-source "$PHOTOALBUM_SOURCE_DIR/lib/action.source.sh"
-# PHOTOALBUM_LIB_SOURCES_END
+source "$SHURIKEN_SOURCE_DIR/lib/action.source.sh"
+# SHURIKEN_LIB_SOURCES_END
 
 main() {
     local action=''

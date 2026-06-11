@@ -145,7 +145,7 @@ cached_photo_identify_output() {
     local cached_signature=''
     local current_signature
 
-    cache_dir="$DIST_DIR/.photoalbum-cache/exif"
+    cache_dir="$DIST_DIR/.shuriken-cache/exif"
     cache_file="$cache_dir/$photo.txt"
     current_signature=$(photo_cache_signature "$photo" "$photo_path")
 
@@ -834,7 +834,7 @@ count_tree_files() {
 write_generation_metadata() {
     local -r tarball_file="$1"; shift
     local -r generated_at=$(current_timestamp_iso)
-    local -r config_source="${PHOTOALBUM_CONFIG_SOURCE:-}"
+    local -r config_source="${SHURIKEN_CONFIG_SOURCE:-}"
     local -r template_name=$(basename "$TEMPLATE_DIR")
     local -r source_image_count=$(count_incoming_images)
     local -r generated_photo_count=$(count_files "$DIST_DIR/photos")
@@ -844,7 +844,7 @@ write_generation_metadata() {
     {
         printf '{\n'
         printf '  "generator": {\n'
-        printf '    "name": "photoalbum",\n'
+        printf '    "name": "shuriken",\n'
         printf '    "version": %s\n' "$(_json_string "$VERSION")"
         printf '  },\n'
         printf '  "generated_at": %s,\n' "$(_json_string "$generated_at")"
@@ -879,7 +879,7 @@ write_generation_metadata() {
             "$(_json_string "${ORIGINAL_BASEPATH:-}")"
         printf '  }\n'
         printf '}\n'
-    } > "$DIST_DIR/photoalbum.json"
+    } > "$DIST_DIR/shuriken.json"
 }
 
 prepare_generation_photo_assets() {
@@ -976,7 +976,7 @@ dry_run() {
     fi
 
     printf 'Dry run: no files will be written.\n'
-    printf 'Config source: %s\n' "${PHOTOALBUM_CONFIG_SOURCE:-}"
+    printf 'Config source: %s\n' "${SHURIKEN_CONFIG_SOURCE:-}"
     printf 'Incoming directory: %s\n' "$INCOMING_DIR"
     printf 'Output directory: %s\n' "$DIST_DIR"
     printf 'Template directory: %s\n' "$TEMPLATE_DIR"
@@ -1011,7 +1011,7 @@ dry_run() {
             "$DIST_DIR" "$html_index_count"
     fi
     printf '  %s/favicon.ico\n' "$DIST_DIR"
-    printf '  %s/photoalbum.json\n' "$DIST_DIR"
+    printf '  %s/shuriken.json\n' "$DIST_DIR"
     printf '  %s/photos/* (%s image files)\n' "$DIST_DIR" "$image_count"
     printf '  %s/thumbs/* (%s image files)\n' "$DIST_DIR" "$image_count"
     printf '  %s/blurs/* (%s image files)\n' "$DIST_DIR" "$image_count"

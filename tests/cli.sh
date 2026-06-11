@@ -3,7 +3,7 @@ set -euo pipefail
 
 TEST_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 declare -r TEST_REPO_ROOT
-declare -r TEST_PHOTOALBUM="${PHOTOALBUM:-$TEST_REPO_ROOT/bin/photoalbum}"
+declare -r TEST_SHURIKEN="${SHURIKEN:-$TEST_REPO_ROOT/bin/shuriken}"
 
 # shellcheck source=tests/helpers.sh
 source "$TEST_REPO_ROOT/tests/helpers.sh"
@@ -112,7 +112,7 @@ template_path = pathlib.Path(template_dir)
 tarball_expected = tarball_included == "yes"
 tarball_files = sorted(path.name for path in dist_path.glob("*.tar"))
 
-assert metadata["generator"]["name"] == "photoalbum"
+assert metadata["generator"]["name"] == "shuriken"
 assert re.fullmatch(r"\d+\.\d+\.\d+", metadata["generator"]["version"])
 assert metadata["config_source"] == config_source
 assert metadata["template"]["directory"] == template_dir
@@ -159,8 +159,8 @@ test::assert_no_html_subdir_output() {
 test_version() {
     local output
 
-    output=$(test::run_photoalbum --version)
-    test::assert_contains 'This is Photoalbum Version' "$output"
+    output=$(test::run_shuriken --version)
+    test::assert_contains 'This is Shuriken Version' "$output"
 }
 
 test_init() {
@@ -169,11 +169,11 @@ test_init() {
     test::setup
     (
         cd "$TEST_TMPDIR"
-        PHOTOALBUM_DEFAULT_RC="$TEST_TMPDIR/missing" \
-            "$TEST_PHOTOALBUM" --init >/dev/null
-        test::assert_file_exists photoalbum.conf
+        SHURIKEN_DEFAULT_RC="$TEST_TMPDIR/missing" \
+            "$TEST_SHURIKEN" --init >/dev/null
+        test::assert_file_exists shuriken.conf
     )
-    config=$(<"$TEST_TMPDIR/photoalbum.conf")
+    config=$(<"$TEST_TMPDIR/shuriken.conf")
     test::assert_contains \
         "TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default" \
         "$config"
@@ -197,11 +197,11 @@ test_init_with_hash_in_source_path() {
 
     (
         cd "$output_dir"
-        PHOTOALBUM_DEFAULT_RC="$TEST_TMPDIR/missing" \
-            "$repo_dir/bin/photoalbum" --init >/dev/null
-        test::assert_file_exists photoalbum.conf
+        SHURIKEN_DEFAULT_RC="$TEST_TMPDIR/missing" \
+            "$repo_dir/bin/shuriken" --init >/dev/null
+        test::assert_file_exists shuriken.conf
     )
-    config=$(<"$output_dir/photoalbum.conf")
+    config=$(<"$output_dir/shuriken.conf")
     test::assert_contains \
         "TEMPLATE_DIR=$repo_dir/share/templates/default" \
         "$config"
@@ -212,15 +212,15 @@ test_init_existing_config_fails_without_overwrite() {
     local output
 
     test::setup
-    printf 'sentinel\n' > "$TEST_TMPDIR/photoalbum.conf"
+    printf 'sentinel\n' > "$TEST_TMPDIR/shuriken.conf"
 
     output=$(
         cd "$TEST_TMPDIR"
-        test::capture_failure_output "$TEST_PHOTOALBUM" --init
+        test::capture_failure_output "$TEST_SHURIKEN" --init
     )
 
-    test::assert_contains 'Error: photoalbum.conf already exists' "$output"
-    test "$(<"$TEST_TMPDIR/photoalbum.conf")" = 'sentinel'
+    test::assert_contains 'Error: shuriken.conf already exists' "$output"
+    test "$(<"$TEST_TMPDIR/shuriken.conf")" = 'sentinel'
     test::teardown
 }
 
@@ -235,20 +235,20 @@ test_just_install_and_deinstall_with_destdir() {
         DESTDIR="$stage_dir" PREFIX=/usr just install
     )
 
-    test::assert_file_exists "$stage_dir/usr/bin/photoalbum"
-    test::assert_file_exists "$stage_dir/etc/default/photoalbum"
+    test::assert_file_exists "$stage_dir/usr/bin/shuriken"
+    test::assert_file_exists "$stage_dir/etc/default/shuriken"
     test::assert_file_exists \
-        "$stage_dir/usr/share/photoalbum/templates/default/view.tmpl"
-    test::assert_file_exists "$stage_dir/usr/share/photoalbum/assets/favicon.ico"
+        "$stage_dir/usr/share/shuriken/templates/default/view.tmpl"
+    test::assert_file_exists "$stage_dir/usr/share/shuriken/assets/favicon.ico"
 
     (
         cd "$TEST_REPO_ROOT"
         DESTDIR="$stage_dir" PREFIX=/usr just deinstall
     )
 
-    test::assert_path_absent "$stage_dir/usr/bin/photoalbum"
-    test::assert_path_absent "$stage_dir/etc/default/photoalbum"
-    test::assert_path_absent "$stage_dir/usr/share/photoalbum"
+    test::assert_path_absent "$stage_dir/usr/bin/shuriken"
+    test::assert_path_absent "$stage_dir/etc/default/shuriken"
+    test::assert_path_absent "$stage_dir/usr/share/shuriken"
     test::teardown
 }
 
@@ -257,14 +257,14 @@ test_clean() {
 
     test::setup
     printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR" \
-        > "$TEST_TMPDIR/photoalbum.conf"
+        > "$TEST_TMPDIR/shuriken.conf"
     mkdir -p "$TEST_TMPDIR/dist"
-    staging_dir="$TEST_TMPDIR/.photoalbum.dist.staging.manual"
+    staging_dir="$TEST_TMPDIR/.shuriken.dist.staging.manual"
     mkdir -p "$staging_dir"
 
     (
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --clean
+        "$TEST_SHURIKEN" --clean
         test::assert_path_absent "$TEST_TMPDIR/dist"
         test::assert_dir_exists "$staging_dir"
     )
@@ -281,7 +281,7 @@ test_clean_with_config() {
 
     (
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --clean --config "$config_file"
+        "$TEST_SHURIKEN" --clean --config "$config_file"
         test::assert_path_absent "$TEST_TMPDIR/custom-dist"
     )
     test::teardown
@@ -291,13 +291,13 @@ test_clean_cli_dist_overrides_config() {
     local config_file
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     printf 'DIST_DIR=%q/config-dist\n' "$TEST_TMPDIR" > "$config_file"
     mkdir -p "$TEST_TMPDIR/config-dist" "$TEST_TMPDIR/cli-dist"
 
     (
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --clean --dist "$TEST_TMPDIR/cli-dist"
+        "$TEST_SHURIKEN" --clean --dist "$TEST_TMPDIR/cli-dist"
         test::assert_dir_exists "$TEST_TMPDIR/config-dist"
         test::assert_path_absent "$TEST_TMPDIR/cli-dist"
     )
@@ -312,32 +312,32 @@ test_missing_config_fails_without_legacy_fallbacks() {
 
     test::setup
     home_dir="$TEST_TMPDIR/home"
-    default_rc="$TEST_TMPDIR/default-photoalbum"
+    default_rc="$TEST_TMPDIR/default-shuriken"
     mkdir -p "$home_dir"
 
     printf 'DIST_DIR=%q/legacy-dist\n' "$TEST_TMPDIR" \
-        > "$TEST_TMPDIR/photoalbumrc"
-    printf 'DIST_DIR=%q/home-dist\n' "$TEST_TMPDIR" > "$home_dir/.photoalbumrc"
+        > "$TEST_TMPDIR/shurikenrc"
+    printf 'DIST_DIR=%q/home-dist\n' "$TEST_TMPDIR" > "$home_dir/.shurikenrc"
     printf 'DIST_DIR=%q/default-dist\n' "$TEST_TMPDIR" > "$default_rc"
 
     generate_output=$(
         cd "$TEST_TMPDIR"
-        HOME="$home_dir" PHOTOALBUM_DEFAULT_RC="$default_rc" \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+        HOME="$home_dir" SHURIKEN_DEFAULT_RC="$default_rc" \
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
     clean_output=$(
         cd "$TEST_TMPDIR"
-        HOME="$home_dir" PHOTOALBUM_DEFAULT_RC="$default_rc" \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --clean
+        HOME="$home_dir" SHURIKEN_DEFAULT_RC="$default_rc" \
+            test::capture_failure_output "$TEST_SHURIKEN" --clean
     )
 
-    test::assert_contains 'Error: Can not find config file ./photoalbum.conf' \
+    test::assert_contains 'Error: Can not find config file ./shuriken.conf' \
         "$generate_output"
-    test::assert_contains 'Run photoalbum --init to create ./photoalbum.conf.' \
+    test::assert_contains 'Run shuriken --init to create ./shuriken.conf.' \
         "$generate_output"
-    test::assert_contains 'Error: Can not find config file ./photoalbum.conf' \
+    test::assert_contains 'Error: Can not find config file ./shuriken.conf' \
         "$clean_output"
-    test::assert_contains 'Run photoalbum --init to create ./photoalbum.conf.' \
+    test::assert_contains 'Run shuriken --init to create ./shuriken.conf.' \
         "$clean_output"
     test::assert_path_absent "$TEST_TMPDIR/legacy-dist"
     test::assert_path_absent "$TEST_TMPDIR/home-dist"
@@ -358,7 +358,7 @@ test_generate_with_config_missing_incoming_fails() {
     output=$(
         cd "$TEST_TMPDIR"
         test::capture_failure_output \
-            "$TEST_PHOTOALBUM" --generate --config "$config_file"
+            "$TEST_SHURIKEN" --generate --config "$config_file"
     )
 
     test::assert_contains \
@@ -384,8 +384,8 @@ test_generate_with_config_succeeds_without_default_config() {
 
     (
         cd "$TEST_TMPDIR"
-        test::assert_path_absent photoalbum.conf
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+        test::assert_path_absent shuriken.conf
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
             --generate --config "$config_file"
     )
 
@@ -403,7 +403,7 @@ test_generate_cli_overrides_config_values() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -423,7 +423,7 @@ test_generate_cli_overrides_config_values() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
             --generate \
             --incoming "$TEST_TMPDIR/cli-incoming" \
             --dist "$TEST_TMPDIR/cli-dist" \
@@ -467,7 +467,7 @@ test_generate_shuffle_override_uses_random_order() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     sort_log="$TEST_TMPDIR/sort.log"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -481,7 +481,7 @@ test_generate_shuffle_override_uses_random_order() {
     (
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_SORT_LOG="$sort_log" \
-            "$TEST_PHOTOALBUM" --generate --shuffle
+            "$TEST_SHURIKEN" --generate --shuffle
     )
 
     sort_log_output=$(<"$sort_log")
@@ -497,7 +497,7 @@ test_generate_no_shuffle_override_uses_sorted_order() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     sort_log="$TEST_TMPDIR/sort.log"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -512,7 +512,7 @@ test_generate_no_shuffle_override_uses_sorted_order() {
     (
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_SORT_LOG="$sort_log" \
-            "$TEST_PHOTOALBUM" --generate --no-shuffle
+            "$TEST_SHURIKEN" --generate --no-shuffle
     )
 
     page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
@@ -531,7 +531,7 @@ test_generate_random_seed_repeats_html_with_shuffle() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     sort_log="$TEST_TMPDIR/sort.log"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -545,13 +545,13 @@ test_generate_random_seed_repeats_html_with_shuffle() {
     (
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_SORT_LOG="$sort_log" \
-            "$TEST_PHOTOALBUM" \
+            "$TEST_SHURIKEN" \
                 --generate \
                 --shuffle \
                 --random-seed stable-seed \
                 --dist "$TEST_TMPDIR/dist-one"
         PATH="$fake_bin:$PATH" TEST_SORT_LOG="$sort_log" \
-            "$TEST_PHOTOALBUM" \
+            "$TEST_SHURIKEN" \
                 --generate \
                 --shuffle \
                 --random-seed stable-seed \
@@ -560,7 +560,7 @@ test_generate_random_seed_repeats_html_with_shuffle() {
 
     if ! diff -ru \
         --exclude=blurs \
-        --exclude=photoalbum.json \
+        --exclude=shuriken.json \
         --exclude=photos \
         --exclude=thumbs \
         "$TEST_TMPDIR/dist-one" \
@@ -586,7 +586,7 @@ test_generate_cli_tarball_overrides_config() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -597,7 +597,7 @@ test_generate_cli_tarball_overrides_config() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate --tarball
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate --tarball
     )
 
     tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tar' -print)
@@ -614,7 +614,7 @@ test_generate_cli_no_tarball_overrides_config() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -626,7 +626,7 @@ test_generate_cli_no_tarball_overrides_config() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate --no-tarball
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate --no-tarball
     )
 
     test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
@@ -642,7 +642,7 @@ test_generate_default_tar_opts_create_archive() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     tar_log="$TEST_TMPDIR/tar.log"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -657,7 +657,7 @@ test_generate_default_tar_opts_create_archive() {
     (
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_TAR_LOG="$tar_log" \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
 
     tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tar' -print)
@@ -676,7 +676,7 @@ test_generate_custom_tarball_suffix_cleans_previous_archive() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     cat > "$fake_bin/date" <<'DATE'
@@ -712,7 +712,7 @@ DATE
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
             TEST_FAKE_DATE_COUNTER="$TEST_TMPDIR/date-count" \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
     first_tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tgz' -print)
 
@@ -720,7 +720,7 @@ DATE
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
             TEST_FAKE_DATE_COUNTER="$TEST_TMPDIR/date-count" \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
 
     test::assert_find_count 1 "$TEST_TMPDIR/dist" '*.tgz'
@@ -740,7 +740,7 @@ test_generate_scalar_multi_tar_opts_create_archive() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     tar_log="$TEST_TMPDIR/tar.log"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -758,7 +758,7 @@ test_generate_scalar_multi_tar_opts_create_archive() {
     (
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_TAR_LOG="$tar_log" \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
 
     tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tar' -print)
@@ -778,7 +778,7 @@ test_default_output_reports_routine_progress() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -789,7 +789,7 @@ test_default_output_reports_routine_progress() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains 'Processing 01-landscape.jpg to' "$output"
@@ -807,7 +807,7 @@ test_quiet_output_suppresses_routine_progress() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -818,13 +818,13 @@ test_quiet_output_suppresses_routine_progress() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --quiet --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --quiet --generate
     )
 
     test::assert_not_contains 'Processing ' "$output"
     test::assert_not_contains 'Rendering ' "$output"
     test::assert_not_contains 'Creating thumb ' "$output"
-    test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_file_exists "$TEST_TMPDIR/dist/shuriken.json"
     test::teardown
 }
 
@@ -837,7 +837,7 @@ test_quiet_output_keeps_errors_on_stderr() {
     local -i status=0
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     output_file="$TEST_TMPDIR/stdout"
     stderr_file="$TEST_TMPDIR/stderr"
     test::write_album_config \
@@ -847,7 +847,7 @@ test_quiet_output_keeps_errors_on_stderr() {
     set +e
     (
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --quiet --generate \
+        "$TEST_SHURIKEN" --quiet --generate \
             > "$output_file" 2> "$stderr_file"
     )
     status=$?
@@ -874,7 +874,7 @@ test_verbose_output_reports_processing_decisions() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -885,14 +885,14 @@ test_verbose_output_reports_processing_decisions() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate >/dev/null
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate >/dev/null
     )
     output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --verbose --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --verbose --generate
     )
 
-    test::assert_contains 'Verbose: Selected config file: ./photoalbum.conf' \
+    test::assert_contains 'Verbose: Selected config file: ./shuriken.conf' \
         "$output"
     test::assert_contains "Verbose: Effective incoming directory: $TEST_TMPDIR/incoming" \
         "$output"
@@ -922,7 +922,7 @@ test_generate_image_jobs_limits_parallel_imagemagick() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     lock_file="$TEST_TMPDIR/parallel.lock"
     active_file="$TEST_TMPDIR/parallel.active"
     max_file="$TEST_TMPDIR/parallel.max"
@@ -945,7 +945,7 @@ test_generate_image_jobs_limits_parallel_imagemagick() {
             TEST_PARALLEL_MAGICK_ACTIVE="$active_file" \
             TEST_PARALLEL_MAGICK_MAX="$max_file" \
             TEST_PARALLEL_MAGICK_LOG="$log_file" \
-            "$TEST_PHOTOALBUM" --image-jobs 2 --generate
+            "$TEST_SHURIKEN" --image-jobs 2 --generate
     )
 
     max_seen=$(<"$max_file")
@@ -972,7 +972,7 @@ test_generate_image_jobs_waits_for_any_finished_imagemagick() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     lock_file="$TEST_TMPDIR/wait-n.lock"
     log_file="$TEST_TMPDIR/wait-n.log"
 
@@ -991,7 +991,7 @@ test_generate_image_jobs_waits_for_any_finished_imagemagick() {
         PATH="$fake_bin:$PATH" \
             TEST_WAIT_N_MAGICK_LOCK="$lock_file" \
             TEST_WAIT_N_MAGICK_LOG="$log_file" \
-            "$TEST_PHOTOALBUM" --image-jobs 2 --generate
+            "$TEST_SHURIKEN" --image-jobs 2 --generate
     )
 
     log_output=$(<"$log_file")
@@ -1029,7 +1029,7 @@ test_generate_image_jobs_limits_parallel_identify() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     lock_file="$TEST_TMPDIR/identify.lock"
     active_file="$TEST_TMPDIR/identify.active"
     max_file="$TEST_TMPDIR/identify.max"
@@ -1052,7 +1052,7 @@ test_generate_image_jobs_limits_parallel_identify() {
             TEST_PARALLEL_IDENTIFY_ACTIVE="$active_file" \
             TEST_PARALLEL_IDENTIFY_MAX="$max_file" \
             TEST_PARALLEL_IDENTIFY_LOG="$log_file" \
-            "$TEST_PHOTOALBUM" --image-jobs 2 --generate
+            "$TEST_SHURIKEN" --image-jobs 2 --generate
     )
 
     max_seen=$(<"$max_file")
@@ -1086,7 +1086,7 @@ test_generate_image_jobs_limits_parallel_template_rendering() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     template_dir="$TEST_TMPDIR/templates"
     lock_file="$TEST_TMPDIR/template.lock"
     active_file="$TEST_TMPDIR/template.active"
@@ -1111,7 +1111,7 @@ test_generate_image_jobs_limits_parallel_template_rendering() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
             --image-jobs 2 \
             --template "$template_dir" \
             --generate
@@ -1143,7 +1143,7 @@ test_repeated_output_flags_use_last_value() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -1154,16 +1154,16 @@ test_repeated_output_flags_use_last_value() {
 
     verbose_last_output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
             --quiet --verbose --generate
     )
     quiet_last_output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
             --verbose --quiet --generate
     )
 
-    test::assert_contains 'Verbose: Selected config file: ./photoalbum.conf' \
+    test::assert_contains 'Verbose: Selected config file: ./shuriken.conf' \
         "$verbose_last_output"
     test::assert_not_contains 'Verbose:' "$quiet_last_output"
     test::assert_not_contains 'Processing ' "$quiet_last_output"
@@ -1179,17 +1179,17 @@ test_print_config_reflects_defaults() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
-            "$TEST_PHOTOALBUM" \
+        SHURIKEN_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
+            "$TEST_SHURIKEN" \
             --print-config \
-            --config "$TEST_REPO_ROOT/src/photoalbum.default.conf"
+            --config "$TEST_REPO_ROOT/src/shuriken.default.conf"
     )
     expected=$(cat <<EOF
-CONFIG_SOURCE=$TEST_REPO_ROOT/src/photoalbum.default.conf
+CONFIG_SOURCE=$TEST_REPO_ROOT/src/shuriken.default.conf
 INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
-TITLE=A\\ simple\\ Photoalbum
+TITLE=A\\ simple\\ Shuriken
 HEIGHT=1200
 THUMBHEIGHT=300
 MAXPREVIEWS=40
@@ -1218,7 +1218,7 @@ test_print_config_keeps_explicit_config_template_dir() {
     local template_dir
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     template_dir="$TEST_TMPDIR/explicit-config-template"
     test::write_album_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
@@ -1227,8 +1227,8 @@ test_print_config_keeps_explicit_config_template_dir() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
-            "$TEST_PHOTOALBUM" --print-config
+        SHURIKEN_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
+            "$TEST_SHURIKEN" --print-config
     )
 
     test::assert_contains "TEMPLATE_DIR=$template_dir" "$output"
@@ -1241,18 +1241,18 @@ test_print_config_resolves_installed_default_template() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
-    installed_template_dir="$TEST_TMPDIR/usr/share/photoalbum/templates/default"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    installed_template_dir="$TEST_TMPDIR/usr/share/shuriken/templates/default"
     mkdir -p "$(dirname "$installed_template_dir")"
     cp -R "$TEST_REPO_ROOT/share/templates/default" "$installed_template_dir"
     test::write_preflight_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
-        /usr/share/photoalbum/templates/default
+        /usr/share/shuriken/templates/default
 
     output=$(
         cd "$TEST_TMPDIR"
-        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$installed_template_dir" \
-            "$TEST_PHOTOALBUM" --print-config
+        SHURIKEN_DEFAULT_TEMPLATE_DIR="$installed_template_dir" \
+            "$TEST_SHURIKEN" --print-config
     )
 
     test::assert_contains "TEMPLATE_DIR=$installed_template_dir" "$output"
@@ -1264,15 +1264,15 @@ test_print_config_resolves_repo_default_template() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     test::write_preflight_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
-        /usr/share/photoalbum/templates/default
+        /usr/share/shuriken/templates/default
 
     output=$(
         cd "$TEST_TMPDIR"
-        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
-            "$TEST_PHOTOALBUM" --print-config
+        SHURIKEN_DEFAULT_TEMPLATE_DIR="$TEST_TMPDIR/missing-installed" \
+            "$TEST_SHURIKEN" --print-config
     )
 
     test::assert_contains \
@@ -1288,19 +1288,19 @@ test_print_config_keeps_cli_template_override() {
     local template_dir
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
-    installed_template_dir="$TEST_TMPDIR/usr/share/photoalbum/templates/default"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    installed_template_dir="$TEST_TMPDIR/usr/share/shuriken/templates/default"
     template_dir="$TEST_TMPDIR/cli-template"
     mkdir -p "$(dirname "$installed_template_dir")"
     cp -R "$TEST_REPO_ROOT/share/templates/default" "$installed_template_dir"
     test::write_preflight_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
-        /usr/share/photoalbum/templates/default
+        /usr/share/shuriken/templates/default
 
     output=$(
         cd "$TEST_TMPDIR"
-        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$installed_template_dir" \
-            "$TEST_PHOTOALBUM" --print-config --template "$template_dir"
+        SHURIKEN_DEFAULT_TEMPLATE_DIR="$installed_template_dir" \
+            "$TEST_SHURIKEN" --print-config --template "$template_dir"
     )
 
     test::assert_contains "TEMPLATE_DIR=$template_dir" "$output"
@@ -1321,7 +1321,7 @@ test_print_config_reads_selected_config() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --print-config --config "$config_file"
+        "$TEST_SHURIKEN" --print-config --config "$config_file"
     )
     expected=$(cat <<EOF
 CONFIG_SOURCE=$config_file
@@ -1357,15 +1357,15 @@ test_print_config_reads_current_directory_config() {
 
     test::setup
     test::write_album_config \
-        "$TEST_TMPDIR/photoalbum.conf" "$TEST_TMPDIR/incoming" \
+        "$TEST_TMPDIR/shuriken.conf" "$TEST_TMPDIR/incoming" \
         "$TEST_TMPDIR/dist" 'Current directory config' 8
 
     output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --print-config
+        "$TEST_SHURIKEN" --print-config
     )
     expected=$(cat <<EOF
-CONFIG_SOURCE=./photoalbum.conf
+CONFIG_SOURCE=./shuriken.conf
 INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
@@ -1402,7 +1402,7 @@ test_print_config_applies_cli_overrides_without_writes() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     dist_dir="$TEST_TMPDIR/cli-dist"
     forbidden_log="$TEST_TMPDIR/forbidden-tools.log"
 
@@ -1415,7 +1415,7 @@ test_print_config_applies_cli_overrides_without_writes() {
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
             TEST_FORBIDDEN_TOOL_LOG="$forbidden_log" \
-            "$TEST_PHOTOALBUM" \
+            "$TEST_SHURIKEN" \
                 --print-config \
                 --incoming "$TEST_TMPDIR/cli-incoming" \
                 --dist "$dist_dir" \
@@ -1431,7 +1431,7 @@ test_print_config_applies_cli_overrides_without_writes() {
                 --tarball
     )
     expected=$(cat <<EOF
-CONFIG_SOURCE=./photoalbum.conf
+CONFIG_SOURCE=./shuriken.conf
 INCOMING_DIR=$TEST_TMPDIR/cli-incoming
 DIST_DIR=$dist_dir
 TEMPLATE_DIR=$TEST_TMPDIR/cli-template
@@ -1467,7 +1467,7 @@ test_print_config_applies_negative_cli_overrides() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     test::write_album_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
         'Negative overrides' 40
@@ -1478,7 +1478,7 @@ test_print_config_applies_negative_cli_overrides() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" \
+        "$TEST_SHURIKEN" \
             --print-config --no-shuffle --no-splash --no-tarball
     )
 
@@ -1509,8 +1509,8 @@ test_print_config_normalizes_scalar_and_array_tar_opts() {
         'Array tar opts' 40
     printf 'TAR_OPTS=(--sort=name --mtime=@0 -c)\n' >> "$array_config"
 
-    scalar_output=$("$TEST_PHOTOALBUM" --print-config --config "$scalar_config")
-    array_output=$("$TEST_PHOTOALBUM" --print-config --config "$array_config")
+    scalar_output=$("$TEST_SHURIKEN" --print-config --config "$scalar_config")
+    array_output=$("$TEST_SHURIKEN" --print-config --config "$array_config")
 
     test::assert_contains \
         'TAR_OPTS=( --sort=name --mtime=@0 -c )' \
@@ -1528,22 +1528,22 @@ test_print_config_quiet_and_verbose_keep_machine_output() {
     local verbose_output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     test::write_album_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
         'Output mode config' 40
 
     plain_output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --print-config
+        "$TEST_SHURIKEN" --print-config
     )
     quiet_output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --quiet --print-config
+        "$TEST_SHURIKEN" --quiet --print-config
     )
     verbose_output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --verbose --print-config
+        "$TEST_SHURIKEN" --verbose --print-config
     )
 
     test "$quiet_output" = "$plain_output"
@@ -1557,7 +1557,7 @@ test_print_config_validates_basic_values_without_generation_preflight() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     test::write_album_config \
         "$config_file" "$TEST_TMPDIR/missing-incoming" \
         "$TEST_TMPDIR/missing-parent/dist" 'Printable missing paths' 40
@@ -1565,7 +1565,7 @@ test_print_config_validates_basic_values_without_generation_preflight() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --print-config
+        "$TEST_SHURIKEN" --print-config
     )
     test::assert_contains "INCOMING_DIR=$TEST_TMPDIR/missing-incoming" "$output"
     test::assert_contains "DIST_DIR=$TEST_TMPDIR/missing-parent/dist" "$output"
@@ -1574,7 +1574,7 @@ test_print_config_validates_basic_values_without_generation_preflight() {
     printf 'MAXPREVIEWS=not-a-number\n' >> "$config_file"
     output=$(
         cd "$TEST_TMPDIR"
-        test::capture_failure_output "$TEST_PHOTOALBUM" --print-config
+        test::capture_failure_output "$TEST_SHURIKEN" --print-config
     )
     test::assert_contains 'ERROR: MAXPREVIEWS must be a positive integer' \
         "$output"
@@ -1616,7 +1616,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
             TEST_FORBIDDEN_TOOL_LOG="$forbidden_log" \
-            "$TEST_PHOTOALBUM" \
+            "$TEST_SHURIKEN" \
                 --dry-run \
                 --config "$config_file" \
                 --incoming "$TEST_TMPDIR/incoming" \
@@ -1659,7 +1659,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
         "  $dist_dir/index.html (1 album index redirect)" \
         "$output"
     test::assert_contains "  $dist_dir/favicon.ico" "$output"
-    test::assert_contains "  $dist_dir/photoalbum.json" "$output"
+    test::assert_contains "  $dist_dir/shuriken.json" "$output"
     test::assert_contains "  $dist_dir/photos/* (6 image files)" "$output"
     test::assert_contains "  $dist_dir/thumbs/* (6 image files)" "$output"
     test::assert_contains "  $dist_dir/blurs/* (6 image files)" "$output"
@@ -1692,7 +1692,7 @@ test_dry_run_rejects_invalid_config_and_input() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     incoming_dir="$TEST_TMPDIR/incoming"
     dist_dir="$TEST_TMPDIR/dist"
     mkdir -p "$incoming_dir"
@@ -1704,7 +1704,7 @@ test_dry_run_rejects_invalid_config_and_input() {
     output=$(
         cd "$TEST_TMPDIR"
         test::capture_failure_output \
-            "$TEST_PHOTOALBUM" --dry-run --config "$config_file"
+            "$TEST_SHURIKEN" --dry-run --config "$config_file"
     )
 
     test::assert_contains 'ERROR: MAXPREVIEWS must be a positive integer' \
@@ -1717,7 +1717,7 @@ test_dry_run_rejects_invalid_config_and_input() {
     output=$(
         cd "$TEST_TMPDIR"
         test::capture_failure_output \
-            "$TEST_PHOTOALBUM" --dry-run --config "$config_file"
+            "$TEST_SHURIKEN" --dry-run --config "$config_file"
     )
 
     test::assert_contains \
@@ -1734,7 +1734,7 @@ test_generate_ignores_unsupported_incoming_files_with_warning() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     mkdir -p "$TEST_TMPDIR/incoming"
@@ -1764,7 +1764,7 @@ test_generate_ignores_unsupported_incoming_files_with_warning() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate 2>&1
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate 2>&1
     )
 
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-upper.JPG"
@@ -1788,7 +1788,7 @@ test_generate_ignores_unsupported_incoming_files_with_warning() {
     test::assert_not_contains 'Processing README.md' "$output"
     test::assert_not_contains 'Processing jpg' "$output"
 
-    python3 - "$TEST_TMPDIR/dist/photoalbum.json" <<'PY'
+    python3 - "$TEST_TMPDIR/dist/shuriken.json" <<'PY'
 import json
 import pathlib
 import sys
@@ -1806,12 +1806,12 @@ test_generate_missing_incoming_fails() {
 
     test::setup
     test::write_album_config \
-        "$TEST_TMPDIR/photoalbum.conf" "$TEST_TMPDIR/missing" \
+        "$TEST_TMPDIR/shuriken.conf" "$TEST_TMPDIR/missing" \
         "$TEST_TMPDIR/dist" 'Missing incoming' 40
 
     output=$(
         cd "$TEST_TMPDIR"
-        test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+        test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains \
@@ -1842,7 +1842,7 @@ test_generate_preflight_rejects_missing_required_vars() {
         case_dir="$TEST_TMPDIR/missing-$required_var"
         incoming_dir="$case_dir/incoming"
         dist_dir="$case_dir/dist"
-        config_file="$case_dir/photoalbum.conf"
+        config_file="$case_dir/shuriken.conf"
         mkdir -p "$incoming_dir"
         test::write_preflight_config \
             "$config_file" "$incoming_dir" "$dist_dir" \
@@ -1851,11 +1851,11 @@ test_generate_preflight_rejects_missing_required_vars() {
         output=$(
             cd "$case_dir"
             test::capture_failure_output \
-                "$TEST_PHOTOALBUM" --generate --config "$config_file"
+                "$TEST_SHURIKEN" --generate --config "$config_file"
         )
 
         test::assert_contains \
-            "ERROR: $required_var must be set in photoalbum configuration" \
+            "ERROR: $required_var must be set in shuriken configuration" \
             "$output"
         test::assert_path_absent "$dist_dir"
     done
@@ -1881,7 +1881,7 @@ test_generate_preflight_rejects_invalid_numbers() {
         case_dir="$TEST_TMPDIR/invalid-$numeric_var"
         incoming_dir="$case_dir/incoming"
         dist_dir="$case_dir/dist"
-        config_file="$case_dir/photoalbum.conf"
+        config_file="$case_dir/shuriken.conf"
         mkdir -p "$incoming_dir"
         test::write_preflight_config \
             "$config_file" "$incoming_dir" "$dist_dir" \
@@ -1891,7 +1891,7 @@ test_generate_preflight_rejects_invalid_numbers() {
         output=$(
             cd "$case_dir"
             test::capture_failure_output \
-                "$TEST_PHOTOALBUM" --generate --config "$config_file"
+                "$TEST_SHURIKEN" --generate --config "$config_file"
         )
 
         test::assert_contains \
@@ -1908,7 +1908,7 @@ test_generate_preflight_accepts_empty_height() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -1919,7 +1919,7 @@ test_generate_preflight_accepts_empty_height() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
 
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
@@ -1944,7 +1944,7 @@ test_generate_preflight_rejects_invalid_yes_no_values() {
         case_dir="$TEST_TMPDIR/invalid-$bool_var"
         incoming_dir="$case_dir/incoming"
         dist_dir="$case_dir/dist"
-        config_file="$case_dir/photoalbum.conf"
+        config_file="$case_dir/shuriken.conf"
         mkdir -p "$incoming_dir"
         test::write_preflight_config \
             "$config_file" "$incoming_dir" "$dist_dir" \
@@ -1954,7 +1954,7 @@ test_generate_preflight_rejects_invalid_yes_no_values() {
         output=$(
             cd "$case_dir"
             test::capture_failure_output \
-                "$TEST_PHOTOALBUM" --generate --config "$config_file"
+                "$TEST_SHURIKEN" --generate --config "$config_file"
         )
 
         test::assert_contains "ERROR: $bool_var must be yes or no" "$output"
@@ -1971,7 +1971,7 @@ test_generate_preflight_rejects_unwritable_dist_parent() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     dist_parent="$TEST_TMPDIR/unwritable"
     dist_dir="$dist_parent/dist"
     incoming_dir="$TEST_TMPDIR/incoming"
@@ -1991,7 +1991,7 @@ test_generate_preflight_rejects_unwritable_dist_parent() {
     output=$(
         cd "$TEST_TMPDIR"
         test::capture_failure_output \
-            "$TEST_PHOTOALBUM" --generate --config "$config_file"
+            "$TEST_SHURIKEN" --generate --config "$config_file"
     )
     chmod 0755 "$dist_parent"
 
@@ -2010,7 +2010,7 @@ test_generate_preflight_accepts_nested_new_dist_dir() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     incoming_dir="$TEST_TMPDIR/incoming"
     dist_dir="$TEST_TMPDIR/site/albums/out"
     mkdir -p "$TEST_TMPDIR/site"
@@ -2023,7 +2023,7 @@ test_generate_preflight_accepts_nested_new_dist_dir() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
 
     test::assert_file_exists "$dist_dir/photos/01-landscape.jpg"
@@ -2038,7 +2038,7 @@ test_generate_preflight_rejects_missing_templates() {
     local template_dir
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     dist_dir="$TEST_TMPDIR/dist"
     incoming_dir="$TEST_TMPDIR/incoming"
     template_dir="$TEST_TMPDIR/templates"
@@ -2049,7 +2049,7 @@ test_generate_preflight_rejects_missing_templates() {
     output=$(
         cd "$TEST_TMPDIR"
         test::capture_failure_output \
-            "$TEST_PHOTOALBUM" --generate --config "$config_file"
+            "$TEST_SHURIKEN" --generate --config "$config_file"
     )
 
     test::assert_contains \
@@ -2064,26 +2064,26 @@ test_dry_run_rejects_missing_default_template_dir() {
     local dist_dir
     local incoming_dir
     local output
-    local photoalbum_copy
+    local shuriken_copy
     local template_dir
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     dist_dir="$TEST_TMPDIR/dist"
     incoming_dir="$TEST_TMPDIR/incoming"
-    photoalbum_copy="$TEST_TMPDIR/photoalbum"
+    shuriken_copy="$TEST_TMPDIR/shuriken"
     template_dir="$TEST_TMPDIR/missing-default-template"
     mkdir -p "$incoming_dir"
-    cp "$TEST_PHOTOALBUM" "$photoalbum_copy"
+    cp "$TEST_SHURIKEN" "$shuriken_copy"
     test::write_preflight_config \
         "$config_file" "$incoming_dir" "$dist_dir" \
-        /usr/share/photoalbum/templates/default
+        /usr/share/shuriken/templates/default
 
     output=$(
         cd "$TEST_TMPDIR"
-        PHOTOALBUM_DEFAULT_TEMPLATE_DIR="$template_dir" \
+        SHURIKEN_DEFAULT_TEMPLATE_DIR="$template_dir" \
             test::capture_failure_output \
-                "$photoalbum_copy" --dry-run --config "$config_file"
+                "$shuriken_copy" --dry-run --config "$config_file"
     )
 
     test::assert_contains \
@@ -2104,7 +2104,7 @@ test_integration_generates_album_outputs_and_cleans() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -2115,7 +2115,7 @@ test_integration_generates_album_outputs_and_cleans() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
 
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
@@ -2134,7 +2134,7 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_file_exists "$TEST_TMPDIR/dist/3-2-details.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/index.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/favicon.ico"
-    test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_file_exists "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_html_subdir_output "$TEST_TMPDIR/dist"
 
     page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
@@ -2180,8 +2180,8 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_not_contains "http-equiv='refresh'" "$top_index_html"
     test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
     test::assert_generation_metadata \
-        "$TEST_TMPDIR/dist/photoalbum.json" \
-        './photoalbum.conf' \
+        "$TEST_TMPDIR/dist/shuriken.json" \
+        './shuriken.conf' \
         "$TEST_TMPDIR/incoming" \
         "$TEST_TMPDIR/dist" \
         "$TEST_REPO_ROOT/share/templates/default" \
@@ -2191,9 +2191,9 @@ test_integration_generates_album_outputs_and_cleans() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate --tarball
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate --tarball
     )
-    test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_file_exists "$TEST_TMPDIR/dist/shuriken.json"
     tarball=$(find "$TEST_TMPDIR/dist" -maxdepth 1 -name '*.tar' -print)
     test::assert_contains "$TEST_TMPDIR/dist/incoming-" "$tarball"
     tarball_listing=$(tar -tf "$tarball")
@@ -2201,8 +2201,8 @@ test_integration_generates_album_outputs_and_cleans() {
         'incoming/04 filename with spaces.jpg' \
         "$tarball_listing"
     test::assert_generation_metadata \
-        "$TEST_TMPDIR/dist/photoalbum.json" \
-        './photoalbum.conf' \
+        "$TEST_TMPDIR/dist/shuriken.json" \
+        './shuriken.conf' \
         "$TEST_TMPDIR/incoming" \
         "$TEST_TMPDIR/dist" \
         "$TEST_REPO_ROOT/share/templates/default" \
@@ -2212,7 +2212,7 @@ test_integration_generates_album_outputs_and_cleans() {
 
     (
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --clean
+        "$TEST_SHURIKEN" --clean
     )
     test::assert_path_absent "$TEST_TMPDIR/dist"
     test::teardown
@@ -2236,11 +2236,11 @@ test_render_view_redirects_uses_numeric_last_view() {
     mkdir -p "$dist_dir"
 
     # shellcheck source=/dev/null
-    source <(sed '$d' "$TEST_PHOTOALBUM")
+    source <(sed '$d' "$TEST_SHURIKEN")
 
     export DIST_DIR="$dist_dir"
     export TEMPLATE_DIR="$TEST_REPO_ROOT/share/templates/default"
-    export PHOTOALBUM_OUTPUT_MODE=quiet
+    export SHURIKEN_OUTPUT_MODE=quiet
     export MAXPREVIEWS=10
 
     for view in 1 2 3 4 5 6 7 8 9 10; do
@@ -2283,11 +2283,11 @@ test_render_view_redirects_wraps_when_last_page_full() {
     mkdir -p "$dist_dir"
 
     # shellcheck source=/dev/null
-    source <(sed '$d' "$TEST_PHOTOALBUM")
+    source <(sed '$d' "$TEST_SHURIKEN")
 
     export DIST_DIR="$dist_dir"
     export TEMPLATE_DIR="$TEST_REPO_ROOT/share/templates/default"
-    export PHOTOALBUM_OUTPUT_MODE=quiet
+    export SHURIKEN_OUTPUT_MODE=quiet
     export MAXPREVIEWS=2
 
     for view in 1 2; do
@@ -2327,7 +2327,7 @@ test_generate_config_no_splash_keeps_index_redirect() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -2339,7 +2339,7 @@ test_generate_config_no_splash_keeps_index_redirect() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
 
     top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
@@ -2351,7 +2351,7 @@ test_generate_config_no_splash_keeps_index_redirect() {
     test::assert_not_contains '<script' "$top_index_html"
     test::assert_not_contains 'javascript:' "$top_index_html"
 
-    python3 - "$TEST_TMPDIR/dist/photoalbum.json" <<'PY'
+    python3 - "$TEST_TMPDIR/dist/shuriken.json" <<'PY'
 import json
 import pathlib
 import sys
@@ -2371,7 +2371,7 @@ test_generate_cli_no_splash_overrides_config() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     template_dir="$TEST_TMPDIR/templates"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -2387,7 +2387,7 @@ test_generate_cli_no_splash_overrides_config() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
             --generate --no-splash
     )
 
@@ -2414,7 +2414,7 @@ test_refresh_splash_rewrites_only_index_from_existing_assets() {
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
     failing_bin="$TEST_TMPDIR/failing-bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -2425,24 +2425,24 @@ test_refresh_splash_rewrites_only_index_from_existing_assets() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" \
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
             --generate --random-seed seed-one
     )
 
     before_index=$(<"$TEST_TMPDIR/dist/index.html")
     before_page=$(<"$TEST_TMPDIR/dist/page-1.html")
-    before_metadata=$(<"$TEST_TMPDIR/dist/photoalbum.json")
+    before_metadata=$(<"$TEST_TMPDIR/dist/shuriken.json")
 
     test::install_failing_imagemagick "$failing_bin"
     output=$(
         cd "$TEST_TMPDIR"
-        PATH="$failing_bin:$PATH" "$TEST_PHOTOALBUM" \
+        PATH="$failing_bin:$PATH" "$TEST_SHURIKEN" \
             --refresh-splash --random-seed seed-two
     )
 
     after_index=$(<"$TEST_TMPDIR/dist/index.html")
     after_page=$(<"$TEST_TMPDIR/dist/page-1.html")
-    after_metadata=$(<"$TEST_TMPDIR/dist/photoalbum.json")
+    after_metadata=$(<"$TEST_TMPDIR/dist/shuriken.json")
 
     test::assert_contains 'Refreshed splash page' "$output"
     test::assert_contains '<img class="splash-photo" src="./photos/' \
@@ -2462,7 +2462,7 @@ test_refresh_splash_copies_favicon_for_legacy_dist() {
     local top_index_html
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     mkdir -p \
         "$TEST_TMPDIR/incoming" \
         "$TEST_TMPDIR/dist/photos" \
@@ -2475,7 +2475,7 @@ test_refresh_splash_copies_favicon_for_legacy_dist() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        "$TEST_PHOTOALBUM" --refresh-splash
+        "$TEST_SHURIKEN" --refresh-splash
     )
 
     top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
@@ -2492,7 +2492,7 @@ test_refresh_splash_requires_existing_generated_assets() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
     test::write_album_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
@@ -2500,7 +2500,7 @@ test_refresh_splash_requires_existing_generated_assets() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        test::capture_failure_output "$TEST_PHOTOALBUM" --refresh-splash
+        test::capture_failure_output "$TEST_SHURIKEN" --refresh-splash
     )
 
     test::assert_contains \
@@ -2515,7 +2515,7 @@ test_refresh_splash_requires_existing_generated_blurs() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     mkdir -p "$TEST_TMPDIR/incoming" \
         "$TEST_TMPDIR/dist" \
         "$TEST_TMPDIR/dist/photos"
@@ -2525,7 +2525,7 @@ test_refresh_splash_requires_existing_generated_blurs() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        test::capture_failure_output "$TEST_PHOTOALBUM" --refresh-splash
+        test::capture_failure_output "$TEST_SHURIKEN" --refresh-splash
     )
 
     test::assert_contains \
@@ -2540,7 +2540,7 @@ test_refresh_splash_rejects_no_splash_config() {
     local output
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
     test::write_album_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
@@ -2549,7 +2549,7 @@ test_refresh_splash_rejects_no_splash_config() {
 
     output=$(
         cd "$TEST_TMPDIR"
-        test::capture_failure_output "$TEST_PHOTOALBUM" --refresh-splash
+        test::capture_failure_output "$TEST_SHURIKEN" --refresh-splash
     )
 
     test::assert_contains \
@@ -2565,7 +2565,7 @@ test_generate_replaces_dist_after_success() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -2580,7 +2580,7 @@ test_generate_replaces_dist_after_success() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
 
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
@@ -2599,7 +2599,7 @@ test_generate_imagemagick_failure_preserves_dist() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_failing_imagemagick "$fake_bin"
     mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
@@ -2613,14 +2613,14 @@ test_generate_imagemagick_failure_preserves_dist() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains 'simulated ImageMagick failure' "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
     test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'keep me'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01.jpg"
-    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -2632,7 +2632,7 @@ test_generate_imagemagick_timeout_preserves_dist() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_hanging_imagemagick "$fake_bin"
     mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
@@ -2647,7 +2647,7 @@ test_generate_imagemagick_timeout_preserves_dist() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_HANG_SECONDS=2 \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains \
@@ -2655,7 +2655,7 @@ test_generate_imagemagick_timeout_preserves_dist() {
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
     test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'keep me'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01.jpg"
-    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -2673,7 +2673,7 @@ test_generate_sighup_cleans_staging_dir() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     output_file="$TEST_TMPDIR/generate.out"
     release_file="$TEST_TMPDIR/release-magick"
     started_file="$TEST_TMPDIR/magick-started"
@@ -2693,7 +2693,7 @@ test_generate_sighup_cleans_staging_dir() {
         PATH="$fake_bin:$PATH" \
             TEST_BLOCKING_MAGICK_STARTED="$started_file" \
             TEST_BLOCKING_MAGICK_RELEASE="$release_file" \
-            exec "$TEST_PHOTOALBUM" --generate
+            exec "$TEST_SHURIKEN" --generate
     ) > "$output_file" 2>&1 &
     generate_pid=$!
 
@@ -2755,7 +2755,7 @@ test_generate_sigint_terminates_imagemagick_jobs() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     output_file="$TEST_TMPDIR/generate.out"
     release_file="$TEST_TMPDIR/release-magick"
     started_file="$TEST_TMPDIR/magick-started"
@@ -2777,7 +2777,7 @@ test_generate_sigint_terminates_imagemagick_jobs() {
             TEST_BLOCKING_MAGICK_STARTED="$started_file" \
             TEST_BLOCKING_MAGICK_RELEASE="$release_file" \
             TEST_BLOCKING_MAGICK_TERMINATED="$terminated_file" \
-            exec env --default-signal=INT "$TEST_PHOTOALBUM" --generate
+            exec env --default-signal=INT "$TEST_SHURIKEN" --generate
     ) > "$output_file" 2>&1 &
     generate_pid=$!
 
@@ -2833,7 +2833,7 @@ test_generate_tar_timeout_preserves_dist() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     PATH="$fake_bin:$PATH" \
@@ -2853,13 +2853,13 @@ test_generate_tar_timeout_preserves_dist() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_HANG_SECONDS=2 \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains 'ERROR: tar timed out after 1 seconds' "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
     test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'keep me'
-    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_find_count 0 "$TEST_TMPDIR/dist" '*.tar'
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
@@ -2873,7 +2873,7 @@ test_generate_template_failure_preserves_dist() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     template_dir="$TEST_TMPDIR/templates"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -2891,13 +2891,13 @@ test_generate_template_failure_preserves_dist() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains 'Rendering preview template into ' "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
-    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -2910,7 +2910,7 @@ test_generate_templates_cannot_read_generation_locals() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     template_dir="$TEST_TMPDIR/templates"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -2930,13 +2930,13 @@ test_generate_templates_cannot_read_generation_locals() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" num=ambient \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains 'num: unbound variable' "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
-    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -2949,7 +2949,7 @@ test_generate_templates_cannot_read_renderer_internals() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     template_dir="$TEST_TMPDIR/templates"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -2969,13 +2969,13 @@ test_generate_templates_cannot_read_renderer_internals() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" context_key=ambient \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains 'context_key: unbound variable' "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
-    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -2988,7 +2988,7 @@ test_generate_templates_cannot_read_serialized_context_hook() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     template_dir="$TEST_TMPDIR/templates"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -3008,13 +3008,13 @@ test_generate_templates_cannot_read_serialized_context_hook() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" BASH_ENV=ambient \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains 'BASH_ENV: unbound variable' "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
-    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -3027,7 +3027,7 @@ test_generate_swap_failure_restores_dist() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     mv_count_file="$TEST_TMPDIR/mv-count"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -3046,14 +3046,14 @@ test_generate_swap_failure_restores_dist() {
         PATH="$fake_bin:$PATH" \
             TEST_MV_COUNT_FILE="$mv_count_file" \
             TEST_FAIL_MV_ON=2 \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --generate
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains 'simulated mv failure' "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'old sentinel'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
-    test::assert_path_absent "$TEST_TMPDIR/dist/photoalbum.json"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
     test::teardown
 }
@@ -3064,7 +3064,7 @@ test_generate_missing_imagemagick_fails() {
     local path_bin
 
     test::setup
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     path_bin="$TEST_TMPDIR/path-bin"
 
     test::install_coreutils_without_imagemagick "$path_bin"
@@ -3077,7 +3077,7 @@ test_generate_missing_imagemagick_fails() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$path_bin" test::capture_failure_output \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
 
     test::assert_contains \
@@ -3105,7 +3105,7 @@ test_generate_escapes_html_values() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     photo_name="kid's_\"<tag>&.jpg"
     photo_html='kid&#39;s_&quot;&lt;tag&gt;&amp;.jpg'
     css_photo='kid\000027s_\000022\00003ctag\00003e\000026.jpg'
@@ -3136,7 +3136,7 @@ test_generate_escapes_html_values() {
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
             TEST_IMAGEMAGICK_IDENTIFY_OUTPUT=$'  exif:Artist: O\'Neil & "<camera>"' \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
 
     page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
@@ -3184,7 +3184,7 @@ test_generate_renders_exif_details() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     identify_output=$'Image:\n'
     identify_output+=$'  exif:DateTimeOriginal: 2026:06:04 12:34:56\n'
     identify_output+=$'  exif:Make: ExampleCam\n'
@@ -3205,7 +3205,7 @@ test_generate_renders_exif_details() {
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
             TEST_IMAGEMAGICK_IDENTIFY_OUTPUT="$identify_output" \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
 
     view_html=$(<"$TEST_TMPDIR/dist/1-1.html")
@@ -3244,7 +3244,7 @@ test_generate_reuses_cached_exif_details_unless_forced() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     identify_log="$TEST_TMPDIR/identify.log"
 
     test::install_fake_imagemagick "$fake_bin"
@@ -3259,7 +3259,7 @@ test_generate_reuses_cached_exif_details_unless_forced() {
         PATH="$fake_bin:$PATH" \
             TEST_IMAGEMAGICK_IDENTIFY_LOG="$identify_log" \
             TEST_IMAGEMAGICK_IDENTIFY_OUTPUT=$'  exif:Make: FirstCam' \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
 
     details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
@@ -3272,7 +3272,7 @@ test_generate_reuses_cached_exif_details_unless_forced() {
         PATH="$fake_bin:$PATH" \
             TEST_IMAGEMAGICK_IDENTIFY_LOG="$identify_log" \
             TEST_IMAGEMAGICK_IDENTIFY_OUTPUT=$'  exif:Make: SecondCam' \
-            "$TEST_PHOTOALBUM" --generate
+            "$TEST_SHURIKEN" --generate
     )
 
     details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
@@ -3286,7 +3286,7 @@ test_generate_reuses_cached_exif_details_unless_forced() {
         PATH="$fake_bin:$PATH" \
             TEST_IMAGEMAGICK_IDENTIFY_LOG="$identify_log" \
             TEST_IMAGEMAGICK_IDENTIFY_OUTPUT=$'  exif:Make: SecondCam' \
-            "$TEST_PHOTOALBUM" --generate --force
+            "$TEST_SHURIKEN" --generate --force
     )
 
     details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
@@ -3304,7 +3304,7 @@ test_generate_metadata_escapes_json_and_custom_tarball_suffix() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     title=$'Metadata \e album'
 
     test::install_fake_imagemagick "$fake_bin"
@@ -3325,10 +3325,10 @@ test_generate_metadata_escapes_json_and_custom_tarball_suffix() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
 
-    python3 - "$TEST_TMPDIR/dist/photoalbum.json" "$title" <<'PY'
+    python3 - "$TEST_TMPDIR/dist/shuriken.json" "$title" <<'PY'
 import json
 import pathlib
 import sys
@@ -3355,7 +3355,7 @@ test_generate_preserves_space_filename_without_reprocessing() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     photo_name='a b.jpg'
 
     test::install_fake_imagemagick "$fake_bin"
@@ -3367,11 +3367,11 @@ test_generate_preserves_space_filename_without_reprocessing() {
 
     first_output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
     second_output=$(
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --verbose --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --verbose --generate
     )
 
     test::assert_file_exists "$TEST_TMPDIR/dist/photos/$photo_name"
@@ -3392,7 +3392,7 @@ test_generate_handles_space_and_underscore_names_distinctly() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_fake_imagemagick "$fake_bin"
     mkdir -p "$TEST_TMPDIR/incoming"
@@ -3404,7 +3404,7 @@ test_generate_handles_space_and_underscore_names_distinctly() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_PHOTOALBUM" --generate
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
     )
 
     page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
@@ -3428,7 +3428,7 @@ test_sync_uses_config_destinations_with_delete() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     dist_dir="$TEST_TMPDIR/dist"
     rsync_log="$TEST_TMPDIR/rsync.log"
 
@@ -3448,7 +3448,7 @@ test_sync_uses_config_destinations_with_delete() {
     (
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
-            "$TEST_PHOTOALBUM" --sync
+            "$TEST_SHURIKEN" --sync
     )
 
     rsync_output=$(<"$rsync_log")
@@ -3473,7 +3473,7 @@ test_sync_cli_destinations_override_config_without_delete() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     dist_dir="$TEST_TMPDIR/dist"
     rsync_log="$TEST_TMPDIR/rsync.log"
 
@@ -3489,7 +3489,7 @@ test_sync_cli_destinations_override_config_without_delete() {
     (
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
-            "$TEST_PHOTOALBUM" \
+            "$TEST_SHURIKEN" \
                 --sync \
                 --no-sync-delete \
                 --sync-destination 'admin@one.example:/var/www/one/' \
@@ -3517,7 +3517,7 @@ test_sync_rejects_empty_destinations() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
     dist_dir="$TEST_TMPDIR/dist"
     rsync_log="$TEST_TMPDIR/rsync.log"
 
@@ -3528,7 +3528,7 @@ test_sync_rejects_empty_destinations() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --sync
+            test::capture_failure_output "$TEST_SHURIKEN" --sync
     )
 
     test::assert_contains \
@@ -3545,7 +3545,7 @@ test_sync_rejects_missing_dist() {
 
     test::setup
     fake_bin="$TEST_TMPDIR/bin"
-    config_file="$TEST_TMPDIR/photoalbum.conf"
+    config_file="$TEST_TMPDIR/shuriken.conf"
 
     test::install_rsync_spy "$fake_bin"
     {
@@ -3557,7 +3557,7 @@ test_sync_rejects_missing_dist() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$TEST_TMPDIR/rsync.log" \
-            test::capture_failure_output "$TEST_PHOTOALBUM" --sync
+            test::capture_failure_output "$TEST_SHURIKEN" --sync
     )
 
     test::assert_contains \
@@ -3573,7 +3573,7 @@ test_positional_commands_fail_without_deprecation() {
     local -a old_commands=(clean generate version makemake)
 
     for old_command in "${old_commands[@]}"; do
-        output=$(test::capture_failure_output "$TEST_PHOTOALBUM" "$old_command")
+        output=$(test::capture_failure_output "$TEST_SHURIKEN" "$old_command")
         test::assert_contains 'Usage:' "$output"
         test::assert_not_contains 'deprecat' "$output"
         test::assert_not_contains 'makemake' "$output"
@@ -3582,34 +3582,34 @@ test_positional_commands_fail_without_deprecation() {
 
 test_unknown_options_and_conflicting_actions_fail() {
     test::assert_failure 'unsupported option is rejected' \
-        "$TEST_PHOTOALBUM" --unknown
+        "$TEST_SHURIKEN" --unknown
     test::assert_failure 'generate/clean conflict is rejected' \
-        "$TEST_PHOTOALBUM" --generate --clean
+        "$TEST_SHURIKEN" --generate --clean
     test::assert_failure 'generate/init conflict is rejected' \
-        "$TEST_PHOTOALBUM" --generate --init
+        "$TEST_SHURIKEN" --generate --init
     test::assert_failure 'clean/version conflict is rejected' \
-        "$TEST_PHOTOALBUM" --clean --version
+        "$TEST_SHURIKEN" --clean --version
     test::assert_failure 'print-config/dry-run conflict is rejected' \
-        "$TEST_PHOTOALBUM" --print-config --dry-run
+        "$TEST_SHURIKEN" --print-config --dry-run
     test::assert_failure '--force without generate is rejected' \
-        "$TEST_PHOTOALBUM" --sync --force
+        "$TEST_SHURIKEN" --sync --force
 }
 
 test_empty_args_fail() {
     local output
 
-    output=$(test::capture_failure_output "$TEST_PHOTOALBUM")
+    output=$(test::capture_failure_output "$TEST_SHURIKEN")
     test::assert_contains 'Usage:' "$output"
 }
 
 test_extra_args_fail() {
-    test::assert_failure 'extra operand is rejected' "$TEST_PHOTOALBUM" --version extra
+    test::assert_failure 'extra operand is rejected' "$TEST_SHURIKEN" --version extra
     test::assert_failure \
         '--incoming is rejected with --version' \
-        "$TEST_PHOTOALBUM" --version --incoming /tmp/incoming
+        "$TEST_SHURIKEN" --version --incoming /tmp/incoming
     test::assert_failure \
         '--config is rejected with --init' \
-        "$TEST_PHOTOALBUM" --init --config custom.conf
+        "$TEST_SHURIKEN" --init --config custom.conf
 }
 
 test_missing_option_values_fail() {
@@ -3629,7 +3629,7 @@ test_missing_option_values_fail() {
     )
 
     for option in "${value_options[@]}"; do
-        test::assert_failure "$option requires a value" "$TEST_PHOTOALBUM" "$option"
+        test::assert_failure "$option requires a value" "$TEST_SHURIKEN" "$option"
     done
 }
 

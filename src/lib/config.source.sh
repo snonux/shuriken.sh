@@ -23,7 +23,7 @@ print_config() {
     resolve_tar_opts tar_opts
     resolve_sync_destinations sync_destinations
 
-    print_shell_assignment CONFIG_SOURCE "${PHOTOALBUM_CONFIG_SOURCE:-}"
+    print_shell_assignment CONFIG_SOURCE "${SHURIKEN_CONFIG_SOURCE:-}"
     print_shell_assignment INCOMING_DIR "$INCOMING_DIR"
     print_shell_assignment DIST_DIR "$DIST_DIR"
     print_shell_assignment TEMPLATE_DIR "$TEMPLATE_DIR"
@@ -83,7 +83,7 @@ generation_staging_dir() {
     final_base=$(basename "$final_dist")
     staging_parent=$(existing_parent_dir "$final_dist")
 
-    mktemp -d "$staging_parent/.photoalbum.$final_base.staging.XXXXXX"
+    mktemp -d "$staging_parent/.shuriken.$final_base.staging.XXXXXX"
 }
 
 prepare_generation_staging_dir() {
@@ -91,12 +91,12 @@ prepare_generation_staging_dir() {
     local -r staging_dir="$1"; shift
     local cache_dir
 
-    if [ "$PHOTOALBUM_FORCE_GENERATE" = yes ]; then
+    if [ "$SHURIKEN_FORCE_GENERATE" = yes ]; then
         log_verbose 'Force generation enabled; not reusing existing output cache'
         return
     fi
 
-    for cache_dir in photos thumbs blurs .photoalbum-cache; do
+    for cache_dir in photos thumbs blurs .shuriken-cache; do
         if [ -d "$final_dist/$cache_dir" ]; then
             if ! mkdir -p "$staging_dir/$cache_dir"; then
                 return 1
@@ -109,9 +109,9 @@ prepare_generation_staging_dir() {
 }
 
 cleanup_generation_staging_dir() {
-    if [ -n "${PHOTOALBUM_ACTIVE_STAGING_DIR:-}" ]; then
-        rm -rf "$PHOTOALBUM_ACTIVE_STAGING_DIR"
-        PHOTOALBUM_ACTIVE_STAGING_DIR=''
+    if [ -n "${SHURIKEN_ACTIVE_STAGING_DIR:-}" ]; then
+        rm -rf "$SHURIKEN_ACTIVE_STAGING_DIR"
+        SHURIKEN_ACTIVE_STAGING_DIR=''
     fi
 }
 
@@ -147,7 +147,7 @@ wait_for_process_exit() {
 }
 
 terminate_active_generation() {
-    local -r pid="${PHOTOALBUM_ACTIVE_GENERATION_PID:-}"
+    local -r pid="${SHURIKEN_ACTIVE_GENERATION_PID:-}"
 
     if [ -z "$pid" ]; then
         return
@@ -158,7 +158,7 @@ terminate_active_generation() {
         terminate_process_tree KILL "$pid"
     fi
     wait "$pid" 2>/dev/null || true
-    PHOTOALBUM_ACTIVE_GENERATION_PID=''
+    SHURIKEN_ACTIVE_GENERATION_PID=''
 }
 
 handle_generation_staging_signal() {
@@ -198,7 +198,7 @@ replace_dist_with_staging() {
 
     if [ -e "$final_dist" ]; then
         if ! backup_parent=$(
-            mktemp -d "$staging_parent/.photoalbum.$final_base.backup.XXXXXX"
+            mktemp -d "$staging_parent/.shuriken.$final_base.backup.XXXXXX"
         ); then
             return 1
         fi
@@ -244,7 +244,7 @@ generate_staged() {
     staging_dir=$(generation_staging_dir "$final_dist")
     log_verbose "Effective output directory: $final_dist"
     log_verbose "Generation staging directory: $staging_dir"
-    PHOTOALBUM_ACTIVE_STAGING_DIR="$staging_dir"
+    SHURIKEN_ACTIVE_STAGING_DIR="$staging_dir"
     trap cleanup_generation_staging_dir EXIT
     trap 'handle_generation_staging_signal 130' INT
     trap 'handle_generation_staging_signal 143' TERM
@@ -260,14 +260,14 @@ generate_staged() {
     set +e
     (
         set -e
-        PHOTOALBUM_FINAL_DIST_DIR="$final_dist"
-        export PHOTOALBUM_FINAL_DIST_DIR
+        SHURIKEN_FINAL_DIST_DIR="$final_dist"
+        export SHURIKEN_FINAL_DIST_DIR
         DIST_DIR="$staging_dir" generate
     ) &
-    PHOTOALBUM_ACTIVE_GENERATION_PID=$!
-    wait "$PHOTOALBUM_ACTIVE_GENERATION_PID"
+    SHURIKEN_ACTIVE_GENERATION_PID=$!
+    wait "$SHURIKEN_ACTIVE_GENERATION_PID"
     status=$?
-    PHOTOALBUM_ACTIVE_GENERATION_PID=''
+    SHURIKEN_ACTIVE_GENERATION_PID=''
     set -e
 
     if (( status != 0 )); then
@@ -288,7 +288,7 @@ generate_staged() {
         return "$status"
     fi
 
-    PHOTOALBUM_ACTIVE_STAGING_DIR=''
+    SHURIKEN_ACTIVE_STAGING_DIR=''
     clear_generation_staging_traps
 }
 
@@ -298,7 +298,7 @@ resolve_config_file() {
     if [ -n "$config_file" ]; then
         printf '%s\n' "$config_file"
     else
-        printf '%s\n' ./photoalbum.conf
+        printf '%s\n' ./shuriken.conf
     fi
 }
 
@@ -306,7 +306,7 @@ missing_config() {
     local -r config_file="$1"; shift
 
     printf 'Error: Can not find config file %s\n' "$config_file" >&2
-    printf 'Run photoalbum --init to create ./photoalbum.conf.\n' >&2
+    printf 'Run shuriken --init to create ./shuriken.conf.\n' >&2
     exit 1
 }
 
@@ -374,7 +374,7 @@ require_config_var() {
     local -r name="$1"; shift
 
     if [ -z "${!name+x}" ] || [ -z "${!name}" ]; then
-        config_error "$name must be set in photoalbum configuration"
+        config_error "$name must be set in shuriken configuration"
     fi
 }
 

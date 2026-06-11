@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# photoalbum (c) 2011 - 2014, 2022 by Paul Buetow
+# shuriken (c) 2011 - 2014, 2022 by Paul Buetow
 # https://codeberg.org/snonux/shuriken.sh
 
 declare -r VERSION='0.7.0'
-declare -r DEFAULTRC="${PHOTOALBUM_DEFAULT_RC:-/etc/default/photoalbum}"
-declare -r PACKAGED_TEMPLATE_DIR='/usr/share/photoalbum/templates/default'
-declare -r PACKAGED_ASSET_DIR='/usr/share/photoalbum/assets'
-DEFAULT_TEMPLATE_DIR="${PHOTOALBUM_DEFAULT_TEMPLATE_DIR:-$PACKAGED_TEMPLATE_DIR}"
+declare -r DEFAULTRC="${SHURIKEN_DEFAULT_RC:-/etc/default/shuriken}"
+declare -r PACKAGED_TEMPLATE_DIR='/usr/share/shuriken/templates/default'
+declare -r PACKAGED_ASSET_DIR='/usr/share/shuriken/assets'
+DEFAULT_TEMPLATE_DIR="${SHURIKEN_DEFAULT_TEMPLATE_DIR:-$PACKAGED_TEMPLATE_DIR}"
 declare -r DEFAULT_TEMPLATE_DIR
-DEFAULT_ASSET_DIR="${PHOTOALBUM_DEFAULT_ASSET_DIR:-$PACKAGED_ASSET_DIR}"
+DEFAULT_ASSET_DIR="${SHURIKEN_DEFAULT_ASSET_DIR:-$PACKAGED_ASSET_DIR}"
 declare -r DEFAULT_ASSET_DIR
-PHOTOALBUM_OUTPUT_MODE="${PHOTOALBUM_OUTPUT_MODE:-normal}"
-PHOTOALBUM_ACTIVE_GENERATION_PID=''
-PHOTOALBUM_FORCE_GENERATE="${PHOTOALBUM_FORCE_GENERATE:-no}"
-PHOTOALBUM_CURRENT_DATE_TEXT=''
+SHURIKEN_OUTPUT_MODE="${SHURIKEN_OUTPUT_MODE:-normal}"
+SHURIKEN_ACTIVE_GENERATION_PID=''
+SHURIKEN_FORCE_GENERATE="${SHURIKEN_FORCE_GENERATE:-no}"
+SHURIKEN_CURRENT_DATE_TEXT=''
 
 declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
@@ -66,9 +66,9 @@ declare -Ar CLI_OPTION_KIND=(
 )
 declare -Ar CLI_OPTION_TARGET=(
     [--config]=config_file
-    [--verbose]=PHOTOALBUM_OUTPUT_MODE
-    [--quiet]=PHOTOALBUM_OUTPUT_MODE
-    [--force]=PHOTOALBUM_FORCE_GENERATE
+    [--verbose]=SHURIKEN_OUTPUT_MODE
+    [--quiet]=SHURIKEN_OUTPUT_MODE
+    [--force]=SHURIKEN_FORCE_GENERATE
 )
 declare -Ar CLI_OPTION_VALUE=(
     [--shuffle]=yes
@@ -107,10 +107,10 @@ declare -Ar CLI_OPTION_ARGUMENT=(
     [--sync-destination]=destination
 )
 
-PHOTOALBUM_SOURCE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-declare -r PHOTOALBUM_SOURCE_DIR
+SHURIKEN_SOURCE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+declare -r SHURIKEN_SOURCE_DIR
 
-# PHOTOALBUM_LIB_SOURCES_BEGIN
+# SHURIKEN_LIB_SOURCES_BEGIN
 
 # Inlined from src/lib/bootstrap.source.sh
 usage() {
@@ -152,11 +152,11 @@ USAGE
 }
 
 output_is_quiet() {
-    [ "$PHOTOALBUM_OUTPUT_MODE" = quiet ]
+    [ "$SHURIKEN_OUTPUT_MODE" = quiet ]
 }
 
 output_is_verbose() {
-    [ "$PHOTOALBUM_OUTPUT_MODE" = verbose ]
+    [ "$SHURIKEN_OUTPUT_MODE" = verbose ]
 }
 
 log_info() {
@@ -186,7 +186,7 @@ resolve_default_rc_file() {
     source_root=$(resolve_source_root)
 
     if [ -n "$source_root" ]; then
-        printf '%s\n' "$source_root/src/photoalbum.default.conf"
+        printf '%s\n' "$source_root/src/shuriken.default.conf"
         return
     fi
 
@@ -197,10 +197,10 @@ resolve_source_root() {
     local script_dir
     local source_root
 
-    script_dir="$PHOTOALBUM_SOURCE_DIR"
+    script_dir="$SHURIKEN_SOURCE_DIR"
     source_root=$(cd "$script_dir/.." && pwd)
 
-    if [[ -f "$source_root/src/photoalbum.default.conf" \
+    if [[ -f "$source_root/src/shuriken.default.conf" \
         && -d "$source_root/share/templates/default" ]]; then
         printf '%s\n' "$source_root"
     fi
@@ -264,7 +264,7 @@ apply_template_dir_default() {
 }
 
 init_config() {
-    local -r rc_file=photoalbum.conf
+    local -r rc_file=shuriken.conf
     local default_rc_file
     local rewritten_rc_file
     local source_root
@@ -286,7 +286,7 @@ init_config() {
 
     source_root=$(resolve_source_root)
     if [[ -n "$source_root" \
-        && "$default_rc_file" = "$source_root/src/photoalbum.default.conf" ]]; then
+        && "$default_rc_file" = "$source_root/src/shuriken.default.conf" ]]; then
         source_template_dir="$source_root/share/templates/default"
         rewritten_rc_file=$(mktemp "${rc_file}.XXXXXX")
         if ! awk -v template_dir="$source_template_dir" \
@@ -601,7 +601,7 @@ _json_bool() {
 
 _display_path() {
     local -r path="$1"; shift
-    local -r final_dist="${PHOTOALBUM_FINAL_DIST_DIR:-}"
+    local -r final_dist="${SHURIKEN_FINAL_DIST_DIR:-}"
 
     if [[ -n "$final_dist" && "$path" == "$DIST_DIR"* ]]; then
         printf '%s%s\n' "$final_dist" "${path#"$DIST_DIR"}"
@@ -621,15 +621,15 @@ current_date_text() {
 current_date_text_to() {
     local -n output_ref="$1"; shift
 
-    if [ -z "$PHOTOALBUM_CURRENT_DATE_TEXT" ]; then
+    if [ -z "$SHURIKEN_CURRENT_DATE_TEXT" ]; then
         if random_seed_is_set; then
-            PHOTOALBUM_CURRENT_DATE_TEXT='Thu Jan  1 00:00:00 UTC 1970'
+            SHURIKEN_CURRENT_DATE_TEXT='Thu Jan  1 00:00:00 UTC 1970'
         else
-            PHOTOALBUM_CURRENT_DATE_TEXT=$(command date)
+            SHURIKEN_CURRENT_DATE_TEXT=$(command date)
         fi
     fi
 
-    output_ref="$PHOTOALBUM_CURRENT_DATE_TEXT"
+    output_ref="$SHURIKEN_CURRENT_DATE_TEXT"
 }
 
 current_timestamp_slug() {
@@ -1464,7 +1464,7 @@ cached_photo_identify_output() {
     local cached_signature=''
     local current_signature
 
-    cache_dir="$DIST_DIR/.photoalbum-cache/exif"
+    cache_dir="$DIST_DIR/.shuriken-cache/exif"
     cache_file="$cache_dir/$photo.txt"
     current_signature=$(photo_cache_signature "$photo" "$photo_path")
 
@@ -2153,7 +2153,7 @@ count_tree_files() {
 write_generation_metadata() {
     local -r tarball_file="$1"; shift
     local -r generated_at=$(current_timestamp_iso)
-    local -r config_source="${PHOTOALBUM_CONFIG_SOURCE:-}"
+    local -r config_source="${SHURIKEN_CONFIG_SOURCE:-}"
     local -r template_name=$(basename "$TEMPLATE_DIR")
     local -r source_image_count=$(count_incoming_images)
     local -r generated_photo_count=$(count_files "$DIST_DIR/photos")
@@ -2163,7 +2163,7 @@ write_generation_metadata() {
     {
         printf '{\n'
         printf '  "generator": {\n'
-        printf '    "name": "photoalbum",\n'
+        printf '    "name": "shuriken",\n'
         printf '    "version": %s\n' "$(_json_string "$VERSION")"
         printf '  },\n'
         printf '  "generated_at": %s,\n' "$(_json_string "$generated_at")"
@@ -2198,7 +2198,7 @@ write_generation_metadata() {
             "$(_json_string "${ORIGINAL_BASEPATH:-}")"
         printf '  }\n'
         printf '}\n'
-    } > "$DIST_DIR/photoalbum.json"
+    } > "$DIST_DIR/shuriken.json"
 }
 
 prepare_generation_photo_assets() {
@@ -2295,7 +2295,7 @@ dry_run() {
     fi
 
     printf 'Dry run: no files will be written.\n'
-    printf 'Config source: %s\n' "${PHOTOALBUM_CONFIG_SOURCE:-}"
+    printf 'Config source: %s\n' "${SHURIKEN_CONFIG_SOURCE:-}"
     printf 'Incoming directory: %s\n' "$INCOMING_DIR"
     printf 'Output directory: %s\n' "$DIST_DIR"
     printf 'Template directory: %s\n' "$TEMPLATE_DIR"
@@ -2330,7 +2330,7 @@ dry_run() {
             "$DIST_DIR" "$html_index_count"
     fi
     printf '  %s/favicon.ico\n' "$DIST_DIR"
-    printf '  %s/photoalbum.json\n' "$DIST_DIR"
+    printf '  %s/shuriken.json\n' "$DIST_DIR"
     printf '  %s/photos/* (%s image files)\n' "$DIST_DIR" "$image_count"
     printf '  %s/thumbs/* (%s image files)\n' "$DIST_DIR" "$image_count"
     printf '  %s/blurs/* (%s image files)\n' "$DIST_DIR" "$image_count"
@@ -2372,7 +2372,7 @@ print_config() {
     resolve_tar_opts tar_opts
     resolve_sync_destinations sync_destinations
 
-    print_shell_assignment CONFIG_SOURCE "${PHOTOALBUM_CONFIG_SOURCE:-}"
+    print_shell_assignment CONFIG_SOURCE "${SHURIKEN_CONFIG_SOURCE:-}"
     print_shell_assignment INCOMING_DIR "$INCOMING_DIR"
     print_shell_assignment DIST_DIR "$DIST_DIR"
     print_shell_assignment TEMPLATE_DIR "$TEMPLATE_DIR"
@@ -2432,7 +2432,7 @@ generation_staging_dir() {
     final_base=$(basename "$final_dist")
     staging_parent=$(existing_parent_dir "$final_dist")
 
-    mktemp -d "$staging_parent/.photoalbum.$final_base.staging.XXXXXX"
+    mktemp -d "$staging_parent/.shuriken.$final_base.staging.XXXXXX"
 }
 
 prepare_generation_staging_dir() {
@@ -2440,12 +2440,12 @@ prepare_generation_staging_dir() {
     local -r staging_dir="$1"; shift
     local cache_dir
 
-    if [ "$PHOTOALBUM_FORCE_GENERATE" = yes ]; then
+    if [ "$SHURIKEN_FORCE_GENERATE" = yes ]; then
         log_verbose 'Force generation enabled; not reusing existing output cache'
         return
     fi
 
-    for cache_dir in photos thumbs blurs .photoalbum-cache; do
+    for cache_dir in photos thumbs blurs .shuriken-cache; do
         if [ -d "$final_dist/$cache_dir" ]; then
             if ! mkdir -p "$staging_dir/$cache_dir"; then
                 return 1
@@ -2458,9 +2458,9 @@ prepare_generation_staging_dir() {
 }
 
 cleanup_generation_staging_dir() {
-    if [ -n "${PHOTOALBUM_ACTIVE_STAGING_DIR:-}" ]; then
-        rm -rf "$PHOTOALBUM_ACTIVE_STAGING_DIR"
-        PHOTOALBUM_ACTIVE_STAGING_DIR=''
+    if [ -n "${SHURIKEN_ACTIVE_STAGING_DIR:-}" ]; then
+        rm -rf "$SHURIKEN_ACTIVE_STAGING_DIR"
+        SHURIKEN_ACTIVE_STAGING_DIR=''
     fi
 }
 
@@ -2496,7 +2496,7 @@ wait_for_process_exit() {
 }
 
 terminate_active_generation() {
-    local -r pid="${PHOTOALBUM_ACTIVE_GENERATION_PID:-}"
+    local -r pid="${SHURIKEN_ACTIVE_GENERATION_PID:-}"
 
     if [ -z "$pid" ]; then
         return
@@ -2507,7 +2507,7 @@ terminate_active_generation() {
         terminate_process_tree KILL "$pid"
     fi
     wait "$pid" 2>/dev/null || true
-    PHOTOALBUM_ACTIVE_GENERATION_PID=''
+    SHURIKEN_ACTIVE_GENERATION_PID=''
 }
 
 handle_generation_staging_signal() {
@@ -2547,7 +2547,7 @@ replace_dist_with_staging() {
 
     if [ -e "$final_dist" ]; then
         if ! backup_parent=$(
-            mktemp -d "$staging_parent/.photoalbum.$final_base.backup.XXXXXX"
+            mktemp -d "$staging_parent/.shuriken.$final_base.backup.XXXXXX"
         ); then
             return 1
         fi
@@ -2593,7 +2593,7 @@ generate_staged() {
     staging_dir=$(generation_staging_dir "$final_dist")
     log_verbose "Effective output directory: $final_dist"
     log_verbose "Generation staging directory: $staging_dir"
-    PHOTOALBUM_ACTIVE_STAGING_DIR="$staging_dir"
+    SHURIKEN_ACTIVE_STAGING_DIR="$staging_dir"
     trap cleanup_generation_staging_dir EXIT
     trap 'handle_generation_staging_signal 130' INT
     trap 'handle_generation_staging_signal 143' TERM
@@ -2609,14 +2609,14 @@ generate_staged() {
     set +e
     (
         set -e
-        PHOTOALBUM_FINAL_DIST_DIR="$final_dist"
-        export PHOTOALBUM_FINAL_DIST_DIR
+        SHURIKEN_FINAL_DIST_DIR="$final_dist"
+        export SHURIKEN_FINAL_DIST_DIR
         DIST_DIR="$staging_dir" generate
     ) &
-    PHOTOALBUM_ACTIVE_GENERATION_PID=$!
-    wait "$PHOTOALBUM_ACTIVE_GENERATION_PID"
+    SHURIKEN_ACTIVE_GENERATION_PID=$!
+    wait "$SHURIKEN_ACTIVE_GENERATION_PID"
     status=$?
-    PHOTOALBUM_ACTIVE_GENERATION_PID=''
+    SHURIKEN_ACTIVE_GENERATION_PID=''
     set -e
 
     if (( status != 0 )); then
@@ -2637,7 +2637,7 @@ generate_staged() {
         return "$status"
     fi
 
-    PHOTOALBUM_ACTIVE_STAGING_DIR=''
+    SHURIKEN_ACTIVE_STAGING_DIR=''
     clear_generation_staging_traps
 }
 
@@ -2647,7 +2647,7 @@ resolve_config_file() {
     if [ -n "$config_file" ]; then
         printf '%s\n' "$config_file"
     else
-        printf '%s\n' ./photoalbum.conf
+        printf '%s\n' ./shuriken.conf
     fi
 }
 
@@ -2655,7 +2655,7 @@ missing_config() {
     local -r config_file="$1"; shift
 
     printf 'Error: Can not find config file %s\n' "$config_file" >&2
-    printf 'Run photoalbum --init to create ./photoalbum.conf.\n' >&2
+    printf 'Run shuriken --init to create ./shuriken.conf.\n' >&2
     exit 1
 }
 
@@ -2723,7 +2723,7 @@ require_config_var() {
     local -r name="$1"; shift
 
     if [ -z "${!name+x}" ] || [ -z "${!name}" ]; then
-        config_error "$name must be set in photoalbum configuration"
+        config_error "$name must be set in shuriken configuration"
     fi
 }
 
@@ -3032,16 +3032,16 @@ run_simple_action() {
     case "$action" in
         --version)
             if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
-                || "$PHOTOALBUM_FORCE_GENERATE" = yes ]]; then
+                || "$SHURIKEN_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
             fi
 
-            printf 'This is Photoalbum Version %s\n' "$VERSION"
+            printf 'This is Shuriken Version %s\n' "$VERSION"
             ;;
         --init)
             if [[ -n "$config_file" || "$has_config_overrides" = 'yes' \
-                || "$PHOTOALBUM_FORCE_GENERATE" = yes ]]; then
+                || "$SHURIKEN_FORCE_GENERATE" = yes ]]; then
                 usage
                 exit 1
             fi
@@ -3063,8 +3063,8 @@ load_configured_action() {
     apply_config_defaults
     apply_template_dir_default
     apply_cli_overrides
-    PHOTOALBUM_CONFIG_SOURCE="$rc_file"
-    export PHOTOALBUM_CONFIG_SOURCE
+    SHURIKEN_CONFIG_SOURCE="$rc_file"
+    export SHURIKEN_CONFIG_SOURCE
 }
 
 log_configured_action() {
@@ -3084,13 +3084,13 @@ log_configured_action() {
     log_verbose "Effective splash page setting: ${SPLASH_PAGE:-yes}"
     log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
     log_verbose "Effective sync delete setting: ${SYNC_DELETE:-yes}"
-    log_verbose "Effective force generation setting: $PHOTOALBUM_FORCE_GENERATE"
+    log_verbose "Effective force generation setting: $SHURIKEN_FORCE_GENERATE"
 }
 
 run_configured_action() {
     local rc_file
 
-    if [[ "$PHOTOALBUM_FORCE_GENERATE" = yes && "$action" != --generate ]]; then
+    if [[ "$SHURIKEN_FORCE_GENERATE" = yes && "$action" != --generate ]]; then
         usage
         exit 1
     fi
@@ -3146,7 +3146,7 @@ run_action() {
     esac
 }
 
-# PHOTOALBUM_LIB_SOURCES_END
+# SHURIKEN_LIB_SOURCES_END
 
 main() {
     local action=''
