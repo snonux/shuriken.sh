@@ -239,6 +239,7 @@ test_just_install_and_deinstall_with_destdir() {
     test::assert_file_exists "$stage_dir/etc/default/photoalbum"
     test::assert_file_exists \
         "$stage_dir/usr/share/photoalbum/templates/default/view.tmpl"
+    test::assert_file_exists "$stage_dir/usr/share/photoalbum/assets/favicon.ico"
 
     (
         cd "$TEST_REPO_ROOT"
@@ -1657,6 +1658,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains \
         "  $dist_dir/index.html (1 album index redirect)" \
         "$output"
+    test::assert_contains "  $dist_dir/favicon.ico" "$output"
     test::assert_contains "  $dist_dir/photoalbum.json" "$output"
     test::assert_contains "  $dist_dir/photos/* (6 image files)" "$output"
     test::assert_contains "  $dist_dir/thumbs/* (6 image files)" "$output"
@@ -2131,6 +2133,7 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_file_exists "$TEST_TMPDIR/dist/3-2.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/3-2-details.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/index.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/favicon.ico"
     test::assert_file_exists "$TEST_TMPDIR/dist/photoalbum.json"
     test::assert_no_html_subdir_output "$TEST_TMPDIR/dist"
 
@@ -2161,6 +2164,12 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_not_contains 'class="details-photo-link" href="1-2.html"' \
         "$details_html"
     test::assert_contains '<title>Integration album</title>' "$top_index_html"
+    test::assert_contains \
+        '<link rel="icon" href="./favicon.ico" type="image/x-icon">' \
+        "$top_index_html"
+    test::assert_contains \
+        '<link rel="icon" href="./favicon.ico" type="image/x-icon">' \
+        "$page_html"
     test::assert_contains 'Enter album' "$top_index_html"
     test::assert_contains 'href="page-1.html"' "$top_index_html"
     test::assert_contains \
@@ -2335,6 +2344,9 @@ test_generate_config_no_splash_keeps_index_redirect() {
 
     top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
     test::assert_contains 'url=page-1.html' "$top_index_html"
+    test::assert_contains \
+        '<link rel="icon" href="./favicon.ico" type="image/x-icon">' \
+        "$top_index_html"
     test::assert_not_contains 'Enter album' "$top_index_html"
     test::assert_not_contains '<script' "$top_index_html"
     test::assert_not_contains 'javascript:' "$top_index_html"

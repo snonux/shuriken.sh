@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Shuriken logo</title>
+  <desc id="desc">A four-point shuriken mark with a red center ring.</desc>
+  <rect width="256" height="256" rx="36" fill="#f4f0e8"/>
+  <circle cx="128" cy="128" r="108" fill="#18212b"/>
+  <path
+    d="M128 18 153 94 231 65 190 128 231 191 153 162 128 238 103 162 25 191 66 128 25 65 103 94Z"
+    fill="#dce5eb"
+    stroke="#0b1118"
+    stroke-linejoin="round"
+    stroke-width="10"/>
+  <path
+    d="M128 43 146 101 204 82 171 128 204 174 146 155 128 213 110 155 52 174 85 128 52 82 110 101Z"
+    fill="#7f8e99"/>
+  <circle cx="128" cy="128" r="39" fill="#18212b"/>
+  <circle cx="128" cy="128" r="24" fill="none" stroke="#c7432b" stroke-width="10"/>
+  <circle cx="128" cy="128" r="8" fill="#f4f0e8"/>
+</svg>

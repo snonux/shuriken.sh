@@ -140,6 +140,8 @@ install: check-generated build
     install -d "{{DESTDIR}}{{DATADIR}}/{{NAME}}"
     rm -rf "{{DESTDIR}}{{DATADIR}}/{{NAME}}/templates"
     cp -R ./share/templates "{{DESTDIR}}{{DATADIR}}/{{NAME}}/"
+    rm -rf "{{DESTDIR}}{{DATADIR}}/{{NAME}}/assets"
+    cp -R ./assets/site "{{DESTDIR}}{{DATADIR}}/{{NAME}}/assets"
     install -d "{{DESTDIR}}{{SYSCONFDIR}}"
     install -m 0644 \
         ./src/photoalbum.default.conf \

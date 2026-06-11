@@ -109,6 +109,24 @@ resolve_default_template_dir() {
     printf '%s\n' "$DEFAULT_TEMPLATE_DIR"
 }
 
+resolve_default_asset_dir() {
+    local source_root
+
+    if [ -d "$DEFAULT_ASSET_DIR" ]; then
+        printf '%s\n' "$DEFAULT_ASSET_DIR"
+        return
+    fi
+
+    source_root=$(resolve_source_root)
+
+    if [ -n "$source_root" ]; then
+        printf '%s\n' "$source_root/assets/site"
+        return
+    fi
+
+    printf '%s\n' "$DEFAULT_ASSET_DIR"
+}
+
 template_dir_uses_default() {
     if [ -z "${TEMPLATE_DIR+x}" ] || [ -z "$TEMPLATE_DIR" ]; then
         return 1

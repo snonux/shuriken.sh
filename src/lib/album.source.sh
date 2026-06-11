@@ -890,6 +890,26 @@ prepare_generation_photo_assets() {
     create_all_photo_derivatives 'photos' 'thumbs' 'blurs'
 }
 
+copy_site_favicon() {
+    local asset_dir
+    local favicon_src
+
+    asset_dir=$(resolve_default_asset_dir)
+    favicon_src="$asset_dir/favicon.ico"
+
+    if [ ! -r "$favicon_src" ]; then
+        config_error "favicon file $favicon_src must be readable"
+        return 1
+    fi
+
+    log_verbose "Copying favicon to $(_display_path "$DIST_DIR/favicon.ico")"
+    cp "$favicon_src" "$DIST_DIR/favicon.ico"
+}
+
+prepare_generation_site_assets() {
+    copy_site_favicon
+}
+
 clear_rendered_html() {
     find "$DIST_DIR" -type f -name '*.html' -delete
 }
@@ -915,6 +935,7 @@ generate() {
     fi
 
     prepare_generation_photo_assets
+    prepare_generation_site_assets
     clear_rendered_html
     render_album_pages 'photos' '.' 'thumbs' 'blurs' '.' "$tarball_name"
     create_generation_archive "$tarball_name"
@@ -988,6 +1009,7 @@ dry_run() {
         printf '  %s/index.html (%s album index redirect)\n' \
             "$DIST_DIR" "$html_index_count"
     fi
+    printf '  %s/favicon.ico\n' "$DIST_DIR"
     printf '  %s/photoalbum.json\n' "$DIST_DIR"
     printf '  %s/photos/* (%s image files)\n' "$DIST_DIR" "$image_count"
     printf '  %s/thumbs/* (%s image files)\n' "$DIST_DIR" "$image_count"

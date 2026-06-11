@@ -1,5 +1,7 @@
 # photoalbum
 
+![Shuriken logo](assets/docs/shuriken-logo.svg)
+
 photoalbum is a minimal Bash script for Unix like operating systems (such as Linux) to generate static web photo albums.
 The resulting static photo album is pure HTML+CSS (without any JavaScript!).
 
@@ -20,10 +22,10 @@ changing either file, and use `just check-generated` to verify that the tracked
 script has not drifted. `just test` and `just install` run that drift check
 before rebuilding so stale committed output is not hidden.
 
-`just install` installs `photoalbum` to `/usr/bin`, templates to
-`/usr/share/photoalbum/templates`, and the default config to
-`/etc/default/photoalbum`. Override paths with `DESTDIR`, `PREFIX`, `BINDIR`,
-`DATADIR`, or `SYSCONFDIR` when packaging or staging an install:
+`just install` installs `photoalbum` to `/usr/bin`, templates and static assets
+to `/usr/share/photoalbum`, and the default config to `/etc/default/photoalbum`.
+Override paths with `DESTDIR`, `PREFIX`, `BINDIR`, `DATADIR`, or `SYSCONFDIR`
+when packaging or staging an install:
 
 ```
 DESTDIR="$PWD/pkg" PREFIX=/usr just install
@@ -106,6 +108,8 @@ Successful generation writes `photoalbum.json` into the output directory. This
 metadata records the generator version and timestamp, config source, template
 directory, supported source image and generated file counts, tarball status, and
 effective settings useful for debugging a published album.
+Generation also writes `favicon.ico` into the output directory and the default
+templates link to it.
 
 Normal generation preserves reusable generated artifacts from the previous
 `DIST_DIR` while still rerendering HTML, random splash/background choices,
