@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # photoalbum (c) 2011 - 2014, 2022 by Paul Buetow
-# https://codeberg.org/snonux/photoalbum
+# https://codeberg.org/snonux/shuriken.sh
 
 declare -r VERSION='0.7.0'
 declare -r DEFAULTRC="${PHOTOALBUM_DEFAULT_RC:-/etc/default/photoalbum}"

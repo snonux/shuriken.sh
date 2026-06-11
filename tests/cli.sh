@@ -2140,6 +2140,11 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_contains "name='04 filename with spaces.jpg'" \
         "$(<"$TEST_TMPDIR/dist/page-2.html")"
     test::assert_contains 'Next 2 pictures' "$page_html"
+    test::assert_contains \
+        'href="https://codeberg.org/snonux/shuriken.sh"' \
+        "$page_html"
+    test::assert_contains 'codeberg.org/snonux/shuriken.sh' "$page_html"
+    test::assert_not_contains 'codeberg.org/snonux/photoalbum' "$page_html"
     test::assert_contains 'No EXIF details available.' "$details_html"
     test::assert_contains '<div class="details-layout">' "$details_html"
     test::assert_contains '<div class="details-photo-column">' "$details_html"
