@@ -238,7 +238,7 @@ scale_photo() {
         imagemagick \
             "$INCOMING_DIR/$photo" \
             -auto-orient \
-            -geometry "$HEIGHT" \
+            -geometry "x${HEIGHT}>" \
             "$destphoto"
     else
         # Keep original size.

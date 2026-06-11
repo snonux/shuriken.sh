@@ -459,6 +459,75 @@ test_generate_cli_overrides_config_values() {
     test::teardown
 }
 
+test_generate_height_bounds_photo_height_without_upscaling() {
+    local config_file
+    local -a create_command=()
+    local height
+    local -a identify_command=()
+    local landscape_dimensions
+    local portrait_dimensions
+    local small_portrait_dimensions
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    height=120
+
+    if command -v magick >/dev/null 2>&1; then
+        create_command=(magick)
+        identify_command=(magick identify)
+    else
+        create_command=(convert)
+        identify_command=(identify)
+    fi
+
+    mkdir -p "$TEST_TMPDIR/incoming"
+    "${create_command[@]}" \
+        -size 800x600 xc:red "$TEST_TMPDIR/incoming/landscape.jpg"
+    "${create_command[@]}" \
+        -size 600x800 xc:blue "$TEST_TMPDIR/incoming/portrait.jpg"
+    "${create_command[@]}" \
+        -size 60x80 xc:green "$TEST_TMPDIR/incoming/small-portrait.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Height bounds album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        "$TEST_SHURIKEN" --generate
+    )
+
+    landscape_dimensions=$(
+        "${identify_command[@]}" -format '%wx%h' \
+            "$TEST_TMPDIR/dist/photos/landscape.jpg"
+    )
+    portrait_dimensions=$(
+        "${identify_command[@]}" -format '%wx%h' \
+            "$TEST_TMPDIR/dist/photos/portrait.jpg"
+    )
+    small_portrait_dimensions=$(
+        "${identify_command[@]}" -format '%wx%h' \
+            "$TEST_TMPDIR/dist/photos/small-portrait.jpg"
+    )
+
+    if [ "$landscape_dimensions" != "160x$height" ]; then
+        echo "FAIL: expected landscape photo height to be $height" >&2
+        echo "found $landscape_dimensions" >&2
+        exit 1
+    fi
+    if [ "$portrait_dimensions" != "90x$height" ]; then
+        echo "FAIL: expected portrait photo height to be $height" >&2
+        echo "found $portrait_dimensions" >&2
+        exit 1
+    fi
+    if [ "$small_portrait_dimensions" != '60x80' ]; then
+        echo 'FAIL: expected smaller portrait photo not to be upscaled' >&2
+        echo "found $small_portrait_dimensions" >&2
+        exit 1
+    fi
+
+    test::teardown
+}
+
 test_generate_shuffle_override_uses_random_order() {
     local config_file
     local fake_bin
@@ -3663,6 +3732,9 @@ main() {
     test::run_case \
         '--generate CLI options override config' \
         test_generate_cli_overrides_config_values
+    test::run_case \
+        '--generate HEIGHT bounds photo height without upscaling' \
+        test_generate_height_bounds_photo_height_without_upscaling
     test::run_case \
         '--generate --shuffle overrides config' \
         test_generate_shuffle_override_uses_random_order
