@@ -1180,7 +1180,8 @@ test_generate_image_jobs_limits_parallel_template_rendering() {
 
     (
         cd "$TEST_TMPDIR"
-        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
+        PATH="$fake_bin:$PATH" TEST_TEMPLATE_SPY_SLEEP_SECONDS=1 \
+            "$TEST_SHURIKEN" \
             --image-jobs 2 \
             --template "$template_dir" \
             --generate

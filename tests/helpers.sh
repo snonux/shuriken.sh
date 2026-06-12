@@ -422,7 +422,7 @@ test::write_parallel_template_spy_file() {
         "$active" "$template_label" "$render_photo_html" >> "$log_file"
 ) 9>"$lock_file"
 
-sleep 0.1
+sleep "${TEST_TEMPLATE_SPY_SLEEP_SECONDS:-0.1}"
 printf '<div class="%s">%s</div>\n' "$template_label" "$render_photo_html"
 
 (
