@@ -17,12 +17,8 @@ version:
     printf '%s\n' "{{VERSION}}"
 
 [script]
-build:
-    mkdir -p ./bin
-    generated=$(mktemp "./bin/.{{NAME}}.XXXXXX")
-    trap 'rm -f "$generated"' EXIT
-
-    render_lib_sources() {
+_render-shuriken:
+    _render_lib_sources() {
         local lib_source
         local line
 
@@ -35,7 +31,7 @@ build:
         done
     }
 
-    render_shuriken() {
+    _render_shuriken() {
         local in_lib_sources=no
         local line
 
@@ -43,7 +39,7 @@ build:
             case "$line" in
                 '# SHURIKEN_LIB_SOURCES_BEGIN')
                     printf '%s\n' "$line"
-                    render_lib_sources
+                    _render_lib_sources
                     in_lib_sources=yes
                     ;;
                 '# SHURIKEN_LIB_SOURCES_END')
@@ -60,7 +56,21 @@ build:
         done < "src/{{NAME}}.sh"
     }
 
-    render_shuriken > "$generated"
+    _render_shuriken
+
+[script]
+build:
+    mkdir -p ./bin
+    generated=$(mktemp "./bin/.{{NAME}}.XXXXXX")
+    trap 'rm -f "$generated"' EXIT
+
+    {{quote(just_executable())}} \
+        --quiet \
+        --justfile {{quote(justfile())}} \
+        --set NAME {{quote(NAME)}} \
+        --set VERSION {{quote(VERSION)}} \
+        --set LIB_SOURCES {{quote(LIB_SOURCES)}} \
+        _render-shuriken > "$generated"
     chmod 0755 "$generated"
     if [ -f "./bin/{{NAME}}" ] && cmp -s "$generated" "./bin/{{NAME}}"; then
         chmod 0755 "./bin/{{NAME}}"
@@ -74,45 +84,13 @@ check-generated:
     generated=$(mktemp)
     trap 'rm -f "$generated"' EXIT
 
-    render_lib_sources() {
-        local lib_source
-        local line
-
-        for lib_source in {{LIB_SOURCES}}; do
-            printf '\n# Inlined from %s\n' "$lib_source"
-            while IFS= read -r line; do
-                line=${line//SHURIKENVERSION/{{VERSION}}}
-                printf '%s\n' "$line"
-            done < "$lib_source"
-        done
-    }
-
-    render_shuriken() {
-        local in_lib_sources=no
-        local line
-
-        while IFS= read -r line; do
-            case "$line" in
-                '# SHURIKEN_LIB_SOURCES_BEGIN')
-                    printf '%s\n' "$line"
-                    render_lib_sources
-                    in_lib_sources=yes
-                    ;;
-                '# SHURIKEN_LIB_SOURCES_END')
-                    in_lib_sources=no
-                    printf '\n%s\n' "$line"
-                    ;;
-                *)
-                    if [ "$in_lib_sources" = no ]; then
-                        line=${line//SHURIKENVERSION/{{VERSION}}}
-                        printf '%s\n' "$line"
-                    fi
-                    ;;
-            esac
-        done < "src/{{NAME}}.sh"
-    }
-
-    render_shuriken > "$generated"
+    {{quote(just_executable())}} \
+        --quiet \
+        --justfile {{quote(justfile())}} \
+        --set NAME {{quote(NAME)}} \
+        --set VERSION {{quote(VERSION)}} \
+        --set LIB_SOURCES {{quote(LIB_SOURCES)}} \
+        _render-shuriken > "$generated"
     chmod 0755 "$generated"
     if [ ! -f "./bin/{{NAME}}" ]; then
         printf '%s\n' \
