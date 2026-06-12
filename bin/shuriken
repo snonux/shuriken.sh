@@ -724,11 +724,16 @@ template_required_context_vars() {
 validate_template_context() {
     local -r template_name="$1"; shift
     local -r context_name="$1"; shift
+    local -i status=0
     local -a required_vars=()
 
     template_required_context_vars_to required_vars "$template_name"
     require_template_context_vars "$template_name" "$context_name" \
-        "${required_vars[@]}" || return
+        "${required_vars[@]}"
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
 }
 
 source_template_file() {
@@ -739,17 +744,26 @@ source_template_file() {
     local -i status=0
 
     context_file=$(mktemp)
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
     {
         serialize_template_render_context "$render_vars_name"
         printf 'unset BASH_ENV\n'
     } > "$context_file"
+    status=$?
+    if (( status != 0 )); then
+        rm -f "$context_file"
+        return "$status"
+    fi
 
-    if env -i PATH="$PATH" BASH_ENV="$context_file" \
-        bash -euo pipefail -- "$template_path" >> "$output_path"; then
-        rm -f "$context_file"
-    else
-        status=$?
-        rm -f "$context_file"
+    env -i PATH="$PATH" BASH_ENV="$context_file" \
+        bash -euo pipefail -- "$template_path" >> "$output_path"
+    status=$?
+    rm -f "$context_file"
+    if (( status != 0 )); then
         return "$status"
     fi
 }
@@ -913,13 +927,18 @@ validate_template_render_request() {
     local -r template_name="$1"; shift
     local -r context_name="$1"; shift
     local -r template_path="$TEMPLATE_DIR/$template_name.tmpl"
+    local -i status=0
 
     if [ ! -r "$template_path" ]; then
         config_error "template file $template_path must be readable"
         return 1
     fi
 
-    validate_template_context "$template_name" "$context_name" || return
+    validate_template_context "$template_name" "$context_name"
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
 }
 
 render_template() {
@@ -929,6 +948,7 @@ render_template() {
     local -r template_path="$TEMPLATE_DIR/$template_name.tmpl"
     local dist_html
     local html_dir
+    local -i status=0
     # Passed by name to prepare_template_render_vars and source_template_file.
     # shellcheck disable=SC2034
     local -A render_vars=()
@@ -940,19 +960,48 @@ render_template() {
         "Rendering $template_name template into $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
-    prepare_template_render_vars render_vars "$context_name" || return
-    source_template_file "$template_path" "$dist_html/$html" render_vars || return
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
+    prepare_template_render_vars render_vars "$context_name"
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
+    source_template_file "$template_path" "$dist_html/$html" render_vars
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
 }
 
 template() {
     local -r template_name="$1"; shift
     local -r html="$1"; shift
+    local -i status=0
     # shellcheck disable=SC2034
     local -A render_context=()
 
-    parse_template_context "$template_name" render_context "$@" || return
-    validate_template_render_request "$template_name" render_context || return
-    render_template "$template_name" "$html" render_context || return
+    parse_template_context "$template_name" render_context "$@"
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
+    validate_template_render_request "$template_name" render_context
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
+    render_template "$template_name" "$html" render_context
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
 }
 
 # Inlined from src/lib/image.source.sh

@@ -2075,6 +2075,60 @@ BASH
     test::teardown
 }
 
+test_generate_action_runs_with_errexit_active() {
+    local config_file
+    local output
+    local ran_file
+    local -i status=0
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    ran_file="$TEST_TMPDIR/dry-run-continued"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        "$TEST_REPO_ROOT/share/templates/default"
+
+    set +e
+    output=$(
+        bash -euo pipefail -s "$TEST_SHURIKEN" "$config_file" "$ran_file" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+config_file="$1"; shift
+ran_file="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+dry_run() {
+    false
+    printf 'dry_run continued\n' > "$ran_file"
+}
+
+SHURIKEN_CLI_ACTION=--dry-run
+SHURIKEN_CLI_CONFIG_FILE="$config_file"
+SHURIKEN_CLI_HAS_CONFIG_OVERRIDES=no
+SHURIKEN_CLI_OVERRIDES=()
+SHURIKEN_CLI_SYNC_DESTINATIONS=()
+SHURIKEN_FORCE_GENERATE=no
+
+run_configured_action
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        printf 'FAIL: expected run_configured_action to fail\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$ran_file"
+    test::teardown
+}
+
 test_generate_preflight_accepts_empty_height() {
     local config_file
     local fake_bin
@@ -3274,6 +3328,86 @@ test_template_context_validator_fails_fast_without_errexit() {
         "$output"
 }
 
+test_template_mktemp_failure_does_not_render_without_errexit() {
+    local fake_bin
+    local output
+    local output_file
+    local ran_file
+    local template_dir
+    local -i status=0
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    template_dir="$TEST_TMPDIR/templates"
+    output_file="$TEST_TMPDIR/dist/out.html"
+    ran_file="$TEST_TMPDIR/template-ran"
+    mkdir -p "$fake_bin" "$template_dir" "$TEST_TMPDIR/dist"
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'exit 42\n'
+    } > "$fake_bin/mktemp"
+    chmod 0755 "$fake_bin/mktemp"
+    {
+        printf 'printf rendered >> %q\n' "$ran_file"
+        printf 'printf rendered\n'
+    } > "$template_dir/preview.tmpl"
+
+    set +e
+    output=$(
+        bash -euo pipefail -s \
+            "$TEST_SHURIKEN" \
+            "$fake_bin" \
+            "$template_dir" \
+            "$TEST_TMPDIR/dist" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+fake_bin="$1"; shift
+template_dir="$1"; shift
+dist_dir="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+PATH="$fake_bin:$PATH"
+DIST_DIR="$dist_dir"
+TEMPLATE_DIR="$template_dir"
+TITLE='Template mktemp failure'
+HEIGHT=''
+THUMBHEIGHT=30
+MAXPREVIEWS=40
+ORIGINAL_BASEPATH=''
+TARBALL_INCLUDE=no
+SHURIKEN_OUTPUT_MODE=quiet
+
+template preview out.html \
+    animation_class '' \
+    backhref '#' \
+    html_dir . \
+    page_num 1 \
+    photo photo.jpg \
+    preview_num 1 \
+    thumbs_dir thumbs
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        printf 'FAIL: expected template rendering to fail\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$ran_file"
+    if [ -s "$output_file" ]; then
+        printf 'FAIL: expected template output to stay empty\n' >&2
+        cat "$output_file" >&2
+        exit 1
+    fi
+    test::teardown
+}
+
 test_generate_swap_failure_restores_dist() {
     local config_file
     local fake_bin
@@ -4091,6 +4225,9 @@ main() {
         '--generate validation failure skips action without errexit' \
         test_generate_validation_failure_skips_action_without_errexit
     test::run_case \
+        '--generate action runs with errexit active' \
+        test_generate_action_runs_with_errexit_active
+    test::run_case \
         '--generate preflight accepts empty HEIGHT' \
         test_generate_preflight_accepts_empty_height
     test::run_case \
@@ -4174,6 +4311,9 @@ main() {
     test::run_case \
         'template context validator fails fast without errexit' \
         test_template_context_validator_fails_fast_without_errexit
+    test::run_case \
+        'template mktemp failure does not render without errexit' \
+        test_template_mktemp_failure_does_not_render_without_errexit
     test::run_case \
         '--generate swap failure restores final dist' \
         test_generate_swap_failure_restores_dist
