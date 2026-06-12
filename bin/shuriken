@@ -741,6 +741,7 @@ source_template_file() {
     local -r output_path="$1"; shift
     local -r render_vars_name="$1"; shift
     local context_file
+    local restore_errexit=no
     local -i status=0
 
     context_file=$(mktemp)
@@ -749,14 +750,20 @@ source_template_file() {
         return "$status"
     fi
 
-    if {
-        serialize_template_render_context "$render_vars_name" \
-            &&
+    if [[ "$-" == *e* ]]; then
+        restore_errexit=yes
+        set +e
+    fi
+    (
+        set -e
+        serialize_template_render_context "$render_vars_name"
         printf 'unset BASH_ENV\n'
-    } > "$context_file"; then
-        status=0
-    else
-        status=$?
+    ) > "$context_file"
+    status=$?
+    if [ "$restore_errexit" = yes ]; then
+        set -e
+    fi
+    if (( status != 0 )); then
         rm -f "$context_file"
         return "$status"
     fi
@@ -2282,21 +2289,51 @@ generate() {
 }
 
 refresh_splash() {
+    local restore_errexit=no
+    local -i status=0
     local tmp_html
     local tmp_path
 
     tmp_path=$(mktemp "$DIST_DIR/.index.html.XXXXXX")
     tmp_html=$(basename "$tmp_path")
 
-    if render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html" \
-        && prepare_generation_site_assets; then
-        mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
-        log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
-        return
+    if [[ "$-" == *e* ]]; then
+        restore_errexit=yes
+        set +e
+    fi
+    (
+        set -e
+        render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html"
+    )
+    status=$?
+    if [ "$restore_errexit" = yes ]; then
+        set -e
+    fi
+    if (( status != 0 )); then
+        rm -f "$DIST_DIR/$tmp_html"
+        return "$status"
     fi
 
-    rm -f "$DIST_DIR/$tmp_html"
-    return 1
+    restore_errexit=no
+    if [[ "$-" == *e* ]]; then
+        restore_errexit=yes
+        set +e
+    fi
+    (
+        set -e
+        prepare_generation_site_assets
+    )
+    status=$?
+    if [ "$restore_errexit" = yes ]; then
+        set -e
+    fi
+    if (( status != 0 )); then
+        rm -f "$DIST_DIR/$tmp_html"
+        return "$status"
+    fi
+
+    mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
+    log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
 }
 
 dry_run() {
@@ -3135,7 +3172,7 @@ run_action_body() {
     if [[ "$-" == *e* ]]; then
         "$@"
     else
-        ( "$@" )
+        ( set -e; "$@" )
     fi
 }
 

@@ -2113,6 +2113,7 @@ SHURIKEN_CLI_OVERRIDES=()
 SHURIKEN_CLI_SYNC_DESTINATIONS=()
 SHURIKEN_FORCE_GENERATE=no
 
+set +e
 run_configured_action
 BASH
     )
@@ -2832,6 +2833,35 @@ test_refresh_splash_requires_existing_generated_blurs() {
         "ERROR: DIST_DIR blurs directory $TEST_TMPDIR/dist/blurs must exist" \
         "$output"
     test::assert_path_absent "$TEST_TMPDIR/dist/index.html"
+    test::teardown
+}
+
+test_refresh_splash_requires_matching_splash_photo() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    mkdir -p \
+        "$TEST_TMPDIR/incoming" \
+        "$TEST_TMPDIR/dist/photos" \
+        "$TEST_TMPDIR/dist/blurs"
+    printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
+    printf 'orphan photo\n' > "$TEST_TMPDIR/dist/photos/orphan.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Missing matching splash photo album' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output "$TEST_SHURIKEN" --refresh-splash
+    )
+
+    test::assert_contains \
+        "ERROR: No splash photos found in $TEST_TMPDIR/dist/photos" \
+        "$output"
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
+    test::assert_find_count 0 "$TEST_TMPDIR/dist" '.index.html.*'
     test::teardown
 }
 
@@ -3604,8 +3634,8 @@ SHURIKEN_FAKE_CONTEXT_FILE="$context_file"
 export SHURIKEN_FAKE_CONTEXT_FILE
 
 serialize_template_render_context() {
+    false
     printf 'partial_context=yes\n'
-    return 42
 }
 
 # shellcheck disable=SC2034
@@ -4493,6 +4523,9 @@ main() {
     test::run_case \
         '--refresh-splash requires existing generated blurs' \
         test_refresh_splash_requires_existing_generated_blurs
+    test::run_case \
+        '--refresh-splash requires matching splash photo' \
+        test_refresh_splash_requires_matching_splash_photo
     test::run_case \
         '--refresh-splash rejects SPLASH_PAGE=no' \
         test_refresh_splash_rejects_no_splash_config

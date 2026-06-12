@@ -943,21 +943,51 @@ generate() {
 }
 
 refresh_splash() {
+    local restore_errexit=no
+    local -i status=0
     local tmp_html
     local tmp_path
 
     tmp_path=$(mktemp "$DIST_DIR/.index.html.XXXXXX")
     tmp_html=$(basename "$tmp_path")
 
-    if render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html" \
-        && prepare_generation_site_assets; then
-        mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
-        log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
-        return
+    if [[ "$-" == *e* ]]; then
+        restore_errexit=yes
+        set +e
+    fi
+    (
+        set -e
+        render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html"
+    )
+    status=$?
+    if [ "$restore_errexit" = yes ]; then
+        set -e
+    fi
+    if (( status != 0 )); then
+        rm -f "$DIST_DIR/$tmp_html"
+        return "$status"
     fi
 
-    rm -f "$DIST_DIR/$tmp_html"
-    return 1
+    restore_errexit=no
+    if [[ "$-" == *e* ]]; then
+        restore_errexit=yes
+        set +e
+    fi
+    (
+        set -e
+        prepare_generation_site_assets
+    )
+    status=$?
+    if [ "$restore_errexit" = yes ]; then
+        set -e
+    fi
+    if (( status != 0 )); then
+        rm -f "$DIST_DIR/$tmp_html"
+        return "$status"
+    fi
+
+    mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
+    log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
 }
 
 dry_run() {

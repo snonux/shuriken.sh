@@ -27,7 +27,7 @@ run_action_body() {
     if [[ "$-" == *e* ]]; then
         "$@"
     else
-        ( "$@" )
+        ( set -e; "$@" )
     fi
 }
 
