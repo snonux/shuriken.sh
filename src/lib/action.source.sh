@@ -25,6 +25,7 @@ run_simple_action() {
 
 load_configured_action() {
     local -r rc_file="$1"; shift
+    local -i status=0
 
     if [ ! -f "$rc_file" ]; then
         missing_config "$rc_file"
@@ -32,9 +33,29 @@ load_configured_action() {
 
     # shellcheck source=/dev/null
     source "$rc_file"
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
     apply_config_defaults
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
     apply_template_dir_default
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
     apply_cli_overrides
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
     SHURIKEN_CONFIG_SOURCE="$rc_file"
     export SHURIKEN_CONFIG_SOURCE
 }
@@ -61,6 +82,7 @@ log_configured_action() {
 
 run_configured_action() {
     local rc_file
+    local -i status=0
 
     if [[ "$SHURIKEN_FORCE_GENERATE" = yes \
         && "$SHURIKEN_CLI_ACTION" != --generate ]]; then
@@ -70,6 +92,11 @@ run_configured_action() {
 
     rc_file="$(resolve_config_file "$SHURIKEN_CLI_CONFIG_FILE")"
     load_configured_action "$rc_file"
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
     log_configured_action "$rc_file"
 
     case "$SHURIKEN_CLI_ACTION" in
@@ -83,34 +110,89 @@ run_configured_action() {
             ;;
         --generate)
             validate_generation_config
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
+
             generate_staged
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
             ;;
         --refresh-splash)
             validate_refresh_splash_config
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
+
             refresh_splash
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
             ;;
         --sync)
             validate_sync_config
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
+
             sync_dist
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
             ;;
         --dry-run)
             validate_generation_config no
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
+
             dry_run
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
             ;;
         --print-config)
             validate_print_config
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
+
             print_config
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
             ;;
     esac
 }
 
 run_action() {
+    local -i status=0
+
     case "$SHURIKEN_CLI_ACTION" in
         --version|--init)
             run_simple_action
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
             ;;
         --clean|--generate|--refresh-splash|--sync|--dry-run|--print-config)
             run_configured_action
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
             ;;
         *)
             usage

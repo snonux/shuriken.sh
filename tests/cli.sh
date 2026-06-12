@@ -2010,6 +2010,71 @@ test_config_validators_fail_fast_without_errexit() {
         "$output"
 }
 
+test_generate_validation_failure_skips_action_without_errexit() {
+    local config_file
+    local output
+    local ran_file
+    local -i status=0
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    ran_file="$TEST_TMPDIR/generate-ran"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        "$TEST_REPO_ROOT/share/templates/default"
+    printf 'THUMBHEIGHT=bad\n' >> "$config_file"
+
+    set +e
+    output=$(
+        bash -euo pipefail -s "$TEST_SHURIKEN" "$config_file" "$ran_file" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+config_file="$1"; shift
+ran_file="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+generate_staged() {
+    printf 'generate_staged ran\n' > "$ran_file"
+}
+
+SHURIKEN_CLI_ACTION=--generate
+SHURIKEN_CLI_CONFIG_FILE="$config_file"
+SHURIKEN_CLI_HAS_CONFIG_OVERRIDES=no
+SHURIKEN_CLI_OVERRIDES=()
+SHURIKEN_CLI_SYNC_DESTINATIONS=()
+SHURIKEN_FORCE_GENERATE=no
+
+set +e
+run_configured_action
+run_configured_status=$?
+
+if [ -e "$ran_file" ]; then
+    printf 'FAIL: generate_staged ran after validation failure\n' >&2
+    exit 1
+fi
+
+exit "$run_configured_status"
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        printf 'FAIL: expected run_configured_action to fail\n' >&2
+        exit 1
+    fi
+
+    test::assert_contains \
+        'ERROR: THUMBHEIGHT must be a positive integer' \
+        "$output"
+    test::assert_path_absent "$ran_file"
+    test::teardown
+}
+
 test_generate_preflight_accepts_empty_height() {
     local config_file
     local fake_bin
@@ -4022,6 +4087,9 @@ main() {
     test::run_case \
         'config validators fail fast without errexit' \
         test_config_validators_fail_fast_without_errexit
+    test::run_case \
+        '--generate validation failure skips action without errexit' \
+        test_generate_validation_failure_skips_action_without_errexit
     test::run_case \
         '--generate preflight accepts empty HEIGHT' \
         test_generate_preflight_accepts_empty_height

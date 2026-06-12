@@ -101,6 +101,8 @@ source "$SHURIKEN_SOURCE_DIR/lib/action.source.sh"
 # SHURIKEN_LIB_SOURCES_END
 
 main() {
+    local -i status=0
+
     SHURIKEN_CLI_ACTION=''
     SHURIKEN_CLI_CONFIG_FILE=''
     SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
@@ -113,7 +115,16 @@ main() {
     fi
 
     parse_cli_arguments "$@"
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
     run_action
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
 }
 
 main "$@"
