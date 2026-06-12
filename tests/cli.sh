@@ -3088,6 +3088,30 @@ test_generate_templates_cannot_read_serialized_context_hook() {
     test::teardown
 }
 
+test_template_required_context_vars_come_from_render_specs() {
+    local expected
+    local output
+
+    expected=$'animation_class\nbackhref\nhtml_dir\npage_num\nphoto\npreview_num\nthumbs_dir'
+    output=$(
+        bash -euo pipefail -s "$TEST_REPO_ROOT" <<'BASH'
+repo_root="$1"; shift
+
+# shellcheck source=src/lib/template.source.sh
+source "$repo_root/src/lib/template.source.sh"
+
+template_required_context_vars preview
+BASH
+    )
+
+    if [ "$output" != "$expected" ]; then
+        printf 'FAIL: unexpected preview required render variables\n' >&2
+        printf 'expected:\n%s\n' "$expected" >&2
+        printf 'actual:\n%s\n' "$output" >&2
+        exit 1
+    fi
+}
+
 test_generate_swap_failure_restores_dist() {
     local config_file
     local fake_bin
@@ -3966,6 +3990,9 @@ main() {
     test::run_case \
         '--generate templates cannot read serialized context hook' \
         test_generate_templates_cannot_read_serialized_context_hook
+    test::run_case \
+        'template required context vars come from render specs' \
+        test_template_required_context_vars_come_from_render_specs
     test::run_case \
         '--generate swap failure restores final dist' \
         test_generate_swap_failure_restores_dist

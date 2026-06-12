@@ -142,35 +142,35 @@ current_date_text_to() {
 }
 
 declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
-    'render_animation_class_html|context_html|animation_class|preview details view'
-    'render_backhref_css|context_css|backhref|header splash'
-    'render_backhref_html|context_html|backhref|footer header preview splash details view'
-    'render_background_image_css|context_css|background_image|header splash'
-    'render_blurs_dir_css|context_css|blurs_dir|header splash'
-    'render_current_date_text|current_date_html||'
-    'render_enter_page_html|context_html|enter_page|splash'
-    'render_exif_details_html|context_raw|exif_details|details'
-    'render_exif_tooltip_html|context_html|exif_tooltip|details'
-    'render_height_html|config_html|HEIGHT|'
-    'render_html_dir_html|context_html|html_dir|*'
-    'render_maxpreviews_html|config_html|MAXPREVIEWS|'
-    'render_next_html|context_html|next|next'
-    'render_original_basepath_is_set|original_basepath_is_set||'
-    'render_original_basepath_html|config_html|ORIGINAL_BASEPATH|'
-    'render_page_num_html|context_html|page_num|preview details view'
-    'render_photo_html|context_html|photo|preview splash details view'
-    'render_photos_dir_html|context_html|photos_dir|splash details view'
-    'render_prev_html|context_html|prev|prev next'
-    'render_preview_num_html|context_html|preview_num|preview details view'
-    'render_redirect_page_html|context_html|redirect_page|redirect'
-    'render_show_header_bar|context_raw|show_header_bar|header'
-    'render_tarball_include|tarball_include||'
-    'render_tarball_name_html|context_html|tarball_name|footer'
-    'render_thumbheight_html|config_html|THUMBHEIGHT|'
-    'render_thumbs_dir_html|context_html|thumbs_dir|preview'
-    'render_title_html|config_html|TITLE|'
-    'render_view_next_html|preview_num_next_html|preview_num|'
-    'render_view_prev_html|preview_num_prev_html|preview_num|'
+    'render_animation_class_html|context_html|animation_class|animation_class|preview details view'
+    'render_backhref_css|context_css|backhref|backhref|header splash'
+    'render_backhref_html|context_html|backhref|backhref|footer header preview splash details view'
+    'render_background_image_css|context_css|background_image|background_image|header splash'
+    'render_blurs_dir_css|context_css|blurs_dir|blurs_dir|header splash'
+    'render_current_date_text|current_date_html|||'
+    'render_enter_page_html|context_html|enter_page|enter_page|splash'
+    'render_exif_details_html|context_raw|exif_details|exif_details|details'
+    'render_exif_tooltip_html|context_html|exif_tooltip|exif_tooltip|details'
+    'render_height_html|config_html|HEIGHT||'
+    'render_html_dir_html|context_html|html_dir|html_dir|*'
+    'render_maxpreviews_html|config_html|MAXPREVIEWS||'
+    'render_next_html|context_html|next|next|next'
+    'render_original_basepath_is_set|original_basepath_is_set|||'
+    'render_original_basepath_html|config_html|ORIGINAL_BASEPATH||'
+    'render_page_num_html|context_html|page_num|page_num|preview details view'
+    'render_photo_html|context_html|photo|photo|preview splash details view'
+    'render_photos_dir_html|context_html|photos_dir|photos_dir|splash details view'
+    'render_prev_html|context_html|prev|prev|prev next'
+    'render_preview_num_html|context_html|preview_num|preview_num|preview details view'
+    'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
+    'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
+    'render_tarball_include|tarball_include|||'
+    'render_tarball_name_html|context_html|tarball_name|tarball_name|footer'
+    'render_thumbheight_html|config_html|THUMBHEIGHT||'
+    'render_thumbs_dir_html|context_html|thumbs_dir|thumbs_dir|preview'
+    'render_title_html|config_html|TITLE||'
+    'render_view_next_html|preview_num_next_html|preview_num||'
+    'render_view_prev_html|preview_num_prev_html|preview_num||'
 )
 
 current_timestamp_slug() {
@@ -238,33 +238,49 @@ template_render_field_is_required_for() {
     esac
 }
 
+template_required_context_vars_to() {
+    local -n required_vars_ref="$1"; shift
+    local -r template_name="$1"; shift
+    local -A required_var_seen=()
+    local field_spec
+    local _kind
+    local _render_var
+    local required_context_var
+    local required_templates
+    local _source_name
+
+    required_vars_ref=()
+
+    for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
+        IFS='|' read -r _render_var _kind _source_name \
+            required_context_var required_templates <<< "$field_spec"
+
+        if [ -n "$required_context_var" ] \
+            && template_render_field_is_required_for \
+                "$template_name" "$required_templates" \
+            && [ -z "${required_var_seen[$required_context_var]+x}" ]; then
+            required_vars_ref+=("$required_context_var")
+            required_var_seen["$required_context_var"]=yes
+        fi
+    done
+}
+
+template_required_context_vars() {
+    local -r template_name="$1"; shift
+    local -a required_vars=()
+
+    template_required_context_vars_to required_vars "$template_name"
+    if (( ${#required_vars[@]} > 0 )); then
+        printf '%s\n' "${required_vars[@]}"
+    fi
+}
+
 validate_template_context() {
     local -r template_name="$1"; shift
     local -r context_name="$1"; shift
-    local -A required_var_seen=()
     local -a required_vars=()
-    local field_spec
-    local kind
-    local _render_var
-    local required_templates
-    local source_name
 
-    for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
-        IFS='|' read -r _render_var kind source_name required_templates \
-            <<< "$field_spec"
-
-        case "$kind" in
-            context_*)
-                if template_render_field_is_required_for \
-                    "$template_name" "$required_templates" \
-                    && [ -z "${required_var_seen[$source_name]+x}" ]; then
-                    required_vars+=("$source_name")
-                    required_var_seen["$source_name"]=yes
-                fi
-                ;;
-        esac
-    done
-
+    template_required_context_vars_to required_vars "$template_name"
     require_template_context_vars "$template_name" "$context_name" \
         "${required_vars[@]}"
 }
@@ -332,12 +348,13 @@ serialize_template_render_context() {
     local field_spec
     local _kind
     local render_var
+    local _required_context_var
     local _required_templates
     local _source_name
 
     for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
-        IFS='|' read -r render_var _kind _source_name _required_templates \
-            <<< "$field_spec"
+        IFS='|' read -r render_var _kind _source_name \
+            _required_context_var _required_templates <<< "$field_spec"
         serialize_template_render_var \
             "$render_var" "${render_vars_ref[$render_var]}"
     done
@@ -352,14 +369,15 @@ prepare_template_render_vars() {
     local kind
     local render_value
     local render_var
+    local _required_context_var
     local _required_templates
     local source_name
 
     render_vars_ref=()
 
     for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
-        IFS='|' read -r render_var kind source_name _required_templates \
-            <<< "$field_spec"
+        IFS='|' read -r render_var kind source_name \
+            _required_context_var _required_templates <<< "$field_spec"
 
         case "$kind" in
             context_css)
