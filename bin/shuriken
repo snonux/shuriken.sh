@@ -759,9 +759,12 @@ source_template_file() {
         return "$status"
     fi
 
-    env -i PATH="$PATH" BASH_ENV="$context_file" \
-        bash -euo pipefail -- "$template_path" >> "$output_path"
-    status=$?
+    if env -i PATH="$PATH" BASH_ENV="$context_file" \
+        bash -euo pipefail -- "$template_path" >> "$output_path"; then
+        status=0
+    else
+        status=$?
+    fi
     rm -f "$context_file"
     if (( status != 0 )); then
         return "$status"

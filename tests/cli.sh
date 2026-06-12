@@ -3380,6 +3380,90 @@ ORIGINAL_BASEPATH=''
 TARBALL_INCLUDE=no
 SHURIKEN_OUTPUT_MODE=quiet
 
+set +e
+template preview out.html \
+    animation_class '' \
+    backhref '#' \
+    html_dir . \
+    page_num 1 \
+    photo photo.jpg \
+    preview_num 1 \
+    thumbs_dir thumbs
+template_status=$?
+
+exit "$template_status"
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        printf 'FAIL: expected template rendering to fail\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$ran_file"
+    if [ -s "$output_file" ]; then
+        printf 'FAIL: expected template output to stay empty\n' >&2
+        cat "$output_file" >&2
+        exit 1
+    fi
+    test::teardown
+}
+
+test_template_failure_removes_context_file_with_errexit() {
+    local context_file
+    local fake_bin
+    local output
+    local template_dir
+    local -i status=0
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    template_dir="$TEST_TMPDIR/templates"
+    context_file="$TEST_TMPDIR/template-context"
+    mkdir -p "$fake_bin" "$template_dir" "$TEST_TMPDIR/dist"
+    {
+        printf '#!/usr/bin/env bash\n'
+        # shellcheck disable=SC2016
+        printf 'printf %%s\\\\n \"$SHURIKEN_FAKE_CONTEXT_FILE\"\n'
+    } > "$fake_bin/mktemp"
+    chmod 0755 "$fake_bin/mktemp"
+    printf 'exit 42\n' > "$template_dir/preview.tmpl"
+
+    set +e
+    output=$(
+        bash -euo pipefail -s \
+            "$TEST_SHURIKEN" \
+            "$fake_bin" \
+            "$template_dir" \
+            "$TEST_TMPDIR/dist" \
+            "$context_file" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+fake_bin="$1"; shift
+template_dir="$1"; shift
+dist_dir="$1"; shift
+context_file="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+PATH="$fake_bin:$PATH"
+SHURIKEN_FAKE_CONTEXT_FILE="$context_file"
+export SHURIKEN_FAKE_CONTEXT_FILE
+DIST_DIR="$dist_dir"
+TEMPLATE_DIR="$template_dir"
+TITLE='Template failure cleanup'
+HEIGHT=''
+THUMBHEIGHT=30
+MAXPREVIEWS=40
+ORIGINAL_BASEPATH=''
+TARBALL_INCLUDE=no
+SHURIKEN_OUTPUT_MODE=quiet
+
 template preview out.html \
     animation_class '' \
     backhref '#' \
@@ -3399,12 +3483,7 @@ BASH
         exit 1
     fi
 
-    test::assert_path_absent "$ran_file"
-    if [ -s "$output_file" ]; then
-        printf 'FAIL: expected template output to stay empty\n' >&2
-        cat "$output_file" >&2
-        exit 1
-    fi
+    test::assert_path_absent "$context_file"
     test::teardown
 }
 
@@ -4314,6 +4393,9 @@ main() {
     test::run_case \
         'template mktemp failure does not render without errexit' \
         test_template_mktemp_failure_does_not_render_without_errexit
+    test::run_case \
+        'template failure removes context file with errexit' \
+        test_template_failure_removes_context_file_with_errexit
     test::run_case \
         '--generate swap failure restores final dist' \
         test_generate_swap_failure_restores_dist
