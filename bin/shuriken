@@ -2193,54 +2193,103 @@ count_tree_files() {
     find "$dir" -type f -name "$name" | wc -l
 }
 
+_collect_generation_metadata() {
+    local -r tarball_file="$1"; shift
+
+    declare -gA _GENERATION_METADATA=()
+    _GENERATION_METADATA["generator_name"]='shuriken'
+    _GENERATION_METADATA["generator_version"]="$VERSION"
+    _GENERATION_METADATA["generated_at"]=$(current_timestamp_iso)
+    _GENERATION_METADATA["config_source"]="${SHURIKEN_CONFIG_SOURCE:-}"
+    _GENERATION_METADATA["template_name"]=$(basename "$TEMPLATE_DIR")
+    _GENERATION_METADATA["template_directory"]="$TEMPLATE_DIR"
+    _GENERATION_METADATA["source_incoming_dir"]="$INCOMING_DIR"
+    _GENERATION_METADATA["source_image_count"]=$(count_incoming_images)
+    _GENERATION_METADATA["generated_photo_count"]=$(count_files "$DIST_DIR/photos")
+    _GENERATION_METADATA["generated_thumb_count"]=$(count_files "$DIST_DIR/thumbs")
+    _GENERATION_METADATA["generated_html_count"]=$(
+        count_tree_files "$DIST_DIR" '*.html'
+    )
+    _GENERATION_METADATA["tarball_included"]="${TARBALL_INCLUDE:-no}"
+    _GENERATION_METADATA["tarball_file"]="$tarball_file"
+    _GENERATION_METADATA["settings_title"]="${TITLE:-}"
+    _GENERATION_METADATA["settings_height"]="${HEIGHT:-}"
+    _GENERATION_METADATA["settings_thumbheight"]="${THUMBHEIGHT:-}"
+    _GENERATION_METADATA["settings_maxpreviews"]="${MAXPREVIEWS:-}"
+    _GENERATION_METADATA["settings_image_jobs"]="${IMAGE_JOBS:-}"
+    _GENERATION_METADATA["settings_random_seed"]="${RANDOM_SEED:-}"
+    _GENERATION_METADATA["settings_shuffle"]="${SHUFFLE:-no}"
+    _GENERATION_METADATA["settings_splash_page"]="${SPLASH_PAGE:-yes}"
+    _GENERATION_METADATA["settings_original_basepath"]="${ORIGINAL_BASEPATH:-}"
+}
+
+_generation_metadata_json() {
+    printf '{\n'
+    printf '  "generator": {\n'
+    printf '    "name": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["generator_name"]}")"
+    printf '    "version": %s\n' \
+        "$(_json_string "${_GENERATION_METADATA["generator_version"]}")"
+    printf '  },\n'
+    printf '  "generated_at": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["generated_at"]}")"
+    printf '  "config_source": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["config_source"]}")"
+    printf '  "template": {\n'
+    printf '    "name": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["template_name"]}")"
+    printf '    "directory": %s\n' \
+        "$(_json_string "${_GENERATION_METADATA["template_directory"]}")"
+    printf '  },\n'
+    printf '  "source": {\n'
+    printf '    "incoming_dir": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["source_incoming_dir"]}")"
+    printf '    "image_count": %s\n' \
+        "${_GENERATION_METADATA["source_image_count"]}"
+    printf '  },\n'
+    printf '  "generated": {\n'
+    printf '    "photo_count": %s,\n' \
+        "${_GENERATION_METADATA["generated_photo_count"]}"
+    printf '    "thumb_count": %s,\n' \
+        "${_GENERATION_METADATA["generated_thumb_count"]}"
+    printf '    "html_count": %s\n' \
+        "${_GENERATION_METADATA["generated_html_count"]}"
+    printf '  },\n'
+    printf '  "tarball": {\n'
+    printf '    "included": %s,\n' \
+        "$(_json_bool "${_GENERATION_METADATA["tarball_included"]}")"
+    printf '    "file": %s\n' \
+        "$(_json_string "${_GENERATION_METADATA["tarball_file"]}")"
+    printf '  },\n'
+    printf '  "settings": {\n'
+    printf '    "title": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_title"]}")"
+    printf '    "height": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_height"]}")"
+    printf '    "thumbheight": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_thumbheight"]}")"
+    printf '    "maxpreviews": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_maxpreviews"]}")"
+    printf '    "image_jobs": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
+    printf '    "random_seed": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_random_seed"]}")"
+    printf '    "shuffle": %s,\n' \
+        "$(_json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
+    printf '    "splash_page": %s,\n' \
+        "$(_json_bool "${_GENERATION_METADATA["settings_splash_page"]}")"
+    printf '    "original_basepath": %s\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
+    printf '  }\n'
+    printf '}\n'
+}
+
 write_generation_metadata() {
     local -r tarball_file="$1"; shift
-    local -r generated_at=$(current_timestamp_iso)
-    local -r config_source="${SHURIKEN_CONFIG_SOURCE:-}"
-    local -r template_name=$(basename "$TEMPLATE_DIR")
-    local -r source_image_count=$(count_incoming_images)
-    local -r generated_photo_count=$(count_files "$DIST_DIR/photos")
-    local -r generated_thumb_count=$(count_files "$DIST_DIR/thumbs")
-    local -r generated_html_count=$(count_tree_files "$DIST_DIR" '*.html')
 
+    _collect_generation_metadata "$tarball_file"
     {
-        printf '{\n'
-        printf '  "generator": {\n'
-        printf '    "name": "shuriken",\n'
-        printf '    "version": %s\n' "$(_json_string "$VERSION")"
-        printf '  },\n'
-        printf '  "generated_at": %s,\n' "$(_json_string "$generated_at")"
-        printf '  "config_source": %s,\n' "$(_json_string "$config_source")"
-        printf '  "template": {\n'
-        printf '    "name": %s,\n' "$(_json_string "$template_name")"
-        printf '    "directory": %s\n' "$(_json_string "$TEMPLATE_DIR")"
-        printf '  },\n'
-        printf '  "source": {\n'
-        printf '    "incoming_dir": %s,\n' "$(_json_string "$INCOMING_DIR")"
-        printf '    "image_count": %s\n' "$source_image_count"
-        printf '  },\n'
-        printf '  "generated": {\n'
-        printf '    "photo_count": %s,\n' "$generated_photo_count"
-        printf '    "thumb_count": %s,\n' "$generated_thumb_count"
-        printf '    "html_count": %s\n' "$generated_html_count"
-        printf '  },\n'
-        printf '  "tarball": {\n'
-        printf '    "included": %s,\n' "$(_json_bool "${TARBALL_INCLUDE:-no}")"
-        printf '    "file": %s\n' "$(_json_string "$tarball_file")"
-        printf '  },\n'
-        printf '  "settings": {\n'
-        printf '    "title": %s,\n' "$(_json_string "${TITLE:-}")"
-        printf '    "height": %s,\n' "$(_json_string "${HEIGHT:-}")"
-        printf '    "thumbheight": %s,\n' "$(_json_string "${THUMBHEIGHT:-}")"
-        printf '    "maxpreviews": %s,\n' "$(_json_string "${MAXPREVIEWS:-}")"
-        printf '    "image_jobs": %s,\n' "$(_json_string "${IMAGE_JOBS:-}")"
-        printf '    "random_seed": %s,\n' "$(_json_string "${RANDOM_SEED:-}")"
-        printf '    "shuffle": %s,\n' "$(_json_bool "${SHUFFLE:-no}")"
-        printf '    "splash_page": %s,\n' "$(_json_bool "${SPLASH_PAGE:-yes}")"
-        printf '    "original_basepath": %s\n' \
-            "$(_json_string "${ORIGINAL_BASEPATH:-}")"
-        printf '  }\n'
-        printf '}\n'
+        _generation_metadata_json
     } > "$DIST_DIR/shuriken.json"
 }
 
