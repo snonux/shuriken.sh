@@ -1,6 +1,29 @@
+cli_option_property() {
+    local -r option="$1"; shift
+    local -r property="$1"; shift
+    local spec
+    local field
+    local -a fields=()
+
+    spec="${CLI_OPTION_SPEC[$option]:-}"
+    read -r -a fields <<< "$spec"
+
+    for field in "${fields[@]}"; do
+        case "$field" in
+            "$property="*)
+                printf '%s\n' "${field#*=}"
+                return
+                ;;
+        esac
+    done
+}
+
 option_value() {
     local -r option="$1"; shift
-    local -r argument="${CLI_OPTION_ARGUMENT[$option]:-value}"
+    local argument
+
+    argument=$(cli_option_property "$option" argument)
+    argument="${argument:-value}"
 
     if (( $# == 0 )) || [ -z "$1" ]; then
         printf 'Error: %s requires a %s\n' "$option" "$argument" >&2
@@ -35,37 +58,46 @@ apply_cli_overrides() {
 set_cli_option_value() {
     local -r option="$1"; shift
     local -r value="$1"; shift
+    local append_target
     local config_target
+    local target
 
-    if [ "$option" = --sync-destination ]; then
-        SHURIKEN_CLI_SYNC_DESTINATIONS+=("$value")
+    append_target=$(cli_option_property "$option" append)
+    if [ -n "$append_target" ]; then
+        local -n append_ref="$append_target"
+
+        append_ref+=("$value")
         SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
-    config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
+    config_target=$(cli_option_property "$option" config)
     if [ -n "$config_target" ]; then
         SHURIKEN_CLI_OVERRIDES["$config_target"]="$value"
         SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
-    printf -v "${CLI_OPTION_TARGET[$option]}" '%s' "$value"
+    target=$(cli_option_property "$option" target)
+    printf -v "$target" '%s' "$value"
 }
 
 set_cli_constant_option() {
     local -r option="$1"; shift
-    local -r value="${CLI_OPTION_VALUE[$option]}"
     local config_target
+    local target
+    local value
 
-    config_target="${CLI_OPTION_CONFIG_TARGET[$option]:-}"
+    value=$(cli_option_property "$option" value)
+    config_target=$(cli_option_property "$option" config)
     if [ -n "$config_target" ]; then
         SHURIKEN_CLI_OVERRIDES["$config_target"]="$value"
         SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='yes'
         return
     fi
 
-    printf -v "${CLI_OPTION_TARGET[$option]}" '%s' "$value"
+    target=$(cli_option_property "$option" target)
+    printf -v "$target" '%s' "$value"
 }
 
 set_cli_action() {
@@ -88,7 +120,7 @@ parse_cli_arguments() {
         option="$1"
         shift
 
-        option_kind="${CLI_OPTION_KIND[$option]:-}"
+        option_kind=$(cli_option_property "$option" kind)
         case "$option_kind" in
             value)
                 option_arg=$(option_value "$option" "$@")

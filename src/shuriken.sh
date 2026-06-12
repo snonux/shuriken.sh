@@ -37,79 +37,37 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     SYNC_DELETE
     TARBALL_INCLUDE
 )
-declare -Ar CLI_OPTION_KIND=(
-    [--config]=value
-    [--incoming]=value
-    [--dist]=value
-    [--template]=value
-    [--title]=value
-    [--height]=value
-    [--thumbheight]=value
-    [--maxpreviews]=value
-    [--image-jobs]=value
-    [--random-seed]=value
-    [--shuffle]=flag
-    [--no-shuffle]=flag
-    [--splash]=flag
-    [--no-splash]=flag
-    [--tarball]=flag
-    [--no-tarball]=flag
-    [--force]=flag
-    [--sync-delete]=flag
-    [--no-sync-delete]=flag
-    [--sync-destination]=value
-    [--verbose]=output
-    [--quiet]=output
-    [--version]=action
-    [--init]=action
-    [--clean]=action
-    [--generate]=action
-    [--refresh-splash]=action
-    [--sync]=action
-    [--dry-run]=action
-    [--print-config]=action
-)
-declare -Ar CLI_OPTION_TARGET=(
-    [--config]=SHURIKEN_CLI_CONFIG_FILE
-    [--verbose]=SHURIKEN_OUTPUT_MODE
-    [--quiet]=SHURIKEN_OUTPUT_MODE
-    [--force]=SHURIKEN_FORCE_GENERATE
-)
-declare -Ar CLI_OPTION_VALUE=(
-    [--shuffle]=yes
-    [--no-shuffle]=no
-    [--splash]=yes
-    [--no-splash]=no
-    [--tarball]=yes
-    [--no-tarball]=no
-    [--force]=yes
-    [--sync-delete]=yes
-    [--no-sync-delete]=no
-    [--verbose]=verbose
-    [--quiet]=quiet
-)
-declare -Ar CLI_OPTION_CONFIG_TARGET=(
-    [--incoming]=INCOMING_DIR
-    [--dist]=DIST_DIR
-    [--template]=TEMPLATE_DIR
-    [--title]=TITLE
-    [--height]=HEIGHT
-    [--thumbheight]=THUMBHEIGHT
-    [--maxpreviews]=MAXPREVIEWS
-    [--image-jobs]=IMAGE_JOBS
-    [--random-seed]=RANDOM_SEED
-    [--shuffle]=SHUFFLE
-    [--no-shuffle]=SHUFFLE
-    [--splash]=SPLASH_PAGE
-    [--no-splash]=SPLASH_PAGE
-    [--tarball]=TARBALL_INCLUDE
-    [--no-tarball]=TARBALL_INCLUDE
-    [--sync-delete]=SYNC_DELETE
-    [--no-sync-delete]=SYNC_DELETE
-)
-declare -Ar CLI_OPTION_ARGUMENT=(
-    [--config]=path
-    [--sync-destination]=destination
+declare -Ar CLI_OPTION_SPEC=(
+    [--config]='kind=value target=SHURIKEN_CLI_CONFIG_FILE argument=path'
+    [--incoming]='kind=value config=INCOMING_DIR'
+    [--dist]='kind=value config=DIST_DIR'
+    [--template]='kind=value config=TEMPLATE_DIR'
+    [--title]='kind=value config=TITLE'
+    [--height]='kind=value config=HEIGHT'
+    [--thumbheight]='kind=value config=THUMBHEIGHT'
+    [--maxpreviews]='kind=value config=MAXPREVIEWS'
+    [--image-jobs]='kind=value config=IMAGE_JOBS'
+    [--random-seed]='kind=value config=RANDOM_SEED'
+    [--shuffle]='kind=flag value=yes config=SHUFFLE'
+    [--no-shuffle]='kind=flag value=no config=SHUFFLE'
+    [--splash]='kind=flag value=yes config=SPLASH_PAGE'
+    [--no-splash]='kind=flag value=no config=SPLASH_PAGE'
+    [--tarball]='kind=flag value=yes config=TARBALL_INCLUDE'
+    [--no-tarball]='kind=flag value=no config=TARBALL_INCLUDE'
+    [--force]='kind=flag value=yes target=SHURIKEN_FORCE_GENERATE'
+    [--sync-delete]='kind=flag value=yes config=SYNC_DELETE'
+    [--no-sync-delete]='kind=flag value=no config=SYNC_DELETE'
+    [--sync-destination]='kind=value append=SHURIKEN_CLI_SYNC_DESTINATIONS argument=destination'
+    [--verbose]='kind=output value=verbose target=SHURIKEN_OUTPUT_MODE'
+    [--quiet]='kind=output value=quiet target=SHURIKEN_OUTPUT_MODE'
+    [--version]='kind=action'
+    [--init]='kind=action'
+    [--clean]='kind=action'
+    [--generate]='kind=action'
+    [--refresh-splash]='kind=action'
+    [--sync]='kind=action'
+    [--dry-run]='kind=action'
+    [--print-config]='kind=action'
 )
 
 SHURIKEN_SOURCE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

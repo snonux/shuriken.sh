@@ -3780,7 +3780,13 @@ test_extra_args_fail() {
 }
 
 test_missing_option_values_fail() {
+    local expected_argument
     local option
+    local output
+    local -A value_option_arguments=(
+        [--config]=path
+        [--sync-destination]=destination
+    )
     local -a value_options=(
         --config
         --incoming
@@ -3796,7 +3802,11 @@ test_missing_option_values_fail() {
     )
 
     for option in "${value_options[@]}"; do
-        test::assert_failure "$option requires a value" "$TEST_SHURIKEN" "$option"
+        expected_argument="${value_option_arguments[$option]:-value}"
+        output=$(test::capture_failure_output "$TEST_SHURIKEN" "$option")
+        test::assert_contains \
+            "Error: $option requires a $expected_argument" \
+            "$output"
     done
 }
 
