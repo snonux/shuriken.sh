@@ -23,6 +23,14 @@ run_simple_action() {
     esac
 }
 
+run_action_body() {
+    if [[ "$-" == *e* ]]; then
+        "$@"
+    else
+        ( "$@" )
+    fi
+}
+
 load_configured_action() {
     local -r rc_file="$1"; shift
     local -i status=0
@@ -115,7 +123,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            generate_staged
+            run_action_body generate_staged
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -128,7 +136,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            refresh_splash
+            run_action_body refresh_splash
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -141,7 +149,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            sync_dist
+            run_action_body sync_dist
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -154,7 +162,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            dry_run
+            run_action_body dry_run
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -167,7 +175,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            print_config
+            run_action_body print_config
             status=$?
             if (( status != 0 )); then
                 return "$status"

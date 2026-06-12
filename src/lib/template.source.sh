@@ -304,12 +304,14 @@ source_template_file() {
         return "$status"
     fi
 
-    {
-        serialize_template_render_context "$render_vars_name"
+    if {
+        serialize_template_render_context "$render_vars_name" \
+            &&
         printf 'unset BASH_ENV\n'
-    } > "$context_file"
-    status=$?
-    if (( status != 0 )); then
+    } > "$context_file"; then
+        status=0
+    else
+        status=$?
         rm -f "$context_file"
         return "$status"
     fi

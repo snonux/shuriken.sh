@@ -2129,6 +2129,79 @@ BASH
     test::teardown
 }
 
+test_generate_real_failure_returns_with_errexit_disabled() {
+    local config_file
+    local fake_bin
+    local output
+    local status_file
+    local -i status=0
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    status_file="$TEST_TMPDIR/generate-status"
+    test::install_failing_imagemagick "$fake_bin"
+    mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'old dist\n' > "$TEST_TMPDIR/dist/index.html"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Failing set+e generate album' 40
+
+    set +e
+    output=$(
+        bash -euo pipefail -s \
+            "$TEST_SHURIKEN" \
+            "$config_file" \
+            "$fake_bin" \
+            "$status_file" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+config_file="$1"; shift
+fake_bin="$1"; shift
+status_file="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+PATH="$fake_bin:$PATH"
+SHURIKEN_CLI_ACTION=--generate
+SHURIKEN_CLI_CONFIG_FILE="$config_file"
+SHURIKEN_CLI_HAS_CONFIG_OVERRIDES=no
+SHURIKEN_CLI_OVERRIDES=()
+SHURIKEN_CLI_SYNC_DESTINATIONS=()
+SHURIKEN_FORCE_GENERATE=no
+
+set +e
+run_configured_action
+generate_status=$?
+printf '%s\n' "$generate_status" > "$status_file"
+exit 0
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status != 0 )); then
+        printf 'FAIL: expected child shell to capture generate status\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    test::assert_file_exists "$status_file"
+    if [ "$(<"$status_file")" = 0 ]; then
+        printf 'FAIL: expected generated status to be nonzero\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+    test::assert_contains 'simulated ImageMagick failure' "$output"
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
+    test::assert_path_absent "$TEST_TMPDIR/dist/photos/01.jpg"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
 test_generate_preflight_accepts_empty_height() {
     local config_file
     local fake_bin
@@ -3487,6 +3560,72 @@ BASH
     test::teardown
 }
 
+test_template_setup_failure_removes_context_file_with_errexit() {
+    local context_file
+    local fake_bin
+    local output
+    local template_file
+    local -i status=0
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    context_file="$TEST_TMPDIR/template-context"
+    template_file="$TEST_TMPDIR/template.tmpl"
+    mkdir -p "$fake_bin" "$TEST_TMPDIR/dist"
+    {
+        printf '#!/usr/bin/env bash\n'
+        # shellcheck disable=SC2016
+        printf 'printf %%s\\\\n \"$SHURIKEN_FAKE_CONTEXT_FILE\"\n'
+    } > "$fake_bin/mktemp"
+    chmod 0755 "$fake_bin/mktemp"
+    printf 'printf rendered\n' > "$template_file"
+
+    set +e
+    output=$(
+        bash -euo pipefail -s \
+            "$TEST_SHURIKEN" \
+            "$fake_bin" \
+            "$template_file" \
+            "$TEST_TMPDIR/dist/out.html" \
+            "$context_file" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+fake_bin="$1"; shift
+template_file="$1"; shift
+output_file="$1"; shift
+context_file="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+PATH="$fake_bin:$PATH"
+SHURIKEN_FAKE_CONTEXT_FILE="$context_file"
+export SHURIKEN_FAKE_CONTEXT_FILE
+
+serialize_template_render_context() {
+    printf 'partial_context=yes\n'
+    return 42
+}
+
+# shellcheck disable=SC2034
+declare -A render_vars=()
+source_template_file "$template_file" "$output_file" render_vars
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        printf 'FAIL: expected template setup to fail\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$context_file"
+    test::teardown
+}
+
 test_generate_swap_failure_restores_dist() {
     local config_file
     local fake_bin
@@ -4307,6 +4446,9 @@ main() {
         '--generate action runs with errexit active' \
         test_generate_action_runs_with_errexit_active
     test::run_case \
+        '--generate real failure returns with errexit disabled' \
+        test_generate_real_failure_returns_with_errexit_disabled
+    test::run_case \
         '--generate preflight accepts empty HEIGHT' \
         test_generate_preflight_accepts_empty_height
     test::run_case \
@@ -4396,6 +4538,9 @@ main() {
     test::run_case \
         'template failure removes context file with errexit' \
         test_template_failure_removes_context_file_with_errexit
+    test::run_case \
+        'template setup failure removes context file with errexit' \
+        test_template_setup_failure_removes_context_file_with_errexit
     test::run_case \
         '--generate swap failure restores final dist' \
         test_generate_swap_failure_restores_dist
