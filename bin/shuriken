@@ -635,6 +635,7 @@ current_timestamp_iso() {
 }
 
 template_context_value() {
+    # shellcheck disable=SC2178
     local -n context_ref="$1"; shift
     local -r name="$1"; shift
 
@@ -643,6 +644,7 @@ template_context_value() {
 
 template_context_value_to() {
     local -n output_ref="$1"; shift
+    # shellcheck disable=SC2178
     local -n context_ref="$1"; shift
     local -r name="$1"; shift
 
@@ -652,25 +654,23 @@ template_context_value_to() {
 
 require_template_context_vars() {
     local -r template_name="$1"; shift
+    # shellcheck disable=SC2178
     local -n context_ref="$1"; shift
     local name
-    local -i missing=0
 
     for name in "$@"; do
         if [ -z "${context_ref[$name]+x}" ]; then
             config_error "template $template_name requires render variable $name"
-            missing=1
+            return 1
         fi
     done
-
-    return "$missing"
 }
 
 template_render_field_is_required_for() {
     local -r template_name="$1"; shift
-    local -r required_templates="$1"; shift
+    local -r required_template_names="$1"; shift
 
-    case "$required_templates" in
+    case "$required_template_names" in
         '*')
             return 0
             ;;
@@ -678,12 +678,13 @@ template_render_field_is_required_for() {
             return 1
             ;;
         *)
-            [[ " $required_templates " == *" $template_name "* ]]
+            [[ " $required_template_names " == *" $template_name "* ]]
             ;;
     esac
 }
 
 template_required_context_vars_to() {
+    # shellcheck disable=SC2178
     local -n required_vars_ref="$1"; shift
     local -r template_name="$1"; shift
     local -A required_var_seen=()
@@ -691,18 +692,18 @@ template_required_context_vars_to() {
     local _kind
     local _render_var
     local required_context_var
-    local required_templates
+    local required_template_names
     local _source_name
 
     required_vars_ref=()
 
     for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
         IFS='|' read -r _render_var _kind _source_name \
-            required_context_var required_templates <<< "$field_spec"
+            required_context_var required_template_names <<< "$field_spec"
 
         if [ -n "$required_context_var" ] \
             && template_render_field_is_required_for \
-                "$template_name" "$required_templates" \
+                "$template_name" "$required_template_names" \
             && [ -z "${required_var_seen[$required_context_var]+x}" ]; then
             required_vars_ref+=("$required_context_var")
             required_var_seen["$required_context_var"]=yes
@@ -727,7 +728,7 @@ validate_template_context() {
 
     template_required_context_vars_to required_vars "$template_name"
     require_template_context_vars "$template_name" "$context_name" \
-        "${required_vars[@]}"
+        "${required_vars[@]}" || return
 }
 
 source_template_file() {
@@ -789,6 +790,7 @@ serialize_template_render_var() {
 
 serialize_template_render_context() {
     local -r render_vars_name="$1"; shift
+    # shellcheck disable=SC2178
     local -n render_vars_ref="$render_vars_name"
     local field_spec
     local _kind
@@ -808,6 +810,7 @@ serialize_template_render_context() {
 prepare_template_render_vars() {
     local -r render_vars_name="$1"; shift
     local -r context_name="$1"; shift
+    # shellcheck disable=SC2178
     local -n render_vars_ref="$render_vars_name"
     local context_value
     local field_spec
@@ -916,7 +919,7 @@ validate_template_render_request() {
         return 1
     fi
 
-    validate_template_context "$template_name" "$context_name"
+    validate_template_context "$template_name" "$context_name" || return
 }
 
 render_template() {
@@ -937,8 +940,8 @@ render_template() {
         "Rendering $template_name template into $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
-    prepare_template_render_vars render_vars "$context_name"
-    source_template_file "$template_path" "$dist_html/$html" render_vars
+    prepare_template_render_vars render_vars "$context_name" || return
+    source_template_file "$template_path" "$dist_html/$html" render_vars || return
 }
 
 template() {
@@ -947,9 +950,9 @@ template() {
     # shellcheck disable=SC2034
     local -A render_context=()
 
-    parse_template_context "$template_name" render_context "$@"
-    validate_template_render_request "$template_name" render_context
-    render_template "$template_name" "$html" render_context
+    parse_template_context "$template_name" render_context "$@" || return
+    validate_template_render_request "$template_name" render_context || return
+    render_template "$template_name" "$html" render_context || return
 }
 
 # Inlined from src/lib/image.source.sh
@@ -2658,6 +2661,7 @@ require_config_var() {
 
     if [ -z "${!name+x}" ] || [ -z "${!name}" ]; then
         config_error "$name must be set in shuriken configuration"
+        return 1
     fi
 }
 
@@ -2667,14 +2671,15 @@ validate_positive_integer_config_var() {
 
     if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value < 1 )); then
         config_error "$name must be a positive integer"
+        return 1
     fi
 }
 
 validate_optional_positive_integer_config_var() {
     local -r name="$1"; shift
 
-    if [ -n "${!name}" ]; then
-        validate_positive_integer_config_var "$name"
+    if [ -n "${!name:-}" ]; then
+        validate_positive_integer_config_var "$name" || return
     fi
 }
 
@@ -2687,6 +2692,7 @@ validate_yes_no_config_var() {
             ;;
         *)
             config_error "$name must be yes or no"
+            return 1
             ;;
     esac
 }
@@ -2697,9 +2703,11 @@ validate_dist_dir() {
     if [ -e "$DIST_DIR" ]; then
         if [ ! -d "$DIST_DIR" ]; then
             config_error "DIST_DIR $DIST_DIR must be a directory"
+            return 1
         fi
         if [[ ! -w "$DIST_DIR" || ! -x "$DIST_DIR" ]]; then
             config_error "DIST_DIR $DIST_DIR must be writable"
+            return 1
         fi
 
         return
@@ -2709,9 +2717,11 @@ validate_dist_dir() {
 
     if [ ! -d "$existing_parent" ]; then
         config_error "DIST_DIR parent $existing_parent must be a directory"
+        return 1
     fi
     if [[ ! -w "$existing_parent" || ! -x "$existing_parent" ]]; then
         config_error "DIST_DIR parent $existing_parent must be writable"
+        return 1
     fi
 }
 
@@ -2719,6 +2729,7 @@ validate_template_dir_access() {
     if [[ ! -d "$TEMPLATE_DIR" || ! -r "$TEMPLATE_DIR" \
         || ! -x "$TEMPLATE_DIR" ]]; then
         config_error "TEMPLATE_DIR $TEMPLATE_DIR must be a readable directory"
+        return 1
     fi
 }
 
@@ -2728,6 +2739,7 @@ validate_template_file() {
     if [ ! -r "$TEMPLATE_DIR/$template_name.tmpl" ]; then
         config_error \
             "template file $TEMPLATE_DIR/$template_name.tmpl must be readable"
+        return 1
     fi
 }
 
@@ -2744,14 +2756,14 @@ validate_template_dir() {
         view
     )
 
-    validate_template_dir_access
+    validate_template_dir_access || return
 
     if [ "${SPLASH_PAGE:-yes}" = yes ]; then
         required_templates+=(splash)
     fi
 
     for template_name in "${required_templates[@]}"; do
-        validate_template_file "$template_name"
+        validate_template_file "$template_name" || return
     done
 }
 
@@ -2764,26 +2776,29 @@ validate_refresh_splash_config() {
     )
 
     for required_var in "${required_vars[@]}"; do
-        require_config_var "$required_var"
+        require_config_var "$required_var" || return
     done
 
-    validate_yes_no_config_var SPLASH_PAGE
+    validate_yes_no_config_var SPLASH_PAGE || return
 
     if [ "${SPLASH_PAGE:-yes}" != yes ]; then
         config_error 'SPLASH_PAGE must be yes to refresh the splash page'
+        return 1
     fi
 
-    validate_dist_dir
+    validate_dist_dir || return
 
-    validate_template_dir_access
-    validate_template_file splash
+    validate_template_dir_access || return
+    validate_template_file splash || return
 
     if [ ! -d "$DIST_DIR/photos" ]; then
         config_error "DIST_DIR photos directory $DIST_DIR/photos must exist"
+        return 1
     fi
 
     if [ ! -d "$DIST_DIR/blurs" ]; then
         config_error "DIST_DIR blurs directory $DIST_DIR/blurs must exist"
+        return 1
     fi
 }
 
@@ -2796,6 +2811,7 @@ validate_imagemagick() {
     fi
 
     config_error 'ImageMagick is required; install magick or convert'
+    return 1
 }
 
 validate_common_config() {
@@ -2811,47 +2827,51 @@ validate_common_config() {
     )
 
     for required_var in "${required_vars[@]}"; do
-        require_config_var "$required_var"
+        require_config_var "$required_var" || return
     done
 
-    validate_optional_positive_integer_config_var HEIGHT
-    validate_positive_integer_config_var THUMBHEIGHT
-    validate_positive_integer_config_var MAXPREVIEWS
-    validate_positive_integer_config_var IMAGE_JOBS
-    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT
-    validate_positive_integer_config_var TAR_TIMEOUT
-    validate_yes_no_config_var SHUFFLE
-    validate_yes_no_config_var SPLASH_PAGE
-    validate_yes_no_config_var TARBALL_INCLUDE
+    validate_optional_positive_integer_config_var HEIGHT || return
+    validate_positive_integer_config_var THUMBHEIGHT || return
+    validate_positive_integer_config_var MAXPREVIEWS || return
+    validate_positive_integer_config_var IMAGE_JOBS || return
+    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
+    validate_positive_integer_config_var TAR_TIMEOUT || return
+    validate_yes_no_config_var SHUFFLE || return
+    validate_yes_no_config_var SPLASH_PAGE || return
+    validate_yes_no_config_var TARBALL_INCLUDE || return
 }
 
 validate_generation_config() {
     local -r require_imagemagick="${1:-yes}"
 
-    validate_common_config
+    validate_common_config || return
 
     if [ ! -d "$INCOMING_DIR" ]; then
         config_error "You have to create $INCOMING_DIR first"
+        return 1
     fi
     if [[ ! -r "$INCOMING_DIR" || ! -x "$INCOMING_DIR" ]]; then
         config_error "INCOMING_DIR $INCOMING_DIR must be readable"
+        return 1
     fi
 
-    validate_dist_dir
-    validate_template_dir
+    validate_dist_dir || return
+    validate_template_dir || return
     if [ "$require_imagemagick" = yes ]; then
-        validate_imagemagick
+        validate_imagemagick || return
     fi
 }
 
 validate_print_config() {
+    # Passed by name to resolve_tar_opts.
+    # shellcheck disable=SC2034
     local -a tar_opts=()
     local -a sync_destinations=()
 
-    validate_common_config
+    validate_common_config || return
     resolve_tar_opts tar_opts
     resolve_sync_destinations sync_destinations
-    validate_yes_no_config_var SYNC_DELETE
+    validate_yes_no_config_var SYNC_DELETE || return
 }
 
 validate_sync_destinations() {
@@ -2861,6 +2881,7 @@ validate_sync_destinations() {
 
     if (( ${#sync_destinations[@]} == 0 )); then
         config_error 'SYNC_DESTINATIONS must contain at least one destination'
+        return 1
     fi
 }
 
@@ -2870,18 +2891,20 @@ validate_rsync() {
     fi
 
     config_error 'rsync is required to sync generated output'
+    return 1
 }
 
 validate_sync_config() {
-    require_config_var DIST_DIR
-    validate_yes_no_config_var SYNC_DELETE
-    validate_sync_destinations
+    require_config_var DIST_DIR || return
+    validate_yes_no_config_var SYNC_DELETE || return
+    validate_sync_destinations || return
 
     if [[ ! -d "$DIST_DIR" || ! -r "$DIST_DIR" || ! -x "$DIST_DIR" ]]; then
         config_error "DIST_DIR $DIST_DIR must be a readable directory"
+        return 1
     fi
 
-    validate_rsync
+    validate_rsync || return
 }
 
 # Inlined from src/lib/config.cli.source.sh

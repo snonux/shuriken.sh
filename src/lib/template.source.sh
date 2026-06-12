@@ -190,6 +190,7 @@ current_timestamp_iso() {
 }
 
 template_context_value() {
+    # shellcheck disable=SC2178
     local -n context_ref="$1"; shift
     local -r name="$1"; shift
 
@@ -198,6 +199,7 @@ template_context_value() {
 
 template_context_value_to() {
     local -n output_ref="$1"; shift
+    # shellcheck disable=SC2178
     local -n context_ref="$1"; shift
     local -r name="$1"; shift
 
@@ -207,25 +209,23 @@ template_context_value_to() {
 
 require_template_context_vars() {
     local -r template_name="$1"; shift
+    # shellcheck disable=SC2178
     local -n context_ref="$1"; shift
     local name
-    local -i missing=0
 
     for name in "$@"; do
         if [ -z "${context_ref[$name]+x}" ]; then
             config_error "template $template_name requires render variable $name"
-            missing=1
+            return 1
         fi
     done
-
-    return "$missing"
 }
 
 template_render_field_is_required_for() {
     local -r template_name="$1"; shift
-    local -r required_templates="$1"; shift
+    local -r required_template_names="$1"; shift
 
-    case "$required_templates" in
+    case "$required_template_names" in
         '*')
             return 0
             ;;
@@ -233,12 +233,13 @@ template_render_field_is_required_for() {
             return 1
             ;;
         *)
-            [[ " $required_templates " == *" $template_name "* ]]
+            [[ " $required_template_names " == *" $template_name "* ]]
             ;;
     esac
 }
 
 template_required_context_vars_to() {
+    # shellcheck disable=SC2178
     local -n required_vars_ref="$1"; shift
     local -r template_name="$1"; shift
     local -A required_var_seen=()
@@ -246,18 +247,18 @@ template_required_context_vars_to() {
     local _kind
     local _render_var
     local required_context_var
-    local required_templates
+    local required_template_names
     local _source_name
 
     required_vars_ref=()
 
     for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
         IFS='|' read -r _render_var _kind _source_name \
-            required_context_var required_templates <<< "$field_spec"
+            required_context_var required_template_names <<< "$field_spec"
 
         if [ -n "$required_context_var" ] \
             && template_render_field_is_required_for \
-                "$template_name" "$required_templates" \
+                "$template_name" "$required_template_names" \
             && [ -z "${required_var_seen[$required_context_var]+x}" ]; then
             required_vars_ref+=("$required_context_var")
             required_var_seen["$required_context_var"]=yes
@@ -282,7 +283,7 @@ validate_template_context() {
 
     template_required_context_vars_to required_vars "$template_name"
     require_template_context_vars "$template_name" "$context_name" \
-        "${required_vars[@]}"
+        "${required_vars[@]}" || return
 }
 
 source_template_file() {
@@ -344,6 +345,7 @@ serialize_template_render_var() {
 
 serialize_template_render_context() {
     local -r render_vars_name="$1"; shift
+    # shellcheck disable=SC2178
     local -n render_vars_ref="$render_vars_name"
     local field_spec
     local _kind
@@ -363,6 +365,7 @@ serialize_template_render_context() {
 prepare_template_render_vars() {
     local -r render_vars_name="$1"; shift
     local -r context_name="$1"; shift
+    # shellcheck disable=SC2178
     local -n render_vars_ref="$render_vars_name"
     local context_value
     local field_spec
@@ -471,7 +474,7 @@ validate_template_render_request() {
         return 1
     fi
 
-    validate_template_context "$template_name" "$context_name"
+    validate_template_context "$template_name" "$context_name" || return
 }
 
 render_template() {
@@ -492,8 +495,8 @@ render_template() {
         "Rendering $template_name template into $(_display_path "$dist_html")/$html"
 
     mkdir -p "$dist_html"
-    prepare_template_render_vars render_vars "$context_name"
-    source_template_file "$template_path" "$dist_html/$html" render_vars
+    prepare_template_render_vars render_vars "$context_name" || return
+    source_template_file "$template_path" "$dist_html/$html" render_vars || return
 }
 
 template() {
@@ -502,7 +505,7 @@ template() {
     # shellcheck disable=SC2034
     local -A render_context=()
 
-    parse_template_context "$template_name" render_context "$@"
-    validate_template_render_request "$template_name" render_context
-    render_template "$template_name" "$html" render_context
+    parse_template_context "$template_name" render_context "$@" || return
+    validate_template_render_request "$template_name" render_context || return
+    render_template "$template_name" "$html" render_context || return
 }

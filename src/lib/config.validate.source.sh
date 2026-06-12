@@ -10,6 +10,7 @@ require_config_var() {
 
     if [ -z "${!name+x}" ] || [ -z "${!name}" ]; then
         config_error "$name must be set in shuriken configuration"
+        return 1
     fi
 }
 
@@ -19,14 +20,15 @@ validate_positive_integer_config_var() {
 
     if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value < 1 )); then
         config_error "$name must be a positive integer"
+        return 1
     fi
 }
 
 validate_optional_positive_integer_config_var() {
     local -r name="$1"; shift
 
-    if [ -n "${!name}" ]; then
-        validate_positive_integer_config_var "$name"
+    if [ -n "${!name:-}" ]; then
+        validate_positive_integer_config_var "$name" || return
     fi
 }
 
@@ -39,6 +41,7 @@ validate_yes_no_config_var() {
             ;;
         *)
             config_error "$name must be yes or no"
+            return 1
             ;;
     esac
 }
@@ -49,9 +52,11 @@ validate_dist_dir() {
     if [ -e "$DIST_DIR" ]; then
         if [ ! -d "$DIST_DIR" ]; then
             config_error "DIST_DIR $DIST_DIR must be a directory"
+            return 1
         fi
         if [[ ! -w "$DIST_DIR" || ! -x "$DIST_DIR" ]]; then
             config_error "DIST_DIR $DIST_DIR must be writable"
+            return 1
         fi
 
         return
@@ -61,9 +66,11 @@ validate_dist_dir() {
 
     if [ ! -d "$existing_parent" ]; then
         config_error "DIST_DIR parent $existing_parent must be a directory"
+        return 1
     fi
     if [[ ! -w "$existing_parent" || ! -x "$existing_parent" ]]; then
         config_error "DIST_DIR parent $existing_parent must be writable"
+        return 1
     fi
 }
 
@@ -71,6 +78,7 @@ validate_template_dir_access() {
     if [[ ! -d "$TEMPLATE_DIR" || ! -r "$TEMPLATE_DIR" \
         || ! -x "$TEMPLATE_DIR" ]]; then
         config_error "TEMPLATE_DIR $TEMPLATE_DIR must be a readable directory"
+        return 1
     fi
 }
 
@@ -80,6 +88,7 @@ validate_template_file() {
     if [ ! -r "$TEMPLATE_DIR/$template_name.tmpl" ]; then
         config_error \
             "template file $TEMPLATE_DIR/$template_name.tmpl must be readable"
+        return 1
     fi
 }
 
@@ -96,14 +105,14 @@ validate_template_dir() {
         view
     )
 
-    validate_template_dir_access
+    validate_template_dir_access || return
 
     if [ "${SPLASH_PAGE:-yes}" = yes ]; then
         required_templates+=(splash)
     fi
 
     for template_name in "${required_templates[@]}"; do
-        validate_template_file "$template_name"
+        validate_template_file "$template_name" || return
     done
 }
 
@@ -116,26 +125,29 @@ validate_refresh_splash_config() {
     )
 
     for required_var in "${required_vars[@]}"; do
-        require_config_var "$required_var"
+        require_config_var "$required_var" || return
     done
 
-    validate_yes_no_config_var SPLASH_PAGE
+    validate_yes_no_config_var SPLASH_PAGE || return
 
     if [ "${SPLASH_PAGE:-yes}" != yes ]; then
         config_error 'SPLASH_PAGE must be yes to refresh the splash page'
+        return 1
     fi
 
-    validate_dist_dir
+    validate_dist_dir || return
 
-    validate_template_dir_access
-    validate_template_file splash
+    validate_template_dir_access || return
+    validate_template_file splash || return
 
     if [ ! -d "$DIST_DIR/photos" ]; then
         config_error "DIST_DIR photos directory $DIST_DIR/photos must exist"
+        return 1
     fi
 
     if [ ! -d "$DIST_DIR/blurs" ]; then
         config_error "DIST_DIR blurs directory $DIST_DIR/blurs must exist"
+        return 1
     fi
 }
 
@@ -148,6 +160,7 @@ validate_imagemagick() {
     fi
 
     config_error 'ImageMagick is required; install magick or convert'
+    return 1
 }
 
 validate_common_config() {
@@ -163,47 +176,51 @@ validate_common_config() {
     )
 
     for required_var in "${required_vars[@]}"; do
-        require_config_var "$required_var"
+        require_config_var "$required_var" || return
     done
 
-    validate_optional_positive_integer_config_var HEIGHT
-    validate_positive_integer_config_var THUMBHEIGHT
-    validate_positive_integer_config_var MAXPREVIEWS
-    validate_positive_integer_config_var IMAGE_JOBS
-    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT
-    validate_positive_integer_config_var TAR_TIMEOUT
-    validate_yes_no_config_var SHUFFLE
-    validate_yes_no_config_var SPLASH_PAGE
-    validate_yes_no_config_var TARBALL_INCLUDE
+    validate_optional_positive_integer_config_var HEIGHT || return
+    validate_positive_integer_config_var THUMBHEIGHT || return
+    validate_positive_integer_config_var MAXPREVIEWS || return
+    validate_positive_integer_config_var IMAGE_JOBS || return
+    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
+    validate_positive_integer_config_var TAR_TIMEOUT || return
+    validate_yes_no_config_var SHUFFLE || return
+    validate_yes_no_config_var SPLASH_PAGE || return
+    validate_yes_no_config_var TARBALL_INCLUDE || return
 }
 
 validate_generation_config() {
     local -r require_imagemagick="${1:-yes}"
 
-    validate_common_config
+    validate_common_config || return
 
     if [ ! -d "$INCOMING_DIR" ]; then
         config_error "You have to create $INCOMING_DIR first"
+        return 1
     fi
     if [[ ! -r "$INCOMING_DIR" || ! -x "$INCOMING_DIR" ]]; then
         config_error "INCOMING_DIR $INCOMING_DIR must be readable"
+        return 1
     fi
 
-    validate_dist_dir
-    validate_template_dir
+    validate_dist_dir || return
+    validate_template_dir || return
     if [ "$require_imagemagick" = yes ]; then
-        validate_imagemagick
+        validate_imagemagick || return
     fi
 }
 
 validate_print_config() {
+    # Passed by name to resolve_tar_opts.
+    # shellcheck disable=SC2034
     local -a tar_opts=()
     local -a sync_destinations=()
 
-    validate_common_config
+    validate_common_config || return
     resolve_tar_opts tar_opts
     resolve_sync_destinations sync_destinations
-    validate_yes_no_config_var SYNC_DELETE
+    validate_yes_no_config_var SYNC_DELETE || return
 }
 
 validate_sync_destinations() {
@@ -213,6 +230,7 @@ validate_sync_destinations() {
 
     if (( ${#sync_destinations[@]} == 0 )); then
         config_error 'SYNC_DESTINATIONS must contain at least one destination'
+        return 1
     fi
 }
 
@@ -222,16 +240,18 @@ validate_rsync() {
     fi
 
     config_error 'rsync is required to sync generated output'
+    return 1
 }
 
 validate_sync_config() {
-    require_config_var DIST_DIR
-    validate_yes_no_config_var SYNC_DELETE
-    validate_sync_destinations
+    require_config_var DIST_DIR || return
+    validate_yes_no_config_var SYNC_DELETE || return
+    validate_sync_destinations || return
 
     if [[ ! -d "$DIST_DIR" || ! -r "$DIST_DIR" || ! -x "$DIST_DIR" ]]; then
         config_error "DIST_DIR $DIST_DIR must be a readable directory"
+        return 1
     fi
 
-    validate_rsync
+    validate_rsync || return
 }

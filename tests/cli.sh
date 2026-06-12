@@ -1971,6 +1971,45 @@ test_generate_preflight_rejects_invalid_numbers() {
     test::teardown
 }
 
+test_config_validators_fail_fast_without_errexit() {
+    local output
+    local -i status=0
+
+    # shellcheck source=src/lib/config.validate.source.sh
+    source "$TEST_REPO_ROOT/src/lib/config.validate.source.sh"
+
+    unset TITLE
+    export HEIGHT=''
+    export THUMBHEIGHT=bad
+    export MAXPREVIEWS=40
+    export IMAGE_JOBS=1
+    export IMAGEMAGICK_TIMEOUT=60
+    export TAR_TIMEOUT=120
+    export INCOMING_DIR=/tmp/incoming
+    export DIST_DIR=/tmp/dist
+    export TEMPLATE_DIR=/tmp/templates
+    export SHUFFLE=yes
+    export SPLASH_PAGE=yes
+    export TARBALL_INCLUDE=yes
+
+    set +e
+    output=$(validate_common_config 2>&1)
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        printf 'FAIL: expected validate_common_config to fail\n' >&2
+        exit 1
+    fi
+
+    test::assert_contains \
+        'ERROR: TITLE must be set in shuriken configuration' \
+        "$output"
+    test::assert_not_contains \
+        'ERROR: THUMBHEIGHT must be a positive integer' \
+        "$output"
+}
+
 test_generate_preflight_accepts_empty_height() {
     local config_file
     local fake_bin
@@ -3138,6 +3177,38 @@ BASH
     fi
 }
 
+test_template_context_validator_fails_fast_without_errexit() {
+    local output
+    local -i status=0
+    # Passed by name to validate_template_context.
+    # shellcheck disable=SC2034
+    local -A render_context=(
+        [html_dir]='.'
+    )
+
+    # shellcheck source=src/lib/config.validate.source.sh
+    source "$TEST_REPO_ROOT/src/lib/config.validate.source.sh"
+    # shellcheck source=src/lib/template.source.sh
+    source "$TEST_REPO_ROOT/src/lib/template.source.sh"
+
+    set +e
+    output=$(validate_template_context preview render_context 2>&1)
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        printf 'FAIL: expected validate_template_context to fail\n' >&2
+        exit 1
+    fi
+
+    test::assert_contains \
+        'ERROR: template preview requires render variable animation_class' \
+        "$output"
+    test::assert_not_contains \
+        'ERROR: template preview requires render variable backhref' \
+        "$output"
+}
+
 test_generate_swap_failure_restores_dist() {
     local config_file
     local fake_bin
@@ -3949,6 +4020,9 @@ main() {
         '--generate preflight rejects invalid numbers' \
         test_generate_preflight_rejects_invalid_numbers
     test::run_case \
+        'config validators fail fast without errexit' \
+        test_config_validators_fail_fast_without_errexit
+    test::run_case \
         '--generate preflight accepts empty HEIGHT' \
         test_generate_preflight_accepts_empty_height
     test::run_case \
@@ -4029,6 +4103,9 @@ main() {
     test::run_case \
         'template required context vars come from render specs' \
         test_template_required_context_vars_come_from_render_specs
+    test::run_case \
+        'template context validator fails fast without errexit' \
+        test_template_context_validator_fails_fast_without_errexit
     test::run_case \
         '--generate swap failure restores final dist' \
         test_generate_swap_failure_restores_dist
