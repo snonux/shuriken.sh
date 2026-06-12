@@ -23,12 +23,87 @@ run_simple_action() {
     esac
 }
 
+run_action_body_context() {
+    local name
+    local -a variable_names=(
+        VERSION
+        DEFAULTRC
+        PACKAGED_TEMPLATE_DIR
+        PACKAGED_ASSET_DIR
+        DEFAULT_TEMPLATE_DIR
+        DEFAULT_ASSET_DIR
+        SHURIKEN_SOURCE_DIR
+        SHURIKEN_OUTPUT_MODE
+        SHURIKEN_ACTIVE_GENERATION_PID
+        SHURIKEN_FORCE_GENERATE
+        SHURIKEN_CURRENT_DATE_TEXT
+        SHURIKEN_CONFIG_SOURCE
+        SHURIKEN_FINAL_DIST_DIR
+        INCOMING_DIR
+        DIST_DIR
+        TEMPLATE_DIR
+        TITLE
+        HEIGHT
+        THUMBHEIGHT
+        MAXPREVIEWS
+        IMAGE_JOBS
+        IMAGEMAGICK_TIMEOUT
+        TAR_TIMEOUT
+        ORIGINAL_BASEPATH
+        RANDOM_SEED
+        SHUFFLE
+        SPLASH_PAGE
+        TARBALL_INCLUDE
+        TARBALL_SUFFIX
+        TAR_OPTS
+        SYNC_DELETE
+        SYNC_DESTINATIONS
+        TEMPLATE_RENDER_FIELD_SPECS
+    )
+
+    for name in "${variable_names[@]}"; do
+        declare -p "$name" 2>/dev/null || true
+    done
+    declare -f
+}
+
 run_action_body() {
-    if [[ "$-" == *e* ]]; then
-        "$@"
+    local -r action_name="$1"; shift
+    local -i status=0
+
+    if {
+        run_action_body_context
+        printf '%q "$@"\n' "$action_name"
+    } | bash -euo pipefail -s -- "$@"; then
+        status=0
     else
-        ( set -e; "$@" )
+        status=$?
     fi
+
+    return "$status"
+}
+
+run_action_body_direct() {
+    "$@"
+}
+
+run_configured_action_body() {
+    local -r action_name="$1"; shift
+    local -r runner="${SHURIKEN_ACTION_BODY_RUNNER:-run_action_body}"
+    local -i status=0
+
+    if [ "$runner" = run_action_body_direct ]; then
+        "$runner" "$action_name" "$@"
+        return
+    fi
+
+    if "$runner" "$action_name" "$@"; then
+        status=0
+    else
+        status=$?
+    fi
+
+    return "$status"
 }
 
 load_configured_action() {
@@ -123,7 +198,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            run_action_body generate_staged
+            run_configured_action_body generate_staged
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -136,7 +211,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            run_action_body refresh_splash
+            run_configured_action_body refresh_splash
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -149,7 +224,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            run_action_body sync_dist
+            run_configured_action_body sync_dist
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -162,7 +237,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            run_action_body dry_run
+            run_configured_action_body dry_run
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -175,7 +250,7 @@ run_configured_action() {
                 return "$status"
             fi
 
-            run_action_body print_config
+            run_configured_action_body print_config
             status=$?
             if (( status != 0 )); then
                 return "$status"
@@ -196,7 +271,8 @@ run_action() {
             fi
             ;;
         --clean|--generate|--refresh-splash|--sync|--dry-run|--print-config)
-            run_configured_action
+            SHURIKEN_ACTION_BODY_RUNNER=run_action_body_direct \
+                run_configured_action
             status=$?
             if (( status != 0 )); then
                 return "$status"

@@ -296,7 +296,6 @@ source_template_file() {
     local -r output_path="$1"; shift
     local -r render_vars_name="$1"; shift
     local context_file
-    local restore_errexit=no
     local -i status=0
 
     context_file=$(mktemp)
@@ -305,18 +304,16 @@ source_template_file() {
         return "$status"
     fi
 
-    if [[ "$-" == *e* ]]; then
-        restore_errexit=yes
-        set +e
-    fi
-    (
-        set -e
-        serialize_template_render_context "$render_vars_name"
-        printf 'unset BASH_ENV\n'
-    ) > "$context_file"
-    status=$?
-    if [ "$restore_errexit" = yes ]; then
-        set -e
+    if {
+        declare -p TEMPLATE_RENDER_FIELD_SPECS
+        declare -p "$render_vars_name"
+        declare -f
+        printf 'serialize_template_render_context %q\n' "$render_vars_name"
+        printf "printf 'unset BASH_ENV\\\\n'\n"
+    } | bash -euo pipefail > "$context_file"; then
+        status=0
+    else
+        status=$?
     fi
     if (( status != 0 )); then
         rm -f "$context_file"

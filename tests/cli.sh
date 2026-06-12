@@ -2130,6 +2130,71 @@ BASH
     test::teardown
 }
 
+test_generate_action_failure_fails_status_tested_dispatcher() {
+    local config_file
+    local continued_file
+    local output
+    local success_file
+    local -i status=0
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    continued_file="$TEST_TMPDIR/dry-run-continued"
+    success_file="$TEST_TMPDIR/dispatcher-success"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        "$TEST_REPO_ROOT/share/templates/default"
+
+    set +e
+    output=$(
+        bash -euo pipefail -s \
+            "$TEST_SHURIKEN" \
+            "$config_file" \
+            "$continued_file" \
+            "$success_file" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+config_file="$1"; shift
+continued_file="$1"; shift
+success_file="$1"; shift
+export continued_file success_file
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+dry_run() {
+    false
+    printf 'dry_run continued\n' > "$continued_file"
+}
+
+SHURIKEN_CLI_ACTION=--dry-run
+SHURIKEN_CLI_CONFIG_FILE="$config_file"
+SHURIKEN_CLI_HAS_CONFIG_OVERRIDES=no
+SHURIKEN_CLI_OVERRIDES=()
+SHURIKEN_CLI_SYNC_DESTINATIONS=()
+SHURIKEN_FORCE_GENERATE=no
+
+if run_configured_action; then
+    printf 'dispatcher reported success\n' > "$success_file"
+fi
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status != 0 )); then
+        printf 'FAIL: expected child shell to finish status-tested dispatch\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$continued_file"
+    test::assert_path_absent "$success_file"
+    test::teardown
+}
+
 test_generate_real_failure_returns_with_errexit_disabled() {
     local config_file
     local fake_bin
@@ -3656,6 +3721,99 @@ BASH
     test::teardown
 }
 
+test_template_setup_failure_fails_status_tested_render() {
+    local context_file
+    local fake_bin
+    local output
+    local ran_file
+    local success_file
+    local template_dir
+    local -i status=0
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    template_dir="$TEST_TMPDIR/templates"
+    context_file="$TEST_TMPDIR/template-context"
+    ran_file="$TEST_TMPDIR/template-ran"
+    success_file="$TEST_TMPDIR/template-success"
+    mkdir -p "$fake_bin" "$template_dir" "$TEST_TMPDIR/dist"
+    {
+        printf '#!/usr/bin/env bash\n'
+        # shellcheck disable=SC2016
+        printf 'printf %%s\\\\n \"$SHURIKEN_FAKE_CONTEXT_FILE\"\n'
+    } > "$fake_bin/mktemp"
+    chmod 0755 "$fake_bin/mktemp"
+    {
+        printf 'printf rendered >> %q\n' "$ran_file"
+        printf 'printf rendered\n'
+    } > "$template_dir/preview.tmpl"
+
+    set +e
+    output=$(
+        bash -euo pipefail -s \
+            "$TEST_SHURIKEN" \
+            "$fake_bin" \
+            "$template_dir" \
+            "$TEST_TMPDIR/dist" \
+            "$context_file" \
+            "$success_file" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+fake_bin="$1"; shift
+template_dir="$1"; shift
+dist_dir="$1"; shift
+context_file="$1"; shift
+success_file="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+PATH="$fake_bin:$PATH"
+SHURIKEN_FAKE_CONTEXT_FILE="$context_file"
+export SHURIKEN_FAKE_CONTEXT_FILE
+DIST_DIR="$dist_dir"
+TEMPLATE_DIR="$template_dir"
+TITLE='Template status test'
+HEIGHT=''
+THUMBHEIGHT=30
+MAXPREVIEWS=40
+ORIGINAL_BASEPATH=''
+TARBALL_INCLUDE=no
+SHURIKEN_OUTPUT_MODE=quiet
+
+serialize_template_render_context() {
+    false
+    printf 'partial_context=yes\n'
+}
+
+if template preview out.html \
+    animation_class '' \
+    backhref '#' \
+    html_dir . \
+    page_num 1 \
+    photo photo.jpg \
+    preview_num 1 \
+    thumbs_dir thumbs; then
+    printf 'template reported success\n' > "$success_file"
+fi
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status != 0 )); then
+        printf 'FAIL: expected child shell to finish status-tested render\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$context_file"
+    test::assert_path_absent "$ran_file"
+    test::assert_path_absent "$success_file"
+    test::teardown
+}
+
 test_generate_swap_failure_restores_dist() {
     local config_file
     local fake_bin
@@ -4476,6 +4634,9 @@ main() {
         '--generate action runs with errexit active' \
         test_generate_action_runs_with_errexit_active
     test::run_case \
+        '--generate action failure fails status-tested dispatcher' \
+        test_generate_action_failure_fails_status_tested_dispatcher
+    test::run_case \
         '--generate real failure returns with errexit disabled' \
         test_generate_real_failure_returns_with_errexit_disabled
     test::run_case \
@@ -4574,6 +4735,9 @@ main() {
     test::run_case \
         'template setup failure removes context file with errexit' \
         test_template_setup_failure_removes_context_file_with_errexit
+    test::run_case \
+        'template setup failure fails status-tested render' \
+        test_template_setup_failure_fails_status_tested_render
     test::run_case \
         '--generate swap failure restores final dist' \
         test_generate_swap_failure_restores_dist
