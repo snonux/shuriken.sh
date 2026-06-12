@@ -3092,20 +3092,46 @@ test_template_required_context_vars_come_from_render_specs() {
     local expected
     local output
 
-    expected=$'animation_class\nbackhref\nhtml_dir\npage_num\nphoto\npreview_num\nthumbs_dir'
+    expected=$(cat <<'END'
+details:animation_class backhref exif_details exif_tooltip html_dir page_num photo photos_dir preview_num
+footer:backhref html_dir tarball_name
+header:backhref background_image blurs_dir html_dir show_header_bar
+next:html_dir next
+prev:html_dir prev
+preview:animation_class backhref html_dir page_num photo preview_num thumbs_dir
+redirect:html_dir redirect_page
+splash:backhref background_image blurs_dir enter_page html_dir photo photos_dir
+view:animation_class backhref html_dir page_num photo photos_dir preview_num
+END
+    )
     output=$(
         bash -euo pipefail -s "$TEST_REPO_ROOT" <<'BASH'
 repo_root="$1"; shift
+template_name=''
+declare -a template_names=(
+    details
+    footer
+    header
+    next
+    prev
+    preview
+    redirect
+    splash
+    view
+)
 
 # shellcheck source=src/lib/template.source.sh
 source "$repo_root/src/lib/template.source.sh"
 
-template_required_context_vars preview
+for template_name in "${template_names[@]}"; do
+    printf '%s:' "$template_name"
+    template_required_context_vars "$template_name" | paste -sd ' ' -
+done
 BASH
     )
 
     if [ "$output" != "$expected" ]; then
-        printf 'FAIL: unexpected preview required render variables\n' >&2
+        printf 'FAIL: unexpected template required render variables\n' >&2
         printf 'expected:\n%s\n' "$expected" >&2
         printf 'actual:\n%s\n' "$output" >&2
         exit 1

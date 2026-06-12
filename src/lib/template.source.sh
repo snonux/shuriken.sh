@@ -160,7 +160,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_page_num_html|context_html|page_num|page_num|preview details view'
     'render_photo_html|context_html|photo|photo|preview splash details view'
     'render_photos_dir_html|context_html|photos_dir|photos_dir|splash details view'
-    'render_prev_html|context_html|prev|prev|prev next'
+    'render_prev_html|context_html|prev|prev|prev'
     'render_preview_num_html|context_html|preview_num|preview_num|preview details view'
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
