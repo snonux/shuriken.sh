@@ -217,30 +217,38 @@ _first_exif_value_to() {
     done
 }
 
-photo_exif_tooltip_text() {
+_photo_exif_values_to() {
+    local -n output_ref="$1"; shift
     local -r photo="$1"; shift
     local -r photo_path="$1"; shift
+    local line
+
+    output_ref=()
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*exif:([^:]+):[[:space:]]*(.*)$ ]]; then
+            # output_ref writes to the caller-provided associative array.
+            # shellcheck disable=SC2034
+            output_ref["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+        fi
+    done < <(cached_photo_identify_output "$photo" "$photo_path")
+}
+
+_photo_exif_tooltip_text_from_values() {
+    local -r exif_name="$1"; shift
+    local -n values_ref="$exif_name"
     local aperture
     local camera
     local date_time
     local iso
     local key
-    local line
     local make
     local model
     local separator=''
     local shutter_speed
-    local -A exif_values=()
     local -a tooltip_parts=()
 
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*exif:([^:]+):[[:space:]]*(.*)$ ]]; then
-            exif_values["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
-        fi
-    done < <(cached_photo_identify_output "$photo" "$photo_path")
-
-    make="${exif_values[Make]:-}"
-    model="${exif_values[Model]:-}"
+    make="${values_ref[Make]:-}"
+    model="${values_ref[Model]:-}"
     camera="$make"
     if [ -n "$model" ]; then
         if [ -n "$make" ]; then
@@ -257,12 +265,12 @@ photo_exif_tooltip_text() {
         fi
     fi
 
-    _first_exif_value_to aperture exif_values FNumber ApertureValue
-    _first_exif_value_to iso exif_values \
+    _first_exif_value_to aperture "$exif_name" FNumber ApertureValue
+    _first_exif_value_to iso "$exif_name" \
         ISOSpeedRatings PhotographicSensitivity ISO
-    _first_exif_value_to shutter_speed exif_values \
+    _first_exif_value_to shutter_speed "$exif_name" \
         ExposureTime ShutterSpeedValue
-    _first_exif_value_to date_time exif_values \
+    _first_exif_value_to date_time "$exif_name" \
         DateTimeOriginal DateTimeDigitized DateTime
 
     if [ -n "$camera" ]; then
@@ -288,6 +296,17 @@ photo_exif_tooltip_text() {
     if (( ${#tooltip_parts[@]} > 0 )); then
         printf '\n'
     fi
+}
+
+photo_exif_tooltip_text() {
+    local -r photo="$1"; shift
+    local -r photo_path="$1"; shift
+    # exif_values is populated and read through nameref helpers.
+    # shellcheck disable=SC2034
+    local -A exif_values=()
+
+    _photo_exif_values_to exif_values "$photo" "$photo_path"
+    _photo_exif_tooltip_text_from_values exif_values
 }
 
 render_details_page() {

@@ -2594,6 +2594,7 @@ test_integration_generates_album_outputs_and_cleans() {
         "$details_html"
     test::assert_not_contains 'class="details-photo-link" href="1-2.html"' \
         "$details_html"
+    test::assert_not_contains ' title=' "$details_html"
     test::assert_contains '<title>Integration album</title>' "$top_index_html"
     test::assert_contains \
         '<link rel="icon" href="./favicon.ico" type="image/x-icon">' \
@@ -4138,6 +4139,7 @@ test_generate_renders_exif_details() {
     test::assert_contains '<td>1/125</td>' "$details_html"
     test::assert_not_contains 'geometry: 120x90' "$details_html"
     test::assert_not_contains 'Model & "X"' "$details_html"
+    test::assert_not_contains 'title=""' "$details_html"
     test::assert_not_contains 'No EXIF details available.' "$details_html"
 
     test::teardown
