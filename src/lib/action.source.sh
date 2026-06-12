@@ -271,8 +271,7 @@ run_action() {
             fi
             ;;
         --clean|--generate|--refresh-splash|--sync|--dry-run|--print-config)
-            SHURIKEN_ACTION_BODY_RUNNER=run_action_body_direct \
-                run_configured_action
+            run_configured_action
             status=$?
             if (( status != 0 )); then
                 return "$status"

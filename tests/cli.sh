@@ -2195,6 +2195,71 @@ BASH
     test::teardown
 }
 
+test_generate_action_failure_fails_status_tested_run_action() {
+    local config_file
+    local continued_file
+    local output
+    local success_file
+    local -i status=0
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    continued_file="$TEST_TMPDIR/dry-run-continued"
+    success_file="$TEST_TMPDIR/action-success"
+    mkdir -p "$TEST_TMPDIR/incoming"
+    test::write_preflight_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        "$TEST_REPO_ROOT/share/templates/default"
+
+    set +e
+    output=$(
+        bash -euo pipefail -s \
+            "$TEST_SHURIKEN" \
+            "$config_file" \
+            "$continued_file" \
+            "$success_file" \
+            2>&1 \
+            <<'BASH'
+shuriken="$1"; shift
+config_file="$1"; shift
+continued_file="$1"; shift
+success_file="$1"; shift
+export continued_file success_file
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+dry_run() {
+    false
+    printf 'dry_run continued\n' > "$continued_file"
+}
+
+SHURIKEN_CLI_ACTION=--dry-run
+SHURIKEN_CLI_CONFIG_FILE="$config_file"
+SHURIKEN_CLI_HAS_CONFIG_OVERRIDES=no
+SHURIKEN_CLI_OVERRIDES=()
+SHURIKEN_CLI_SYNC_DESTINATIONS=()
+SHURIKEN_FORCE_GENERATE=no
+
+if run_action; then
+    printf 'run_action reported success\n' > "$success_file"
+fi
+BASH
+    )
+    status=$?
+    set -e
+
+    if (( status != 0 )); then
+        printf 'FAIL: expected child shell to finish status-tested action\n' >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$continued_file"
+    test::assert_path_absent "$success_file"
+    test::teardown
+}
+
 test_generate_real_failure_returns_with_errexit_disabled() {
     local config_file
     local fake_bin
@@ -4636,6 +4701,9 @@ main() {
     test::run_case \
         '--generate action failure fails status-tested dispatcher' \
         test_generate_action_failure_fails_status_tested_dispatcher
+    test::run_case \
+        '--generate action failure fails status-tested run_action' \
+        test_generate_action_failure_fails_status_tested_run_action
     test::run_case \
         '--generate real failure returns with errexit disabled' \
         test_generate_real_failure_returns_with_errexit_disabled

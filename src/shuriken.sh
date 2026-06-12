@@ -120,7 +120,7 @@ main() {
         return "$status"
     fi
 
-    run_action
+    SHURIKEN_ACTION_BODY_RUNNER=run_action_body_direct run_action
     status=$?
     if (( status != 0 )); then
         return "$status"
