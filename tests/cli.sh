@@ -2972,6 +2972,36 @@ test_refresh_splash_copies_favicon_for_legacy_dist() {
     test::teardown
 }
 
+test_refresh_splash_accepts_minimal_refresh_config() {
+    local config_file
+    local output
+    local top_index_html
+
+    test::setup
+    config_file="$TEST_TMPDIR/refresh-only.conf"
+    mkdir -p \
+        "$TEST_TMPDIR/dist/photos" \
+        "$TEST_TMPDIR/dist/blurs"
+    printf 'legacy photo\n' > "$TEST_TMPDIR/dist/photos/legacy.jpg"
+    printf 'legacy blur\n' > "$TEST_TMPDIR/dist/blurs/legacy.jpg"
+    {
+        printf 'TITLE=%q\n' 'Refresh-only album'
+        printf 'DIST_DIR=%q\n' "$TEST_TMPDIR/dist"
+        printf 'TEMPLATE_DIR=%q\n' "$TEST_REPO_ROOT/share/templates/default"
+    } > "$config_file"
+
+    output=$("$TEST_SHURIKEN" --refresh-splash --config "$config_file")
+
+    top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
+    test::assert_contains 'Refreshed splash page' "$output"
+    test::assert_contains '<title>Refresh-only album</title>' \
+        "$top_index_html"
+    test::assert_contains 'src="./photos/legacy.jpg"' "$top_index_html"
+    test::assert_not_contains 'unbound variable' "$output"
+    test::assert_file_exists "$TEST_TMPDIR/dist/favicon.ico"
+    test::teardown
+}
+
 test_refresh_splash_requires_existing_generated_assets() {
     local config_file
     local output
@@ -4807,6 +4837,9 @@ main() {
     test::run_case \
         '--refresh-splash copies favicon for legacy dist' \
         test_refresh_splash_copies_favicon_for_legacy_dist
+    test::run_case \
+        '--refresh-splash accepts minimal refresh-only config' \
+        test_refresh_splash_accepts_minimal_refresh_config
     test::run_case \
         '--refresh-splash requires existing generated assets' \
         test_refresh_splash_requires_existing_generated_assets

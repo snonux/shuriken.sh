@@ -430,13 +430,17 @@ prepare_template_render_vars() {
                         context_value="$HEIGHT"
                         ;;
                     MAXPREVIEWS)
-                        context_value="$MAXPREVIEWS"
+                        # Refresh-only configs do not require generation
+                        # sizing fields; render absent values as empty.
+                        context_value="${MAXPREVIEWS:-}"
                         ;;
                     ORIGINAL_BASEPATH)
                         context_value="$ORIGINAL_BASEPATH"
                         ;;
                     THUMBHEIGHT)
-                        context_value="$THUMBHEIGHT"
+                        # Refresh-only configs do not require generation
+                        # sizing fields; render absent values as empty.
+                        context_value="${THUMBHEIGHT:-}"
                         ;;
                     TITLE)
                         context_value="$TITLE"
