@@ -1205,6 +1205,44 @@ test_generate_image_jobs_limits_parallel_template_rendering() {
     test::teardown
 }
 
+test_generate_parallel_template_failure_logs_photo() {
+    local config_file
+    local fake_bin
+    local output
+    local template_dir
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    template_dir="$TEST_TMPDIR/templates"
+
+    test::install_fake_imagemagick "$fake_bin"
+    cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
+    printf 'exit 127\n' > "$template_dir/details.tmpl"
+    mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'old dist\n' > "$TEST_TMPDIR/dist/index.html"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Failing parallel template album' 40
+    printf 'TEMPLATE_DIR=%q\n' "$template_dir" >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            test::capture_failure_output "$TEST_SHURIKEN" --generate
+    )
+
+    test::assert_contains \
+        'ERROR: parallel job failed (127): template render job for photo 01.jpg' \
+        "$output"
+    test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
+    test::assert_path_absent "$TEST_TMPDIR/dist/1-1-details.html"
+    test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
 test_repeated_output_flags_use_last_value() {
     local config_file
     local fake_bin
@@ -3214,6 +3252,9 @@ test_generate_imagemagick_failure_preserves_dist() {
     )
 
     test::assert_contains 'simulated ImageMagick failure' "$output"
+    test::assert_contains \
+        'ERROR: parallel job failed (42): image job for photo 01.jpg' \
+        "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old dist'
     test "$(<"$TEST_TMPDIR/dist/sentinel")" = 'keep me'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01.jpg"
@@ -4773,6 +4814,9 @@ main() {
     test::run_case \
         '--generate --image-jobs limits template rendering parallelism' \
         test_generate_image_jobs_limits_parallel_template_rendering
+    test::run_case \
+        '--generate parallel template failure logs photo' \
+        test_generate_parallel_template_failure_logs_photo
     test::run_case \
         'repeated output flags use last value' \
         test_repeated_output_flags_use_last_value

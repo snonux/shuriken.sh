@@ -394,19 +394,36 @@ create_all_photo_derivatives() {
     local -r blurs_dir="$1"; shift
     local -i failed=0
     local -a image_job_pids=()
+    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
+    # shellcheck disable=SC2034
+    local -A image_job_labels=()
+    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
+    # shellcheck disable=SC2034
+    local -A image_job_statuses=()
     local photo
 
     while IFS= read -r photo; do
-        wait_for_image_job_slot image_job_pids failed
+        wait_for_image_job_slot \
+            image_job_pids \
+            image_job_statuses \
+            image_job_labels \
+            failed
         create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" \
             "$photo" &
         image_job_pids+=("$!")
+        # Read through a nameref in the job-pool helpers.
+        # shellcheck disable=SC2034
+        image_job_labels["$!"]="image derivative job for photo $photo"
     done < <(
         find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
             | sort
     )
 
-    wait_for_image_jobs image_job_pids failed
+    wait_for_image_jobs \
+        image_job_pids \
+        image_job_statuses \
+        image_job_labels \
+        failed
     if (( failed != 0 )); then
         return 1
     fi
@@ -633,10 +650,20 @@ queue_album_view_render_job() {
     local -r photo="$1"; shift
     # shellcheck disable=SC2178
     local -n render_job_pids_ref="$1"; shift
+    # Passed by name to wait_for_template_render_job_slot.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_statuses_ref="$1"; shift
+    # Passed by name to wait_for_template_render_job_slot and assigned below.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_labels_ref="$1"; shift
     # shellcheck disable=SC2178
     local -n render_failed_ref="$1"; shift
 
-    wait_for_template_render_job_slot render_job_pids_ref render_failed_ref
+    wait_for_template_render_job_slot \
+        render_job_pids_ref \
+        render_job_statuses_ref \
+        render_job_labels_ref \
+        render_failed_ref
     render_photo_view_and_details \
         "$photos_dir" \
         "$blurs_dir" \
@@ -647,15 +674,26 @@ queue_album_view_render_job() {
         "$preview_num" \
         "$photo" &
     render_job_pids_ref+=("$!")
+    render_job_labels_ref["$!"]="template render job for photo $photo"
 }
 
 wait_for_album_view_render_jobs() {
     # shellcheck disable=SC2178
     local -n render_job_pids_ref="$1"; shift
+    # Passed by name to wait_for_template_render_jobs.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_statuses_ref="$1"; shift
+    # Passed by name to wait_for_template_render_jobs.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_labels_ref="$1"; shift
     # shellcheck disable=SC2178
     local -n render_failed_ref="$1"; shift
 
-    wait_for_template_render_jobs render_job_pids_ref render_failed_ref
+    wait_for_template_render_jobs \
+        render_job_pids_ref \
+        render_job_statuses_ref \
+        render_job_labels_ref \
+        render_failed_ref
     if (( render_failed_ref != 0 )); then
         return 1
     fi
@@ -682,6 +720,12 @@ render_album_pages() {
     # Passed by name to queue_album_view_render_job.
     # shellcheck disable=SC2034
     local -a render_job_pids=()
+    # Passed by name to queue_album_view_render_job.
+    # shellcheck disable=SC2034
+    local -A render_job_labels=()
+    # Passed by name to queue_album_view_render_job.
+    # shellcheck disable=SC2034
+    local -A render_job_statuses=()
     # Passed by name to record_rendered_view_page and render_view_redirects.
     # shellcheck disable=SC2034
     local -A rendered_last_views=()
@@ -728,13 +772,19 @@ render_album_pages() {
             "$i" \
             "$photo" \
             render_job_pids \
+            render_job_statuses \
+            render_job_labels \
             render_failed
         record_rendered_view_page rendered_view_pages rendered_last_views \
             "$num" "$i"
     done < <(album_photo_files "$photos_dir")
 
     finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
-    if ! wait_for_album_view_render_jobs render_job_pids render_failed; then
+    if ! wait_for_album_view_render_jobs \
+        render_job_pids \
+        render_job_statuses \
+        render_job_labels \
+        render_failed; then
         return 1
     fi
     render_view_redirects "$html_dir" rendered_view_pages rendered_last_views

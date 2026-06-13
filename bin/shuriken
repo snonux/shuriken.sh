@@ -999,14 +999,26 @@ template() {
 # Inlined from src/lib/job-pool.source.sh
 wait_for_parallel_job_pid() {
     local -r pid="$1"; shift
-    local -i status=0
+    local -r job_statuses_name="$1"; shift
+    local -n status_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n job_statuses_ref="$job_statuses_name"
+    local -i wait_status=0
+
+    if [ -n "${job_statuses_ref[$pid]+x}" ]; then
+        # shellcheck disable=SC2034
+        status_ref="${job_statuses_ref[$pid]}"
+        unset "job_statuses_ref[$pid]"
+        return
+    fi
 
     set +e
     wait "$pid"
-    status=$?
+    wait_status=$?
     set -e
 
-    return "$status"
+    # shellcheck disable=SC2034
+    status_ref="$wait_status"
 }
 
 parallel_job_pid_is_running() {
@@ -1022,13 +1034,42 @@ parallel_job_pid_is_running() {
     return 1
 }
 
+log_parallel_job_failure() {
+    local -r pid="$1"; shift
+    local -r status="$1"; shift
+    local -r job_labels_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n job_labels_ref="$job_labels_name"
+    local label
+
+    label="${job_labels_ref[$pid]:-pid $pid}"
+    printf 'ERROR: parallel job failed (%s): %s\n' "$status" "$label" >&2
+}
+
+finish_parallel_job() {
+    local -r pid="$1"; shift
+    local -r status="$1"; shift
+    local -r job_labels_name="$1"; shift
+    local -n failed_target_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n job_labels_ref="$job_labels_name"
+
+    if (( status != 0 )); then
+        # shellcheck disable=SC2034
+        failed_target_ref=1
+        log_parallel_job_failure "$pid" "$status" "$job_labels_name"
+    fi
+
+    unset "job_labels_ref[$pid]"
+}
+
 reap_finished_parallel_jobs() {
     local -r job_pids_name="$1"; shift
+    local -r job_statuses_name="$1"; shift
+    local -r job_labels_name="$1"; shift
     # shellcheck disable=SC2178
     local -n job_pids_ref="$job_pids_name"
     local -n failed_ref="$1"; shift
-    local -i reaped_status="$1"; shift
-    local -i has_reaped_status=1
     local -i status=0
     local -a remaining_pids=()
     local -a running_pids=()
@@ -1042,19 +1083,8 @@ reap_finished_parallel_jobs() {
             continue
         fi
 
-        if wait_for_parallel_job_pid "$pid"; then
-            status=0
-        else
-            status=$?
-        fi
-        if (( status == 127 && has_reaped_status != 0 )); then
-            status=$reaped_status
-            has_reaped_status=0
-        fi
-
-        if (( status != 0 )); then
-            failed_ref=1
-        fi
+        wait_for_parallel_job_pid "$pid" "$job_statuses_name" status
+        finish_parallel_job "$pid" "$status" "$job_labels_name" failed_ref
     done
 
     job_pids_ref=("${remaining_pids[@]}")
@@ -1062,77 +1092,125 @@ reap_finished_parallel_jobs() {
 
 wait_for_next_parallel_job() {
     local -r job_pids_name="$1"; shift
+    local -r job_statuses_name="$1"; shift
+    local -r job_labels_name="$1"; shift
     local -r failed_name="$1"; shift
     # shellcheck disable=SC2178
     local -n job_pids_ref="$job_pids_name"
+    # shellcheck disable=SC2178
+    local -n job_statuses_ref="$job_statuses_name"
+    local completed_pid=''
     local -i status=0
 
     set +e
-    wait -n "${job_pids_ref[@]}"
+    wait -n -p completed_pid "${job_pids_ref[@]}"
     status=$?
     set -e
 
-    reap_finished_parallel_jobs "$job_pids_name" "$failed_name" "$status"
+    if [ -n "$completed_pid" ]; then
+        job_statuses_ref["$completed_pid"]="$status"
+    fi
+
+    reap_finished_parallel_jobs \
+        "$job_pids_name" \
+        "$job_statuses_name" \
+        "$job_labels_name" \
+        "$failed_name"
 }
 
 wait_for_parallel_job_slot() {
     local -r job_pids_name="$1"; shift
+    local -r job_statuses_name="$1"; shift
+    local -r job_labels_name="$1"; shift
     local -r failed_name="$1"; shift
     local -r max_jobs="$1"; shift
     # shellcheck disable=SC2178
     local -n job_pids_ref="$job_pids_name"
 
     while (( ${#job_pids_ref[@]} >= max_jobs )); do
-        wait_for_next_parallel_job "$job_pids_name" "$failed_name"
+        wait_for_next_parallel_job \
+            "$job_pids_name" \
+            "$job_statuses_name" \
+            "$job_labels_name" \
+            "$failed_name"
     done
 }
 
 wait_for_parallel_jobs() {
     # shellcheck disable=SC2178
     local -n job_pids_ref="$1"; shift
+    local -r job_statuses_name="$1"; shift
+    local -r job_labels_name="$1"; shift
     local -n failed_ref="$1"; shift
+    local -i status=0
 
     : "$failed_ref"
     while (( ${#job_pids_ref[@]} > 0 )); do
-        if ! wait_for_parallel_job_pid "${job_pids_ref[0]}"; then
-            failed_ref=1
-        fi
+        wait_for_parallel_job_pid \
+            "${job_pids_ref[0]}" \
+            "$job_statuses_name" \
+            status
+        finish_parallel_job \
+            "${job_pids_ref[0]}" \
+            "$status" \
+            "$job_labels_name" \
+            failed_ref
         job_pids_ref=("${job_pids_ref[@]:1}")
     done
 }
 
 wait_for_image_job_slot() {
     local -r image_job_pids_name="$1"; shift
+    local -r image_job_statuses_name="$1"; shift
+    local -r image_job_labels_name="$1"; shift
     local -r failed_name="$1"; shift
 
     wait_for_parallel_job_slot \
         "$image_job_pids_name" \
+        "$image_job_statuses_name" \
+        "$image_job_labels_name" \
         "$failed_name" \
         "$IMAGE_JOBS"
 }
 
 wait_for_image_jobs() {
     local -r image_job_pids_name="$1"; shift
+    local -r image_job_statuses_name="$1"; shift
+    local -r image_job_labels_name="$1"; shift
     local -r failed_name="$1"; shift
 
-    wait_for_parallel_jobs "$image_job_pids_name" "$failed_name"
+    wait_for_parallel_jobs \
+        "$image_job_pids_name" \
+        "$image_job_statuses_name" \
+        "$image_job_labels_name" \
+        "$failed_name"
 }
 
 wait_for_template_render_job_slot() {
     local -r render_job_pids_name="$1"; shift
+    local -r render_job_statuses_name="$1"; shift
+    local -r render_job_labels_name="$1"; shift
     local -r failed_name="$1"; shift
 
     wait_for_parallel_job_slot \
         "$render_job_pids_name" \
+        "$render_job_statuses_name" \
+        "$render_job_labels_name" \
         "$failed_name" \
         "$IMAGE_JOBS"
 }
 
 wait_for_template_render_jobs() {
     local -r render_job_pids_name="$1"; shift
+    local -r render_job_statuses_name="$1"; shift
+    local -r render_job_labels_name="$1"; shift
     local -r failed_name="$1"; shift
 
-    wait_for_parallel_jobs "$render_job_pids_name" "$failed_name"
+    wait_for_parallel_jobs \
+        "$render_job_pids_name" \
+        "$render_job_statuses_name" \
+        "$render_job_labels_name" \
+        "$failed_name"
 }
 
 # Inlined from src/lib/image.source.sh
@@ -1204,15 +1282,32 @@ warn_unsupported_incoming_files() {
 scalephotos() {
     local -i failed=0
     local -a image_job_pids=()
+    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
+    # shellcheck disable=SC2034
+    local -A image_job_labels=()
+    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
+    # shellcheck disable=SC2034
+    local -A image_job_statuses=()
     local photo
 
     while IFS= read -r photo; do
-        wait_for_image_job_slot image_job_pids failed
+        wait_for_image_job_slot \
+            image_job_pids \
+            image_job_statuses \
+            image_job_labels \
+            failed
         scale_photo "$photo" &
         image_job_pids+=("$!")
+        # Read through a nameref in the job-pool helpers.
+        # shellcheck disable=SC2034
+        image_job_labels["$!"]="image job for photo $photo"
     done < <(incoming_image_files)
 
-    wait_for_image_jobs image_job_pids failed
+    wait_for_image_jobs \
+        image_job_pids \
+        image_job_statuses \
+        image_job_labels \
+        failed
     if (( failed != 0 )); then
         return 1
     fi
@@ -1722,19 +1817,36 @@ create_all_photo_derivatives() {
     local -r blurs_dir="$1"; shift
     local -i failed=0
     local -a image_job_pids=()
+    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
+    # shellcheck disable=SC2034
+    local -A image_job_labels=()
+    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
+    # shellcheck disable=SC2034
+    local -A image_job_statuses=()
     local photo
 
     while IFS= read -r photo; do
-        wait_for_image_job_slot image_job_pids failed
+        wait_for_image_job_slot \
+            image_job_pids \
+            image_job_statuses \
+            image_job_labels \
+            failed
         create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" \
             "$photo" &
         image_job_pids+=("$!")
+        # Read through a nameref in the job-pool helpers.
+        # shellcheck disable=SC2034
+        image_job_labels["$!"]="image derivative job for photo $photo"
     done < <(
         find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
             | sort
     )
 
-    wait_for_image_jobs image_job_pids failed
+    wait_for_image_jobs \
+        image_job_pids \
+        image_job_statuses \
+        image_job_labels \
+        failed
     if (( failed != 0 )); then
         return 1
     fi
@@ -1961,10 +2073,20 @@ queue_album_view_render_job() {
     local -r photo="$1"; shift
     # shellcheck disable=SC2178
     local -n render_job_pids_ref="$1"; shift
+    # Passed by name to wait_for_template_render_job_slot.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_statuses_ref="$1"; shift
+    # Passed by name to wait_for_template_render_job_slot and assigned below.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_labels_ref="$1"; shift
     # shellcheck disable=SC2178
     local -n render_failed_ref="$1"; shift
 
-    wait_for_template_render_job_slot render_job_pids_ref render_failed_ref
+    wait_for_template_render_job_slot \
+        render_job_pids_ref \
+        render_job_statuses_ref \
+        render_job_labels_ref \
+        render_failed_ref
     render_photo_view_and_details \
         "$photos_dir" \
         "$blurs_dir" \
@@ -1975,15 +2097,26 @@ queue_album_view_render_job() {
         "$preview_num" \
         "$photo" &
     render_job_pids_ref+=("$!")
+    render_job_labels_ref["$!"]="template render job for photo $photo"
 }
 
 wait_for_album_view_render_jobs() {
     # shellcheck disable=SC2178
     local -n render_job_pids_ref="$1"; shift
+    # Passed by name to wait_for_template_render_jobs.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_statuses_ref="$1"; shift
+    # Passed by name to wait_for_template_render_jobs.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_labels_ref="$1"; shift
     # shellcheck disable=SC2178
     local -n render_failed_ref="$1"; shift
 
-    wait_for_template_render_jobs render_job_pids_ref render_failed_ref
+    wait_for_template_render_jobs \
+        render_job_pids_ref \
+        render_job_statuses_ref \
+        render_job_labels_ref \
+        render_failed_ref
     if (( render_failed_ref != 0 )); then
         return 1
     fi
@@ -2010,6 +2143,12 @@ render_album_pages() {
     # Passed by name to queue_album_view_render_job.
     # shellcheck disable=SC2034
     local -a render_job_pids=()
+    # Passed by name to queue_album_view_render_job.
+    # shellcheck disable=SC2034
+    local -A render_job_labels=()
+    # Passed by name to queue_album_view_render_job.
+    # shellcheck disable=SC2034
+    local -A render_job_statuses=()
     # Passed by name to record_rendered_view_page and render_view_redirects.
     # shellcheck disable=SC2034
     local -A rendered_last_views=()
@@ -2056,13 +2195,19 @@ render_album_pages() {
             "$i" \
             "$photo" \
             render_job_pids \
+            render_job_statuses \
+            render_job_labels \
             render_failed
         record_rendered_view_page rendered_view_pages rendered_last_views \
             "$num" "$i"
     done < <(album_photo_files "$photos_dir")
 
     finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
-    if ! wait_for_album_view_render_jobs render_job_pids render_failed; then
+    if ! wait_for_album_view_render_jobs \
+        render_job_pids \
+        render_job_statuses \
+        render_job_labels \
+        render_failed; then
         return 1
     fi
     render_view_redirects "$html_dir" rendered_view_pages rendered_last_views
