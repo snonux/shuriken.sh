@@ -427,19 +427,19 @@ prepare_template_render_vars() {
             config_html)
                 case "$source_name" in
                     HEIGHT)
-                        context_value="${HEIGHT:-}"
+                        context_value="$HEIGHT"
                         ;;
                     MAXPREVIEWS)
-                        context_value="${MAXPREVIEWS:-}"
+                        context_value="$MAXPREVIEWS"
                         ;;
                     ORIGINAL_BASEPATH)
-                        context_value="${ORIGINAL_BASEPATH:-}"
+                        context_value="$ORIGINAL_BASEPATH"
                         ;;
                     THUMBHEIGHT)
-                        context_value="${THUMBHEIGHT:-}"
+                        context_value="$THUMBHEIGHT"
                         ;;
                     TITLE)
-                        context_value="${TITLE:-}"
+                        context_value="$TITLE"
                         ;;
                     *)
                         config_error \
@@ -450,7 +450,7 @@ prepare_template_render_vars() {
                 html_escape_to render_value "$context_value"
                 ;;
             original_basepath_is_set)
-                if [ -n "${ORIGINAL_BASEPATH:-}" ]; then
+                if [ -n "$ORIGINAL_BASEPATH" ]; then
                     render_value='yes'
                 else
                     render_value='no'
@@ -475,7 +475,7 @@ prepare_template_render_vars() {
                 fi
                 ;;
             tarball_include)
-                render_value="${TARBALL_INCLUDE:-no}"
+                render_value="$TARBALL_INCLUDE"
                 ;;
             *)
                 config_error "unknown template render field kind $kind"

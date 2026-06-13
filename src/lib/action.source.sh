@@ -154,12 +154,12 @@ log_configured_action() {
     log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
     log_verbose "Effective output directory: ${DIST_DIR:-}"
     log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
-    log_verbose "Effective image jobs: ${IMAGE_JOBS:-3}"
-    log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT:-60}s"
-    log_verbose "Effective tar timeout: ${TAR_TIMEOUT:-120}s"
-    log_verbose "Effective splash page setting: ${SPLASH_PAGE:-yes}"
-    log_verbose "Effective tarball setting: ${TARBALL_INCLUDE:-no}"
-    log_verbose "Effective sync delete setting: ${SYNC_DELETE:-yes}"
+    log_verbose "Effective image jobs: $IMAGE_JOBS"
+    log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
+    log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"
+    log_verbose "Effective splash page setting: $SPLASH_PAGE"
+    log_verbose "Effective tarball setting: $TARBALL_INCLUDE"
+    log_verbose "Effective sync delete setting: $SYNC_DELETE"
     log_verbose "Effective force generation setting: $SHURIKEN_FORCE_GENERATE"
 }
 

@@ -1282,6 +1282,52 @@ EOF
     test::teardown
 }
 
+test_print_config_applies_omitted_runtime_defaults() {
+    local config_file
+    local expected
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/minimal.conf"
+
+    {
+        printf 'TITLE=%q\n' 'Minimal defaults'
+        printf 'THUMBHEIGHT=30\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'INCOMING_DIR=%q\n' "$TEST_TMPDIR/incoming"
+        printf 'DIST_DIR=%q\n' "$TEST_TMPDIR/dist"
+        printf 'TEMPLATE_DIR=%q\n' "$TEST_REPO_ROOT/share/templates/default"
+    } > "$config_file"
+
+    output=$("$TEST_SHURIKEN" --print-config --config "$config_file")
+    expected=$(cat <<EOF
+CONFIG_SOURCE=$config_file
+INCOMING_DIR=$TEST_TMPDIR/incoming
+DIST_DIR=$TEST_TMPDIR/dist
+TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
+TITLE=Minimal\\ defaults
+HEIGHT=''
+THUMBHEIGHT=30
+MAXPREVIEWS=40
+IMAGE_JOBS=3
+IMAGEMAGICK_TIMEOUT=60
+RANDOM_SEED=''
+SHUFFLE=no
+SPLASH_PAGE=yes
+TARBALL_INCLUDE=no
+TARBALL_SUFFIX=.tar
+TAR_TIMEOUT=120
+TAR_OPTS=( -c )
+SYNC_DELETE=yes
+SYNC_DESTINATIONS=( )
+ORIGINAL_BASEPATH=''
+EOF
+)
+
+    test "$output" = "$expected"
+    test::teardown
+}
+
 test_print_config_keeps_explicit_config_template_dir() {
     local config_file
     local output
@@ -2673,8 +2719,11 @@ test_render_view_redirects_uses_numeric_last_view() {
 
     export DIST_DIR="$dist_dir"
     export TEMPLATE_DIR="$TEST_REPO_ROOT/share/templates/default"
+    export TITLE='Redirect test'
+    export THUMBHEIGHT=30
     export SHURIKEN_OUTPUT_MODE=quiet
     export MAXPREVIEWS=10
+    apply_config_defaults
 
     for view in 1 2 3 4 5 6 7 8 9 10; do
         : > "$dist_dir/1-$view.html"
@@ -2720,8 +2769,11 @@ test_render_view_redirects_wraps_when_last_page_full() {
 
     export DIST_DIR="$dist_dir"
     export TEMPLATE_DIR="$TEST_REPO_ROOT/share/templates/default"
+    export TITLE='Redirect test'
+    export THUMBHEIGHT=30
     export SHURIKEN_OUTPUT_MODE=quiet
     export MAXPREVIEWS=2
+    apply_config_defaults
 
     for view in 1 2; do
         : > "$dist_dir/1-$view.html"
@@ -3614,6 +3666,7 @@ MAXPREVIEWS=40
 ORIGINAL_BASEPATH=''
 TARBALL_INCLUDE=no
 SHURIKEN_OUTPUT_MODE=quiet
+apply_config_defaults
 
 set +e
 template preview out.html \
@@ -3698,6 +3751,7 @@ MAXPREVIEWS=40
 ORIGINAL_BASEPATH=''
 TARBALL_INCLUDE=no
 SHURIKEN_OUTPUT_MODE=quiet
+apply_config_defaults
 
 template preview out.html \
     animation_class '' \
@@ -3848,6 +3902,7 @@ MAXPREVIEWS=40
 ORIGINAL_BASEPATH=''
 TARBALL_INCLUDE=no
 SHURIKEN_OUTPUT_MODE=quiet
+apply_config_defaults
 
 serialize_template_render_context() {
     false
@@ -4641,6 +4696,9 @@ main() {
     test::run_case \
         '--print-config reflects defaults' \
         test_print_config_reflects_defaults
+    test::run_case \
+        '--print-config applies omitted runtime defaults' \
+        test_print_config_applies_omitted_runtime_defaults
     test::run_case \
         '--print-config keeps explicit config template dir' \
         test_print_config_keeps_explicit_config_template_dir

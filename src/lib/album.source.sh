@@ -567,7 +567,7 @@ render_album_index() {
     local -r blurs_dir="$1"; shift
     local -r backhref="$1"; shift
 
-    if [ "${SPLASH_PAGE:-yes}" = yes ]; then
+    if [ "$SPLASH_PAGE" = yes ]; then
         render_album_splash_page "$photos_dir" "$html_dir" "$blurs_dir" \
             "$backhref"
     else
@@ -826,7 +826,7 @@ tarball_name_plan() {
     local base
 
     base=$(basename "$INCOMING_DIR")
-    printf '%s-<timestamp>%s\n' "$base" "${TARBALL_SUFFIX:-.tar}"
+    printf '%s-<timestamp>%s\n' "$base" "$TARBALL_SUFFIX"
 }
 
 generated_tarball_name() {
@@ -835,7 +835,7 @@ generated_tarball_name() {
 
     base=$(basename "$INCOMING_DIR")
     timestamp=$(current_timestamp_slug)
-    printf '%s-%s%s\n' "$base" "$timestamp" "${TARBALL_SUFFIX:-.tar}"
+    printf '%s-%s%s\n' "$base" "$timestamp" "$TARBALL_SUFFIX"
 }
 
 count_tree_files() {
@@ -857,7 +857,7 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["generator_name"]='shuriken'
     _GENERATION_METADATA["generator_version"]="$VERSION"
     _GENERATION_METADATA["generated_at"]=$(current_timestamp_iso)
-    _GENERATION_METADATA["config_source"]="${SHURIKEN_CONFIG_SOURCE:-}"
+    _GENERATION_METADATA["config_source"]="$SHURIKEN_CONFIG_SOURCE"
     _GENERATION_METADATA["template_name"]=$(basename "$TEMPLATE_DIR")
     _GENERATION_METADATA["template_directory"]="$TEMPLATE_DIR"
     _GENERATION_METADATA["source_incoming_dir"]="$INCOMING_DIR"
@@ -867,17 +867,17 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["generated_html_count"]=$(
         count_tree_files "$DIST_DIR" '*.html'
     )
-    _GENERATION_METADATA["tarball_included"]="${TARBALL_INCLUDE:-no}"
+    _GENERATION_METADATA["tarball_included"]="$TARBALL_INCLUDE"
     _GENERATION_METADATA["tarball_file"]="$tarball_file"
-    _GENERATION_METADATA["settings_title"]="${TITLE:-}"
-    _GENERATION_METADATA["settings_height"]="${HEIGHT:-}"
-    _GENERATION_METADATA["settings_thumbheight"]="${THUMBHEIGHT:-}"
-    _GENERATION_METADATA["settings_maxpreviews"]="${MAXPREVIEWS:-}"
-    _GENERATION_METADATA["settings_image_jobs"]="${IMAGE_JOBS:-}"
-    _GENERATION_METADATA["settings_random_seed"]="${RANDOM_SEED:-}"
-    _GENERATION_METADATA["settings_shuffle"]="${SHUFFLE:-no}"
-    _GENERATION_METADATA["settings_splash_page"]="${SPLASH_PAGE:-yes}"
-    _GENERATION_METADATA["settings_original_basepath"]="${ORIGINAL_BASEPATH:-}"
+    _GENERATION_METADATA["settings_title"]="$TITLE"
+    _GENERATION_METADATA["settings_height"]="$HEIGHT"
+    _GENERATION_METADATA["settings_thumbheight"]="$THUMBHEIGHT"
+    _GENERATION_METADATA["settings_maxpreviews"]="$MAXPREVIEWS"
+    _GENERATION_METADATA["settings_image_jobs"]="$IMAGE_JOBS"
+    _GENERATION_METADATA["settings_random_seed"]="$RANDOM_SEED"
+    _GENERATION_METADATA["settings_shuffle"]="$SHUFFLE"
+    _GENERATION_METADATA["settings_splash_page"]="$SPLASH_PAGE"
+    _GENERATION_METADATA["settings_original_basepath"]="$ORIGINAL_BASEPATH"
 }
 
 _generation_metadata_json() {
@@ -985,7 +985,7 @@ clear_rendered_html() {
 create_generation_archive() {
     local -r tarball_name="$1"; shift
 
-    if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
+    if [ "$TARBALL_INCLUDE" = yes ]; then
         tarball "$tarball_name"
     fi
 }
@@ -993,7 +993,7 @@ create_generation_archive() {
 generate() {
     local tarball_name=''
 
-    if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
+    if [ "$TARBALL_INCLUDE" = yes ]; then
         tarball_name=$(generated_tarball_name)
         log_verbose \
             "Tarball enabled; planned archive:" \
@@ -1074,21 +1074,21 @@ dry_run() {
     fi
 
     printf 'Dry run: no files will be written.\n'
-    printf 'Config source: %s\n' "${SHURIKEN_CONFIG_SOURCE:-}"
+    printf 'Config source: %s\n' "$SHURIKEN_CONFIG_SOURCE"
     printf 'Incoming directory: %s\n' "$INCOMING_DIR"
     printf 'Output directory: %s\n' "$DIST_DIR"
     printf 'Template directory: %s\n' "$TEMPLATE_DIR"
     printf 'Title: %s\n' "$TITLE"
-    printf 'Height: %s\n' "${HEIGHT:-}"
+    printf 'Height: %s\n' "$HEIGHT"
     printf 'Thumb height: %s\n' "$THUMBHEIGHT"
     printf 'Max previews per page: %s\n' "$MAXPREVIEWS"
     printf 'Image jobs: %s\n' "$IMAGE_JOBS"
-    printf 'Random seed: %s\n' "${RANDOM_SEED:-}"
-    printf 'Shuffle: %s\n' "${SHUFFLE:-no}"
-    printf 'Splash page: %s\n' "${SPLASH_PAGE:-yes}"
+    printf 'Random seed: %s\n' "$RANDOM_SEED"
+    printf 'Shuffle: %s\n' "$SHUFFLE"
+    printf 'Splash page: %s\n' "$SPLASH_PAGE"
     printf 'Image count: %s\n' "$image_count"
-    printf 'Tarball setting: %s\n' "${TARBALL_INCLUDE:-no}"
-    if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
+    printf 'Tarball setting: %s\n' "$TARBALL_INCLUDE"
+    if [ "$TARBALL_INCLUDE" = yes ]; then
         printf 'Tarball name plan: %s\n' "$(tarball_name_plan)"
     else
         printf 'Tarball name plan: not planned\n'
@@ -1101,7 +1101,7 @@ dry_run() {
     printf '  %s/blurs\n' "$DIST_DIR"
 
     printf 'Planned generated files:\n'
-    if [ "${SPLASH_PAGE:-yes}" = yes ]; then
+    if [ "$SPLASH_PAGE" = yes ]; then
         printf '  %s/index.html (%s splash page)\n' \
             "$DIST_DIR" "$html_index_count"
     else
@@ -1120,7 +1120,7 @@ dry_run() {
         "$DIST_DIR" "$details_count"
     printf '  %s/[redirect].html (%s navigation redirects)\n' \
         "$DIST_DIR" "$redirect_count"
-    if [ "${TARBALL_INCLUDE:-no}" = yes ]; then
+    if [ "$TARBALL_INCLUDE" = yes ]; then
         printf '  %s/%s\n' "$DIST_DIR" "$(tarball_name_plan)"
     fi
 }

@@ -191,7 +191,7 @@ wait_for_image_job_slot() {
     wait_for_parallel_job_slot \
         "$image_job_pids_name" \
         "$failed_name" \
-        "${IMAGE_JOBS:-3}"
+        "$IMAGE_JOBS"
 }
 
 wait_for_image_jobs() {
@@ -208,7 +208,7 @@ wait_for_template_render_job_slot() {
     wait_for_parallel_job_slot \
         "$render_job_pids_name" \
         "$failed_name" \
-        "${IMAGE_JOBS:-3}"
+        "$IMAGE_JOBS"
 }
 
 wait_for_template_render_jobs() {
@@ -233,7 +233,7 @@ scale_photo() {
     fi
 
     log_info "Processing $photo to $(_display_path "$destphoto")"
-    if [ -n "${HEIGHT:-}" ]; then
+    if [ -n "$HEIGHT" ]; then
         # Scale down size.
         imagemagick \
             "$INCOMING_DIR/$photo" \
@@ -250,7 +250,7 @@ scale_photo() {
 }
 
 random_seed_is_set() {
-    [ -n "${RANDOM_SEED:-}" ]
+    [ -n "$RANDOM_SEED" ]
 }
 
 deterministic_index() {
@@ -313,7 +313,7 @@ deterministic_shuffle() {
 }
 
 maybe_shuffle() {
-    if [ "${SHUFFLE:-no}" = yes ]; then
+    if [ "$SHUFFLE" = yes ]; then
         if random_seed_is_set; then
             deterministic_shuffle
         else

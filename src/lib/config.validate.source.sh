@@ -107,7 +107,7 @@ validate_template_dir() {
 
     validate_template_dir_access || return
 
-    if [ "${SPLASH_PAGE:-yes}" = yes ]; then
+    if [ "$SPLASH_PAGE" = yes ]; then
         required_templates+=(splash)
     fi
 
@@ -130,7 +130,7 @@ validate_refresh_splash_config() {
 
     validate_yes_no_config_var SPLASH_PAGE || return
 
-    if [ "${SPLASH_PAGE:-yes}" != yes ]; then
+    if [ "$SPLASH_PAGE" != yes ]; then
         config_error 'SPLASH_PAGE must be yes to refresh the splash page'
         return 1
     fi

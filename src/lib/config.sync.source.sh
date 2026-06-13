@@ -5,7 +5,7 @@ sync_dist() {
 
     resolve_sync_destinations sync_destinations
 
-    if [ "${SYNC_DELETE:-yes}" = yes ]; then
+    if [ "$SYNC_DELETE" = yes ]; then
         rsync_args+=(--delete)
     fi
 

@@ -97,7 +97,7 @@ run_with_timeout() {
 
 tarball() {
     local -r tarball_name="$1"; shift
-    local -r tarball_suffix="${TARBALL_SUFFIX:-.tar}"
+    local -r tarball_suffix="$TARBALL_SUFFIX"
     local base
     local old_tarball
     local -a tar_opts=()
