@@ -1221,6 +1221,7 @@ test_generate_parallel_template_failure_logs_photo() {
     printf 'exit 127\n' > "$template_dir/details.tmpl"
     mkdir -p "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist"
     printf 'fake image\n' > "$TEST_TMPDIR/incoming/01.jpg"
+    printf 'fake image\n' > "$TEST_TMPDIR/incoming/02.jpg"
     printf 'old dist\n' > "$TEST_TMPDIR/dist/index.html"
     test::write_album_config \
         "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
@@ -1230,7 +1231,8 @@ test_generate_parallel_template_failure_logs_photo() {
     output=$(
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
-            test::capture_failure_output "$TEST_SHURIKEN" --generate
+            test::capture_failure_output \
+                "$TEST_SHURIKEN" --image-jobs 1 --generate
     )
 
     test::assert_contains \
