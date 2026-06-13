@@ -1801,6 +1801,59 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::teardown
 }
 
+test_dry_run_reports_empty_plan_without_writes() {
+    local config_file
+    local dist_dir
+    local fake_bin
+    local forbidden_log
+    local incoming_dir
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    forbidden_log="$TEST_TMPDIR/forbidden-tools.log"
+    incoming_dir="$TEST_TMPDIR/incoming"
+    mkdir -p "$incoming_dir"
+    test::install_failing_generation_tools "$fake_bin"
+    test::write_preflight_config \
+        "$config_file" "$incoming_dir" "$dist_dir" \
+        "$TEST_REPO_ROOT/share/templates/default"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_FORBIDDEN_TOOL_LOG="$forbidden_log" \
+            "$TEST_SHURIKEN" --dry-run --config "$config_file"
+    )
+
+    test::assert_contains 'Dry run: no files will be written.' "$output"
+    test::assert_contains 'Image count: 0' "$output"
+    test::assert_contains 'Tarball name plan: not planned' "$output"
+    test::assert_contains \
+        "  $dist_dir/index.html (1 splash page)" \
+        "$output"
+    test::assert_contains "  $dist_dir/photos/* (0 image files)" "$output"
+    test::assert_contains "  $dist_dir/thumbs/* (0 image files)" "$output"
+    test::assert_contains "  $dist_dir/blurs/* (0 image files)" "$output"
+    test::assert_contains "  $dist_dir/page-*.html (0 preview pages)" \
+        "$output"
+    test::assert_contains \
+        "  $dist_dir/[page]-[image].html (0 view pages)" \
+        "$output"
+    test::assert_contains \
+        "  $dist_dir/[page]-[image]-details.html (0 details pages)" \
+        "$output"
+    test::assert_contains \
+        "  $dist_dir/[redirect].html (0 navigation redirects)" \
+        "$output"
+    test::assert_path_absent "$dist_dir"
+    test::assert_path_absent "$forbidden_log"
+    test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
 test_dry_run_rejects_invalid_config_and_input() {
     local config_file
     local dist_dir
@@ -4765,6 +4818,9 @@ main() {
     test::run_case \
         '--dry-run reports CLI overrides without writes' \
         test_dry_run_reports_cli_overrides_without_writes
+    test::run_case \
+        '--dry-run reports empty plan without writes' \
+        test_dry_run_reports_empty_plan_without_writes
     test::run_case \
         '--dry-run rejects invalid config and input' \
         test_dry_run_rejects_invalid_config_and_input
