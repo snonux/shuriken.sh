@@ -76,12 +76,20 @@ declare -r SHURIKEN_SOURCE_DIR
 # SHURIKEN_LIB_SOURCES_BEGIN
 # shellcheck source=src/lib/bootstrap.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/bootstrap.source.sh"
-# shellcheck source=src/lib/system.source.sh
-source "$SHURIKEN_SOURCE_DIR/lib/system.source.sh"
+# shellcheck source=src/lib/imagemagick.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/imagemagick.source.sh"
+# shellcheck source=src/lib/process.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/process.source.sh"
+# shellcheck source=src/lib/archive.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/archive.source.sh"
 # shellcheck source=src/lib/template.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/template.source.sh"
+# shellcheck source=src/lib/job-pool.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/job-pool.source.sh"
 # shellcheck source=src/lib/image.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/image.source.sh"
+# shellcheck source=src/lib/random.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/random.source.sh"
 # shellcheck source=src/lib/album.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/album.source.sh"
 # shellcheck source=src/lib/config.source.sh

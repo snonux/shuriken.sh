@@ -268,7 +268,7 @@ init_config() {
     log_info "Created ./$rc_file"
 }
 
-# Inlined from src/lib/system.source.sh
+# Inlined from src/lib/imagemagick.source.sh
 # shellcheck disable=SC2034
 resolve_imagemagick_command() {
     local -r operation="$1"; shift
@@ -341,6 +341,7 @@ imagemagick_identify() {
         "${imagemagick_command[@]}" "$@"
 }
 
+# Inlined from src/lib/process.source.sh
 run_with_timeout() {
     local -r description="$1"; shift
     local -r seconds="$1"; shift
@@ -366,6 +367,7 @@ run_with_timeout() {
     return "$status"
 }
 
+# Inlined from src/lib/archive.source.sh
 tarball() {
     local -r tarball_name="$1"; shift
     local -r tarball_suffix="$TARBALL_SUFFIX"
@@ -417,29 +419,6 @@ resolve_tar_opts() {
     if (( ${#options_ref[@]} == 0 )); then
         options_ref=(-c)
     fi
-}
-
-resolve_sync_destinations() {
-    local -n destinations_ref="$1"; shift
-    local destinations_decl
-
-    destinations_ref=()
-
-    if ! destinations_decl=$(declare -p SYNC_DESTINATIONS 2>/dev/null); then
-        return
-    fi
-
-    case "$destinations_decl" in
-        declare\ -a*\ SYNC_DESTINATIONS=*)
-            destinations_ref=("${SYNC_DESTINATIONS[@]}")
-            ;;
-        *)
-            if [ -n "${SYNC_DESTINATIONS:-}" ]; then
-                # shellcheck disable=SC2034
-                read -r -a destinations_ref <<< "$SYNC_DESTINATIONS"
-            fi
-            ;;
-    esac
 }
 
 # Inlined from src/lib/template.source.sh
@@ -1017,89 +996,7 @@ template() {
     fi
 }
 
-# Inlined from src/lib/image.source.sh
-cleanphotos() {
-    local basename
-    local photo
-    local sub
-
-    while IFS= read -r photo; do
-        basename=$(basename "$photo")
-
-        if [[ -f "$INCOMING_DIR/$basename" ]] \
-            && is_supported_image_file "$basename"; then
-            continue
-        fi
-
-        log_info "Cleaning up $(_display_path "$photo")"
-        for sub in thumbs blurs photos; do
-            if [ -f "$DIST_DIR/$sub/$basename" ]; then
-                rm -f "$DIST_DIR/$sub/$basename"
-                log_info "removed '$(_display_path "$DIST_DIR/$sub/$basename")'"
-            fi
-        done
-    done < <(find "$DIST_DIR/photos" -maxdepth 1 -type f)
-}
-
-is_supported_image_file() {
-    local -r file="$1"; shift
-    local extension
-
-    if [[ "$file" != *.* ]]; then
-        return 1
-    fi
-
-    extension="${file##*.}"
-    extension="${extension,,}"
-
-    case "$extension" in
-        gif|jpeg|jpg|png|webp)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
-incoming_image_files() {
-    local file
-
-    while IFS= read -r file; do
-        if is_supported_image_file "$file"; then
-            printf '%s\n' "$file"
-        fi
-    done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n') \
-        | sort
-}
-
-warn_unsupported_incoming_files() {
-    local file
-
-    while IFS= read -r file; do
-        if ! is_supported_image_file "$file"; then
-            log_warning "Ignoring unsupported incoming file: $file"
-        fi
-    done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n' | sort)
-}
-
-scalephotos() {
-    local -i failed=0
-    local -a image_job_pids=()
-    local photo
-
-    while IFS= read -r photo; do
-        wait_for_image_job_slot image_job_pids failed
-        scale_photo "$photo" &
-        image_job_pids+=("$!")
-    done < <(incoming_image_files)
-
-    wait_for_image_jobs image_job_pids failed
-    if (( failed != 0 )); then
-        return 1
-    fi
-}
-
+# Inlined from src/lib/job-pool.source.sh
 wait_for_parallel_job_pid() {
     local -r pid="$1"; shift
     local -i status=0
@@ -1238,6 +1135,89 @@ wait_for_template_render_jobs() {
     wait_for_parallel_jobs "$render_job_pids_name" "$failed_name"
 }
 
+# Inlined from src/lib/image.source.sh
+cleanphotos() {
+    local basename
+    local photo
+    local sub
+
+    while IFS= read -r photo; do
+        basename=$(basename "$photo")
+
+        if [[ -f "$INCOMING_DIR/$basename" ]] \
+            && is_supported_image_file "$basename"; then
+            continue
+        fi
+
+        log_info "Cleaning up $(_display_path "$photo")"
+        for sub in thumbs blurs photos; do
+            if [ -f "$DIST_DIR/$sub/$basename" ]; then
+                rm -f "$DIST_DIR/$sub/$basename"
+                log_info "removed '$(_display_path "$DIST_DIR/$sub/$basename")'"
+            fi
+        done
+    done < <(find "$DIST_DIR/photos" -maxdepth 1 -type f)
+}
+
+is_supported_image_file() {
+    local -r file="$1"; shift
+    local extension
+
+    if [[ "$file" != *.* ]]; then
+        return 1
+    fi
+
+    extension="${file##*.}"
+    extension="${extension,,}"
+
+    case "$extension" in
+        gif|jpeg|jpg|png|webp)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+incoming_image_files() {
+    local file
+
+    while IFS= read -r file; do
+        if is_supported_image_file "$file"; then
+            printf '%s\n' "$file"
+        fi
+    done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n') \
+        | sort
+}
+
+warn_unsupported_incoming_files() {
+    local file
+
+    while IFS= read -r file; do
+        if ! is_supported_image_file "$file"; then
+            log_warning "Ignoring unsupported incoming file: $file"
+        fi
+    done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n' | sort)
+}
+
+scalephotos() {
+    local -i failed=0
+    local -a image_job_pids=()
+    local photo
+
+    while IFS= read -r photo; do
+        wait_for_image_job_slot image_job_pids failed
+        scale_photo "$photo" &
+        image_job_pids+=("$!")
+    done < <(incoming_image_files)
+
+    wait_for_image_jobs image_job_pids failed
+    if (( failed != 0 )); then
+        return 1
+    fi
+}
+
 scale_photo() {
     local -r photo="$1"; shift
     local destphoto
@@ -1269,6 +1249,7 @@ scale_photo() {
     fi
 }
 
+# Inlined from src/lib/random.source.sh
 random_seed_is_set() {
     [ -n "$RANDOM_SEED" ]
 }
@@ -2625,6 +2606,29 @@ print_config() {
 }
 
 # Inlined from src/lib/config.sync.source.sh
+resolve_sync_destinations() {
+    local -n destinations_ref="$1"; shift
+    local destinations_decl
+
+    destinations_ref=()
+
+    if ! destinations_decl=$(declare -p SYNC_DESTINATIONS 2>/dev/null); then
+        return
+    fi
+
+    case "$destinations_decl" in
+        declare\ -a*\ SYNC_DESTINATIONS=*)
+            destinations_ref=("${SYNC_DESTINATIONS[@]}")
+            ;;
+        *)
+            if [ -n "${SYNC_DESTINATIONS:-}" ]; then
+                # shellcheck disable=SC2034
+                read -r -a destinations_ref <<< "$SYNC_DESTINATIONS"
+            fi
+            ;;
+    esac
+}
+
 sync_dist() {
     local destination
     local -a rsync_args=(-av)
