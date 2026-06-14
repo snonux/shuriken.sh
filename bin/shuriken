@@ -3388,13 +3388,15 @@ _stats_render_camera_section() {
 
 # Print an array's keys ordered by descending count (ties broken by key) so the
 # busiest bucket leads. Used for the leaderboard and other count-ranked sections.
+# LC_ALL=C pins the tie-break collation so the generated page is byte-identical
+# across locales/machines (reproducible static output).
 _stats_keys_by_count_desc() {
     local -n counts_ref="$1"; shift
     local key
 
     for key in "${!counts_ref[@]}"; do
         printf '%d\t%s\n' "${counts_ref[$key]}" "$key"
-    done | sort -t $'\t' -k1,1nr -k2,2 | cut -f2-
+    done | LC_ALL=C sort -t $'\t' -k1,1nr -k2,2 | cut -f2-
 }
 
 # Render a histogram section using an explicit bucket order (e.g. apertures from
