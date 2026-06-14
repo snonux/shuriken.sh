@@ -276,8 +276,16 @@ cat <<END
     Site generated at ${render_current_date_text} with <a href="https://codeberg.org/snonux/shuriken.sh">codeberg.org/snonux/shuriken.sh</a>
     -
     &copy; by Paul Buetow
+END
+# The Stats nav link is only shown when the stats page was actually generated
+# (STATS_PAGE=yes); otherwise it would point at a missing stats.html.
+if [ "${render_stats_page_html}" = 'yes' ]; then
+cat <<END
     -
     <a href="${render_backhref_html}/stats.html">Stats</a>
+END
+fi
+cat <<END
 </div>
 END
 fi

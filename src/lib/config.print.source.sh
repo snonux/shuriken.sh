@@ -36,6 +36,7 @@ print_config() {
     print_shell_assignment RANDOM_SEED "$RANDOM_SEED"
     print_shell_assignment SHUFFLE "$SHUFFLE"
     print_shell_assignment SPLASH_PAGE "$SPLASH_PAGE"
+    print_shell_assignment STATS_PAGE "$STATS_PAGE"
     print_shell_assignment TARBALL_INCLUDE "$TARBALL_INCLUDE"
     print_shell_assignment TARBALL_SUFFIX "$TARBALL_SUFFIX"
     print_shell_assignment TAR_TIMEOUT "$TAR_TIMEOUT"

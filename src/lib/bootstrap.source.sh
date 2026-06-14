@@ -23,6 +23,8 @@ usage() {
     --random-seed VALUE
     --splash
     --no-splash
+    --stats
+    --no-stats
     --shuffle
     --no-shuffle
     --tarball

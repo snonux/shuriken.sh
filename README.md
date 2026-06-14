@@ -76,7 +76,8 @@ If the file is missing, run `shuriken --init` first.
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
 `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
 `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`,
-`TARBALL_INCLUDE`, `TAR_TIMEOUT`, `SYNC_DELETE`, and `SYNC_DESTINATIONS`.
+`STATS_PAGE`, `TARBALL_INCLUDE`, `TAR_TIMEOUT`, `SYNC_DELETE`, and
+`SYNC_DESTINATIONS`.
 
 Before generating, `shuriken` validates the loaded config and command-line
 overrides. It checks required values, positive integer settings, `yes`/`no`
@@ -96,7 +97,7 @@ tarball filename uses `<timestamp>` as a placeholder so the output is stable.
 `--print-config` writes stable shell-style assignments to stdout in this order:
 `CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`,
 `THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`,
-`RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `TARBALL_INCLUDE`,
+`RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`,
 `TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, `SYNC_DELETE`,
 `SYNC_DESTINATIONS`, and `ORIGINAL_BASEPATH`. Scalar values use Bash `%q`
 quoting and `TAR_OPTS` and `SYNC_DESTINATIONS` are normalized to Bash array
@@ -135,6 +136,8 @@ The following long options override config values:
 | `--no-shuffle` | `SHUFFLE=no` |
 | `--splash` | `SPLASH_PAGE=yes` |
 | `--no-splash` | `SPLASH_PAGE=no` |
+| `--stats` | `STATS_PAGE=yes` |
+| `--no-stats` | `STATS_PAGE=no` |
 | `--tarball` | `TARBALL_INCLUDE=yes` |
 | `--no-tarball` | `TARBALL_INCLUDE=no` |
 | `--sync-delete` | `SYNC_DELETE=yes` |
@@ -146,6 +149,12 @@ configured sync destinations for that run.
 By default, the generated root `index.html` is a no-JavaScript splash page using
 a randomly selected album photo. Set `SPLASH_PAGE=no` or pass `--no-splash` to
 restore the top-level redirect to `page-1.html`.
+
+By default, `shuriken` also generates `stats.html`, a no-JavaScript page with
+EXIF-derived insights (camera leaderboard, shooting dates, exposure, dimension,
+and format breakdowns) plus one `camera-<slug>.html` per camera linked from the
+leaderboard, and shows a `Stats` link in the page header bar. Set `STATS_PAGE=no`
+or pass `--no-stats` to skip the stats and per-camera pages and hide the link.
 
 To quickly pick a new random splash photo for an already generated album, run
 `shuriken --refresh-splash`. This rewrites only `DIST_DIR/index.html` using

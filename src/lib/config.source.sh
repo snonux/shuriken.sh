@@ -37,6 +37,7 @@ apply_config_defaults() {
     RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
+    STATS_PAGE="${STATS_PAGE:-yes}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"

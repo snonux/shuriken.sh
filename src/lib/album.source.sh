@@ -927,6 +927,7 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_random_seed"]="$RANDOM_SEED"
     _GENERATION_METADATA["settings_shuffle"]="$SHUFFLE"
     _GENERATION_METADATA["settings_splash_page"]="$SPLASH_PAGE"
+    _GENERATION_METADATA["settings_stats_page"]="$STATS_PAGE"
     _GENERATION_METADATA["settings_original_basepath"]="$ORIGINAL_BASEPATH"
 }
 
@@ -985,6 +986,8 @@ _generation_metadata_json() {
         "$(_json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
     printf '    "splash_page": %s,\n' \
         "$(_json_bool "${_GENERATION_METADATA["settings_splash_page"]}")"
+    printf '    "stats_page": %s,\n' \
+        "$(_json_bool "${_GENERATION_METADATA["settings_stats_page"]}")"
     printf '    "original_basepath": %s\n' \
         "$(_json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
     printf '  }\n'
@@ -1040,6 +1043,16 @@ create_generation_archive() {
     fi
 }
 
+# Aggregate EXIF stats and render the stats page plus the per-camera pages into
+# the dist root (html_dir and backhref are '.', matching render_album_pages).
+# Run after the album pages so the per-photo identify cache is already warm.
+generate_stats_pages() {
+    log_verbose 'Stats page enabled; collecting EXIF stats'
+    collect_photo_exif_stats
+    render_stats_page . .
+    render_camera_pages . .
+}
+
 generate() {
     local tarball_name=''
 
@@ -1056,6 +1069,9 @@ generate() {
     prepare_generation_site_assets
     clear_rendered_html
     render_album_pages 'photos' '.' 'thumbs' 'blurs' '.' "$tarball_name"
+    if [ "$STATS_PAGE" = yes ]; then
+        generate_stats_pages
+    fi
     create_generation_archive "$tarball_name"
     write_generation_metadata "$tarball_name"
 }
@@ -1158,6 +1174,7 @@ collect_dry_run_plan() {
     plan_ref["random_seed"]="$RANDOM_SEED"
     plan_ref["shuffle"]="$SHUFFLE"
     plan_ref["splash_page"]="$SPLASH_PAGE"
+    plan_ref["stats_page"]="$STATS_PAGE"
     plan_ref["image_count"]="$image_count"
     plan_ref["tarball_include"]="$TARBALL_INCLUDE"
     plan_ref["tarball_name_plan"]='not planned'

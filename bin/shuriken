@@ -40,6 +40,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     RANDOM_SEED
     SHUFFLE
     SPLASH_PAGE
+    STATS_PAGE
     SYNC_DELETE
     TARBALL_INCLUDE
 )
@@ -58,6 +59,8 @@ declare -Ar CLI_OPTION_SPEC=(
     [--no-shuffle]='kind=flag value=no config=SHUFFLE'
     [--splash]='kind=flag value=yes config=SPLASH_PAGE'
     [--no-splash]='kind=flag value=no config=SPLASH_PAGE'
+    [--stats]='kind=flag value=yes config=STATS_PAGE'
+    [--no-stats]='kind=flag value=no config=STATS_PAGE'
     [--tarball]='kind=flag value=yes config=TARBALL_INCLUDE'
     [--no-tarball]='kind=flag value=no config=TARBALL_INCLUDE'
     [--force]='kind=flag value=yes target=SHURIKEN_FORCE_GENERATE'
@@ -107,6 +110,8 @@ usage() {
     --random-seed VALUE
     --splash
     --no-splash
+    --stats
+    --no-stats
     --shuffle
     --no-shuffle
     --tarball
@@ -629,6 +634,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
     'render_stats_body_html|context_raw|stats_body|stats_body|stats'
+    'render_stats_page_html|config_html|STATS_PAGE||'
     'render_tarball_include|tarball_include|||'
     'render_tarball_name_html|context_html|tarball_name|tarball_name|footer'
     'render_thumbheight_html|config_html|THUMBHEIGHT||'
@@ -939,6 +945,12 @@ prepare_template_render_vars() {
                         ;;
                     ORIGINAL_BASEPATH)
                         context_value="$ORIGINAL_BASEPATH"
+                        ;;
+                    STATS_PAGE)
+                        # Always defaulted by apply_config_defaults; degrade to
+                        # "no" (link hidden) if somehow unset so the header bar
+                        # never references a stats page that was not generated.
+                        context_value="${STATS_PAGE:-no}"
                         ;;
                     THUMBHEIGHT)
                         # Refresh-only configs do not require generation
@@ -2429,6 +2441,7 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_random_seed"]="$RANDOM_SEED"
     _GENERATION_METADATA["settings_shuffle"]="$SHUFFLE"
     _GENERATION_METADATA["settings_splash_page"]="$SPLASH_PAGE"
+    _GENERATION_METADATA["settings_stats_page"]="$STATS_PAGE"
     _GENERATION_METADATA["settings_original_basepath"]="$ORIGINAL_BASEPATH"
 }
 
@@ -2487,6 +2500,8 @@ _generation_metadata_json() {
         "$(_json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
     printf '    "splash_page": %s,\n' \
         "$(_json_bool "${_GENERATION_METADATA["settings_splash_page"]}")"
+    printf '    "stats_page": %s,\n' \
+        "$(_json_bool "${_GENERATION_METADATA["settings_stats_page"]}")"
     printf '    "original_basepath": %s\n' \
         "$(_json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
     printf '  }\n'
@@ -2542,6 +2557,16 @@ create_generation_archive() {
     fi
 }
 
+# Aggregate EXIF stats and render the stats page plus the per-camera pages into
+# the dist root (html_dir and backhref are '.', matching render_album_pages).
+# Run after the album pages so the per-photo identify cache is already warm.
+generate_stats_pages() {
+    log_verbose 'Stats page enabled; collecting EXIF stats'
+    collect_photo_exif_stats
+    render_stats_page . .
+    render_camera_pages . .
+}
+
 generate() {
     local tarball_name=''
 
@@ -2558,6 +2583,9 @@ generate() {
     prepare_generation_site_assets
     clear_rendered_html
     render_album_pages 'photos' '.' 'thumbs' 'blurs' '.' "$tarball_name"
+    if [ "$STATS_PAGE" = yes ]; then
+        generate_stats_pages
+    fi
     create_generation_archive "$tarball_name"
     write_generation_metadata "$tarball_name"
 }
@@ -2660,6 +2688,7 @@ collect_dry_run_plan() {
     plan_ref["random_seed"]="$RANDOM_SEED"
     plan_ref["shuffle"]="$SHUFFLE"
     plan_ref["splash_page"]="$SPLASH_PAGE"
+    plan_ref["stats_page"]="$STATS_PAGE"
     plan_ref["image_count"]="$image_count"
     plan_ref["tarball_include"]="$TARBALL_INCLUDE"
     plan_ref["tarball_name_plan"]='not planned'
@@ -3742,6 +3771,7 @@ apply_config_defaults() {
     RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
+    STATS_PAGE="${STATS_PAGE:-yes}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
@@ -3793,6 +3823,7 @@ print_config() {
     print_shell_assignment RANDOM_SEED "$RANDOM_SEED"
     print_shell_assignment SHUFFLE "$SHUFFLE"
     print_shell_assignment SPLASH_PAGE "$SPLASH_PAGE"
+    print_shell_assignment STATS_PAGE "$STATS_PAGE"
     print_shell_assignment TARBALL_INCLUDE "$TARBALL_INCLUDE"
     print_shell_assignment TARBALL_SUFFIX "$TARBALL_SUFFIX"
     print_shell_assignment TAR_TIMEOUT "$TAR_TIMEOUT"
@@ -4248,6 +4279,7 @@ validate_common_config() {
     validate_positive_integer_config_var TAR_TIMEOUT || return
     validate_yes_no_config_var SHUFFLE || return
     validate_yes_no_config_var SPLASH_PAGE || return
+    validate_yes_no_config_var STATS_PAGE || return
     validate_yes_no_config_var TARBALL_INCLUDE || return
 }
 
@@ -4517,6 +4549,7 @@ run_action_body_context() {
         RANDOM_SEED
         SHUFFLE
         SPLASH_PAGE
+        STATS_PAGE
         TARBALL_INCLUDE
         TARBALL_SUFFIX
         TAR_OPTS
@@ -4622,6 +4655,7 @@ log_configured_action() {
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"
     log_verbose "Effective splash page setting: $SPLASH_PAGE"
+    log_verbose "Effective stats page setting: $STATS_PAGE"
     log_verbose "Effective tarball setting: $TARBALL_INCLUDE"
     log_verbose "Effective sync delete setting: $SYNC_DELETE"
     log_verbose "Effective force generation setting: $SHURIKEN_FORCE_GENERATE"

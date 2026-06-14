@@ -167,6 +167,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
     'render_stats_body_html|context_raw|stats_body|stats_body|stats'
+    'render_stats_page_html|config_html|STATS_PAGE||'
     'render_tarball_include|tarball_include|||'
     'render_tarball_name_html|context_html|tarball_name|tarball_name|footer'
     'render_thumbheight_html|config_html|THUMBHEIGHT||'
@@ -477,6 +478,12 @@ prepare_template_render_vars() {
                         ;;
                     ORIGINAL_BASEPATH)
                         context_value="$ORIGINAL_BASEPATH"
+                        ;;
+                    STATS_PAGE)
+                        # Always defaulted by apply_config_defaults; degrade to
+                        # "no" (link hidden) if somehow unset so the header bar
+                        # never references a stats page that was not generated.
+                        context_value="${STATS_PAGE:-no}"
                         ;;
                     THUMBHEIGHT)
                         # Refresh-only configs do not require generation

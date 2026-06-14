@@ -40,6 +40,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     RANDOM_SEED
     SHUFFLE
     SPLASH_PAGE
+    STATS_PAGE
     SYNC_DELETE
     TARBALL_INCLUDE
 )
@@ -58,6 +59,8 @@ declare -Ar CLI_OPTION_SPEC=(
     [--no-shuffle]='kind=flag value=no config=SHUFFLE'
     [--splash]='kind=flag value=yes config=SPLASH_PAGE'
     [--no-splash]='kind=flag value=no config=SPLASH_PAGE'
+    [--stats]='kind=flag value=yes config=STATS_PAGE'
+    [--no-stats]='kind=flag value=no config=STATS_PAGE'
     [--tarball]='kind=flag value=yes config=TARBALL_INCLUDE'
     [--no-tarball]='kind=flag value=no config=TARBALL_INCLUDE'
     [--force]='kind=flag value=yes target=SHURIKEN_FORCE_GENERATE'

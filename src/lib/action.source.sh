@@ -53,6 +53,7 @@ run_action_body_context() {
         RANDOM_SEED
         SHUFFLE
         SPLASH_PAGE
+        STATS_PAGE
         TARBALL_INCLUDE
         TARBALL_SUFFIX
         TAR_OPTS
@@ -158,6 +159,7 @@ log_configured_action() {
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"
     log_verbose "Effective splash page setting: $SPLASH_PAGE"
+    log_verbose "Effective stats page setting: $STATS_PAGE"
     log_verbose "Effective tarball setting: $TARBALL_INCLUDE"
     log_verbose "Effective sync delete setting: $SYNC_DELETE"
     log_verbose "Effective force generation setting: $SHURIKEN_FORCE_GENERATE"

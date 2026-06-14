@@ -193,6 +193,7 @@ validate_common_config() {
     validate_positive_integer_config_var TAR_TIMEOUT || return
     validate_yes_no_config_var SHUFFLE || return
     validate_yes_no_config_var SPLASH_PAGE || return
+    validate_yes_no_config_var STATS_PAGE || return
     validate_yes_no_config_var TARBALL_INCLUDE || return
 }
 

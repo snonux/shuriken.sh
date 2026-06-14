@@ -142,6 +142,7 @@ assert metadata["settings"]["maxpreviews"] == maxpreviews
 assert metadata["settings"]["image_jobs"] == "3"
 assert metadata["settings"]["shuffle"] is False
 assert isinstance(metadata["settings"]["splash_page"], bool)
+assert isinstance(metadata["settings"]["stats_page"], bool)
 assert "original_basepath" in metadata["settings"]
 PY
 }
@@ -1308,6 +1309,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
+STATS_PAGE=yes
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1354,6 +1356,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
+STATS_PAGE=yes
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1493,6 +1496,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=yes
 SPLASH_PAGE=yes
+STATS_PAGE=yes
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1534,6 +1538,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
+STATS_PAGE=yes
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1600,6 +1605,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=cli-seed
 SHUFFLE=yes
 SPLASH_PAGE=no
+STATS_PAGE=yes
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -3002,6 +3008,112 @@ test_generate_cli_no_splash_overrides_config() {
     test::assert_not_contains 'Enter album' "$top_index_html"
     test::assert_not_contains '<script' "$top_index_html"
     test::assert_not_contains 'javascript:' "$top_index_html"
+    test::teardown
+}
+
+# Synthetic `identify -verbose` output with EXIF the stats aggregation can parse,
+# so a full --generate produces a real camera leaderboard + per-camera page.
+test::stats_identify_output() {
+    printf '%s\n' \
+        '  Format: JPEG (Joint Photographic Experts Group JFIF format)' \
+        '  Geometry: 160x90+0+0' \
+        '  exif:Make: Canon' \
+        '  exif:Model: EOS R5' \
+        '  exif:FNumber: 28/10' \
+        '  exif:ExposureTime: 1/250' \
+        '  exif:PhotographicSensitivity: 400' \
+        '  exif:FocalLength: 50/1' \
+        '  exif:DateTimeOriginal: 2023:07:15 14:30:00'
+}
+
+test_generate_stats_pages_created_and_nav_linked() {
+    local config_file
+    local fake_bin
+    local -i nav_links
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Stats album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_IMAGEMAGICK_IDENTIFY_OUTPUT="$(test::stats_identify_output)" \
+            "$TEST_SHURIKEN" --generate --random-seed stats-seed
+    )
+
+    # Stats page and the per-camera page (Canon EOS R5 -> canon-eos-r5) exist.
+    test::assert_file_exists "$TEST_TMPDIR/dist/stats.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/camera-canon-eos-r5.html"
+    test::assert_contains 'Canon EOS R5' "$(<"$TEST_TMPDIR/dist/stats.html")"
+    test::assert_not_contains '<script' "$(<"$TEST_TMPDIR/dist/stats.html")"
+
+    # The header bar links to the stats page on at least one generated page.
+    nav_links=$(grep -lF 'stats.html">Stats' "$TEST_TMPDIR"/dist/*.html | wc -l)
+    test "$nav_links" -gt 0
+
+    python3 - "$TEST_TMPDIR/dist/shuriken.json" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert metadata["settings"]["stats_page"] is True
+PY
+
+    test::teardown
+}
+
+test_generate_no_stats_suppresses_pages_and_nav() {
+    local config_file
+    local fake_bin
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'No stats album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_IMAGEMAGICK_IDENTIFY_OUTPUT="$(test::stats_identify_output)" \
+            "$TEST_SHURIKEN" --generate --no-stats --random-seed stats-seed
+    )
+
+    # No stats page, no per-camera pages.
+    test::assert_path_absent "$TEST_TMPDIR/dist/stats.html"
+    if compgen -G "$TEST_TMPDIR/dist/camera-*.html" >/dev/null; then
+        printf 'FAIL: --no-stats still produced camera pages\n' >&2
+        exit 1
+    fi
+    # No stats nav link anywhere.
+    if grep -RF 'stats.html">Stats' "$TEST_TMPDIR"/dist/*.html; then
+        printf 'FAIL: --no-stats still rendered the Stats nav link\n' >&2
+        exit 1
+    fi
+
+    python3 - "$TEST_TMPDIR/dist/shuriken.json" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert metadata["settings"]["stats_page"] is False
+PY
+
     test::teardown
 }
 
@@ -5463,6 +5575,12 @@ main() {
     test::run_case \
         '--generate --no-splash keeps root index redirect' \
         test_generate_cli_no_splash_overrides_config
+    test::run_case \
+        '--generate creates stats and per-camera pages with nav link' \
+        test_generate_stats_pages_created_and_nav_linked
+    test::run_case \
+        '--generate --no-stats suppresses stats pages and nav link' \
+        test_generate_no_stats_suppresses_pages_and_nav
     test::run_case \
         '--refresh-splash rewrites only root index from existing assets' \
         test_refresh_splash_rewrites_only_index_from_existing_assets
