@@ -1,6 +1,6 @@
 # shuriken
 
-![Shuriken logo](assets/docs/shuriken-logo.svg)
+<img src="assets/docs/shuriken-logo.svg" alt="Shuriken logo" width="160">
 
 shuriken is a Bash script for Unix like operating systems (such as Linux) to generate static web photo albums.
 The resulting static photo album is pure HTML+CSS (without any JavaScript!).
