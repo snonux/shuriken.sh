@@ -30,7 +30,10 @@ resolve_tar_opts() {
     # Parse TAR_OPTS (array or scalar) via the shared config-array helper,
     # then fall back to a plain "-c" whenever no options were configured,
     # whether TAR_OPTS was unset or set to an empty value.
-    resolve_config_array TAR_OPTS options_ref
+    # The helper returns non-zero when TAR_OPTS was never declared; we ignore
+    # that here (|| true) because the empty-array fallback below covers the
+    # unset case, and the bare non-zero return would otherwise trip set -e.
+    resolve_config_array TAR_OPTS options_ref || true
 
     if (( ${#options_ref[@]} == 0 )); then
         # shellcheck disable=SC2034

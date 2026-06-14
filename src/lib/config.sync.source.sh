@@ -6,7 +6,10 @@ resolve_sync_destinations() {
     # Parse SYNC_DESTINATIONS (array or scalar) via the shared config-array
     # helper. Unlike TAR_OPTS there is no default: an unset or empty value
     # simply yields an empty destinations array for callers to validate.
-    resolve_config_array SYNC_DESTINATIONS destinations_ref
+    # The helper returns non-zero when SYNC_DESTINATIONS was never declared;
+    # we ignore that (|| true) since the already-empty array is exactly the
+    # desired result, and the bare non-zero return would otherwise trip set -e.
+    resolve_config_array SYNC_DESTINATIONS destinations_ref || true
 }
 
 sync_dist() {
