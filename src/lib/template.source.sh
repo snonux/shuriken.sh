@@ -296,6 +296,7 @@ source_template_file() {
     local -r output_path="$1"; shift
     local -r render_vars_name="$1"; shift
     local context_file
+    local sig
     local -i status=0
 
     context_file=$(mktemp)
@@ -303,6 +304,39 @@ source_template_file() {
     if (( status != 0 )); then
         return "$status"
     fi
+
+    # Single cleanup point for the BASH_ENV context tempfile. The traps MUST be
+    # registered here in source_template_file's own body (not in a helper): a
+    # RETURN trap is not function-scoped unless functrace is enabled, so a trap
+    # set inside a helper would fire when that helper returns and delete the file
+    # before the render even runs.
+    #
+    # The RETURN trap covers normal and error returns (errexit unwinds through
+    # it) and clears ALL of these traps, including itself, so a lingering RETURN
+    # trap cannot fire again on an enclosing function's return against the now
+    # out-of-scope context_file local (which would trip set -u).
+    #
+    # A RETURN trap alone does NOT fire when a signal terminates the shell with
+    # its default disposition. source_template_file also runs in backgrounded
+    # render subshells (see queue_album_view_render_job) that get SIGTERM'd by
+    # terminate_active_generation on interrupt, so we additionally trap the
+    # terminating signals: each handler removes the file, clears the traps and
+    # re-raises the original signal so the process still exits with that signal's
+    # default disposition.
+    #
+    # We deliberately do NOT trap PIPE: the internal "{ ... } | bash" pipeline
+    # below legitimately produces SIGPIPE when the reader closes early, and
+    # trapping it would tear the render down mid-flight. SIGKILL cannot be
+    # trapped either, so a KILL escalation may still leak a file that the OS tmp
+    # reaper later clears; that is the only unavoidable residual case.
+    trap 'rm -f "$context_file"; trap - INT TERM HUP RETURN' RETURN
+    for sig in INT TERM HUP; do
+        # $sig is intentionally expanded now (so each handler re-raises its own
+        # signal); $context_file and $$ are escaped to expand when the trap runs.
+        # shellcheck disable=SC2064
+        trap "rm -f \"\$context_file\"; trap - INT TERM HUP RETURN; \
+            kill -s $sig \$\$" "$sig"
+    done
 
     if {
         declare -p TEMPLATE_RENDER_FIELD_SPECS
@@ -316,7 +350,6 @@ source_template_file() {
         status=$?
     fi
     if (( status != 0 )); then
-        rm -f "$context_file"
         return "$status"
     fi
 
@@ -326,7 +359,6 @@ source_template_file() {
     else
         status=$?
     fi
-    rm -f "$context_file"
     if (( status != 0 )); then
         return "$status"
     fi

@@ -4090,6 +4090,98 @@ BASH
     test::teardown
 }
 
+test_template_interrupt_removes_context_file() {
+    local context_file
+    local fake_bin
+    local started_file
+    local template_dir
+    local child_pid
+    local -i status=0
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    template_dir="$TEST_TMPDIR/templates"
+    context_file="$TEST_TMPDIR/template-context"
+    started_file="$TEST_TMPDIR/template-started"
+    mkdir -p "$fake_bin" "$template_dir" "$TEST_TMPDIR/dist"
+    {
+        printf '#!/usr/bin/env bash\n'
+        # shellcheck disable=SC2016
+        printf 'printf %%s\\\\n \"$SHURIKEN_FAKE_CONTEXT_FILE\"\n'
+    } > "$fake_bin/mktemp"
+    chmod 0755 "$fake_bin/mktemp"
+    # The rendered template signals it started, then blocks so the render is
+    # genuinely in flight (context already built, env -i bash running) when we
+    # deliver the interrupt. This exercises the signal traps, not the RETURN
+    # trap: a plain RETURN trap does not fire when a signal kills the shell.
+    {
+        printf 'printf rendered > %q\n' "$started_file"
+        printf 'sleep 30\n'
+    } > "$template_dir/preview.tmpl"
+
+    # Run a full template render in a child shell we can signal mid-render. Going
+    # through the template entry point populates a valid render context so the
+    # context build succeeds and the render actually reaches the blocking sleep.
+    bash -euo pipefail -s \
+        "$TEST_SHURIKEN" \
+        "$fake_bin" \
+        "$template_dir" \
+        "$TEST_TMPDIR/dist" \
+        "$context_file" \
+        <<'BASH' &
+shuriken="$1"; shift
+fake_bin="$1"; shift
+template_dir="$1"; shift
+dist_dir="$1"; shift
+context_file="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+PATH="$fake_bin:$PATH"
+SHURIKEN_FAKE_CONTEXT_FILE="$context_file"
+export SHURIKEN_FAKE_CONTEXT_FILE
+DIST_DIR="$dist_dir"
+TEMPLATE_DIR="$template_dir"
+TITLE='Template interrupt cleanup'
+HEIGHT=''
+THUMBHEIGHT=30
+MAXPREVIEWS=40
+ORIGINAL_BASEPATH=''
+TARBALL_INCLUDE=no
+SHURIKEN_OUTPUT_MODE=quiet
+apply_config_defaults
+
+template preview out.html \
+    animation_class '' \
+    backhref '#' \
+    html_dir . \
+    page_num 1 \
+    photo photo.jpg \
+    preview_num 1 \
+    thumbs_dir thumbs
+BASH
+    child_pid=$!
+
+    # Wait for the render to begin, then interrupt it with SIGTERM.
+    while [ ! -f "$started_file" ] && kill -0 "$child_pid" 2>/dev/null; do
+        sleep 0.05
+    done
+    kill -TERM "$child_pid" 2>/dev/null || true
+    set +e
+    wait "$child_pid"
+    status=$?
+    set -e
+
+    if (( status == 0 )); then
+        printf 'FAIL: expected interrupted render to exit non-zero\n' >&2
+        exit 1
+    fi
+
+    test::assert_path_absent "$context_file"
+    test::teardown
+}
+
 test_generate_swap_failure_restores_dist() {
     local config_file
     local fake_bin
@@ -5033,6 +5125,9 @@ main() {
     test::run_case \
         'template setup failure fails status-tested render' \
         test_template_setup_failure_fails_status_tested_render
+    test::run_case \
+        'template interrupt removes context file' \
+        test_template_interrupt_removes_context_file
     test::run_case \
         '--generate swap failure restores final dist' \
         test_generate_swap_failure_restores_dist
