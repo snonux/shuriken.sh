@@ -1838,6 +1838,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains 'Random seed: dry-seed' "$output"
     test::assert_contains 'Shuffle: yes' "$output"
     test::assert_contains 'Splash page: no' "$output"
+    test::assert_contains 'Stats page: yes' "$output"
     test::assert_contains 'Image count: 6' "$output"
     test::assert_contains 'Tarball setting: yes' "$output"
     test::assert_contains 'Tarball name plan: incoming-<timestamp>.tar' \
@@ -1864,6 +1865,9 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains \
         "  $dist_dir/[redirect].html (14 navigation redirects)" \
         "$output"
+    test::assert_contains "  $dist_dir/stats.html (EXIF stats page)" "$output"
+    test::assert_contains "  $dist_dir/camera-*.html (per-camera pages)" \
+        "$output"
     test::assert_not_contains "$dist_dir/html" "$output"
     test::assert_contains "  $dist_dir/incoming-<timestamp>.tar" "$output"
     test::assert_not_contains 'Processing ' "$output"
@@ -1872,6 +1876,35 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_path_absent "$TEST_TMPDIR/config-dist"
     test::assert_path_absent "$forbidden_log"
     test::assert_no_staging_dirs "$TEST_TMPDIR"
+    test::teardown
+}
+
+test_dry_run_no_stats_omits_stats_plan() {
+    local config_file
+    local dist_dir
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$dist_dir" 'Dry no stats' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --dry-run --no-stats
+    )
+
+    test::assert_contains 'Stats page: no' "$output"
+    test::assert_not_contains 'stats.html (EXIF stats page)' "$output"
+    test::assert_not_contains 'camera-*.html (per-camera pages)' "$output"
+    test::assert_path_absent "$dist_dir"
     test::teardown
 }
 
@@ -5506,6 +5539,9 @@ main() {
     test::run_case \
         '--dry-run reports CLI overrides without writes' \
         test_dry_run_reports_cli_overrides_without_writes
+    test::run_case \
+        '--dry-run --no-stats omits stats from the plan' \
+        test_dry_run_no_stats_omits_stats_plan
     test::run_case \
         '--dry-run reports empty plan without writes' \
         test_dry_run_reports_empty_plan_without_writes

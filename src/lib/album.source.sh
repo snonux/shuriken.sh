@@ -1204,6 +1204,7 @@ print_dry_run_plan() {
     printf 'Random seed: %s\n' "${plan_ref["random_seed"]}"
     printf 'Shuffle: %s\n' "${plan_ref["shuffle"]}"
     printf 'Splash page: %s\n' "${plan_ref["splash_page"]}"
+    printf 'Stats page: %s\n' "${plan_ref["stats_page"]}"
     printf 'Image count: %s\n' "${plan_ref["image_count"]}"
     printf 'Tarball setting: %s\n' "${plan_ref["tarball_include"]}"
     printf 'Tarball name plan: %s\n' "${plan_ref["tarball_name_plan"]}"
@@ -1238,6 +1239,13 @@ print_dry_run_plan() {
         "${plan_ref["dist_dir"]}" "${plan_ref["details_count"]}"
     printf '  %s/[redirect].html (%s navigation redirects)\n' \
         "${plan_ref["dist_dir"]}" "${plan_ref["redirect_count"]}"
+    if [ "${plan_ref["stats_page"]}" = yes ]; then
+        # The exact camera-page count needs EXIF aggregation, which dry-run
+        # does not perform, so list them as a wildcard.
+        printf '  %s/stats.html (EXIF stats page)\n' "${plan_ref["dist_dir"]}"
+        printf '  %s/camera-*.html (per-camera pages)\n' \
+            "${plan_ref["dist_dir"]}"
+    fi
     if [ "${plan_ref["tarball_include"]}" = yes ]; then
         printf '  %s/%s\n' \
             "${plan_ref["dist_dir"]}" "${plan_ref["tarball_name_plan"]}"
