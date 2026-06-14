@@ -63,6 +63,9 @@ reset_photo_exif_stats() {
     declare -gA STATS_FLASH=()
     declare -gA STATS_TOTALS=()
     STATS_TOTALS[photos]=0
+    # Reverse map slug -> owning camera label, used to keep camera-<slug>.html
+    # filenames unique when two distinct labels sanitize to the same slug.
+    declare -gA STATS_SLUG_OWNERS=()
 }
 
 # Decode an EXIF rational ("num/den") to a decimal with `scale` digits.
@@ -303,6 +306,36 @@ _stats_camera_label() {
     esac
 }
 
+# Resolve a unique camera-page slug for a label into the named output variable.
+# A label keeps the slug it was first assigned (idempotent on re-encounter).
+# Distinct labels whose sanitized slug collides (e.g. two models differing only
+# in punctuation, or an all-symbol label that slugs to empty) get a numeric
+# suffix so each camera maps to its own camera-<slug>.html and its own
+# STATS_CAMERA_PHOTOS list. Uses a nameref output (not command substitution) so
+# its mutation of STATS_SLUG_OWNERS persists in the caller's shell.
+_stats_resolve_camera_slug() {
+    local -n slug_out_ref="$1"; shift
+    local -r label="$1"; shift
+    local base
+    local -i suffix=2
+
+    if [ -n "${STATS_CAMERA_SLUGS["$label"]:-}" ]; then
+        slug_out_ref="${STATS_CAMERA_SLUGS["$label"]}"
+        return
+    fi
+    base=$(_stats_slug "$label")
+    if [ -z "$base" ]; then
+        base=camera
+    fi
+    slug_out_ref="$base"
+    while [ -n "${STATS_SLUG_OWNERS["$slug_out_ref"]:-}" ] \
+        && [ "${STATS_SLUG_OWNERS["$slug_out_ref"]}" != "$label" ]; do
+        slug_out_ref="${base}-${suffix}"
+        (( ++suffix ))
+    done
+    STATS_SLUG_OWNERS["$slug_out_ref"]="$label"
+}
+
 # Increment STATS_CAMERAS for a photo and record it on the per-camera list so
 # um0 can render camera-<slug>.html. Skips photos with no Make/Model at all.
 _stats_record_camera() {
@@ -315,7 +348,7 @@ _stats_record_camera() {
     if [ -z "$label" ]; then
         return
     fi
-    slug=$(_stats_slug "$label")
+    _stats_resolve_camera_slug slug "$label"
     STATS_CAMERAS["$label"]=$(( ${STATS_CAMERAS["$label"]:-0} + 1 ))
     STATS_CAMERA_SLUGS["$label"]="$slug"
     if [ -n "${STATS_CAMERA_PHOTOS["$slug"]:-}" ]; then
@@ -373,7 +406,10 @@ _stats_record_exposure() {
         _stats_bump STATS_SHUTTER "$(_stats_shutter_bucket "$decimal")"
     fi
 
-    raw="${values_ref[PhotographicSensitivity]:-${values_ref[ISOSpeedRatings]:-${values_ref[ISO]:-}}}"
+    # ISO fallback order mirrors album.source.sh's tooltip builder
+    # (ISOSpeedRatings -> PhotographicSensitivity -> ISO) so a photo carrying
+    # several ISO tags buckets the same value it shows in its tooltip.
+    raw="${values_ref[ISOSpeedRatings]:-${values_ref[PhotographicSensitivity]:-${values_ref[ISO]:-}}}"
     if [[ "$raw" =~ ^[0-9]+$ ]]; then
         _stats_bump STATS_ISO "$(_stats_iso_bucket "$raw")"
     fi
@@ -432,6 +468,8 @@ _stats_record_dimensions() {
 
 # Record the file-format breakdown. The audit's cheapest path keys off the file
 # extension (no identify parsing), so this maps the extension to a format label.
+# This trusts the extension over actual content: a misnamed file (e.g. a PNG
+# named .jpg) is counted by its name. Unrecognized extensions fall into 'other'.
 _stats_record_format() {
     local -r photo="$1"; shift
     local extension="${photo##*.}"

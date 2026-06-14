@@ -4982,6 +4982,32 @@ test_stats_tolerates_missing_and_edge_case_fields() {
     test::teardown
 }
 
+test_stats_distinct_cameras_get_unique_slugs() {
+    test::setup
+    test::source_shuriken_lib
+    reset_photo_exif_stats
+
+    # Two distinct camera labels that sanitize to the same base slug must keep
+    # separate leaderboard entries, separate camera-<slug>.html slugs, and
+    # separate per-camera photo lists (regression: slug collision merged them).
+    accumulate_photo_stats 'a.jpg' <<< $'  exif:Model: Canon EOS 1D'
+    accumulate_photo_stats 'b.jpg' <<< $'  exif:Model: Canon EOS-1D!!'
+
+    test "${STATS_CAMERAS[Canon EOS 1D]}" -eq 1
+    test "${STATS_CAMERAS[Canon EOS-1D!!]}" -eq 1
+    test "${STATS_CAMERA_SLUGS[Canon EOS 1D]}" = 'canon-eos-1d'
+    test "${STATS_CAMERA_SLUGS[Canon EOS-1D!!]}" = 'canon-eos-1d-2'
+    test "${STATS_CAMERA_PHOTOS[canon-eos-1d]}" = 'a.jpg'
+    test "${STATS_CAMERA_PHOTOS[canon-eos-1d-2]}" = 'b.jpg'
+
+    # Re-encountering the first camera reuses its slug and appends, not a new one.
+    accumulate_photo_stats 'c.jpg' <<< $'  exif:Model: Canon EOS 1D'
+    test "${STATS_CAMERAS[Canon EOS 1D]}" -eq 2
+    test "${STATS_CAMERA_PHOTOS[canon-eos-1d]}" = $'a.jpg\nc.jpg'
+
+    test::teardown
+}
+
 test_stats_bucket_boundaries_and_datetime_parsing() {
     test::setup
     test::source_shuriken_lib
@@ -5347,6 +5373,9 @@ main() {
     test::run_case \
         'stats tolerate missing and edge-case fields' \
         test_stats_tolerates_missing_and_edge_case_fields
+    test::run_case \
+        'stats give distinct cameras unique slugs' \
+        test_stats_distinct_cameras_get_unique_slugs
     test::run_case \
         'stats bucket boundaries and datetime parsing' \
         test_stats_bucket_boundaries_and_datetime_parsing
