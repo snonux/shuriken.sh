@@ -3700,6 +3700,7 @@ prev:html_dir prev
 preview:animation_class backhref html_dir page_num photo preview_num thumbs_dir
 redirect:html_dir redirect_page
 splash:backhref background_image blurs_dir enter_page html_dir photo photos_dir
+stats:backhref html_dir stats_body
 view:animation_class backhref html_dir page_num photo photos_dir preview_num
 END
     )
@@ -3716,6 +3717,7 @@ declare -a template_names=(
     preview
     redirect
     splash
+    stats
     view
 )
 
@@ -3735,6 +3737,88 @@ BASH
         printf 'actual:\n%s\n' "$output" >&2
         exit 1
     fi
+}
+
+test_render_stats_page_renders_sections_and_escapes() {
+    local html
+    local output_file
+
+    test::setup
+    output_file="$TEST_TMPDIR/dist/stats.html"
+    mkdir -p "$TEST_TMPDIR/dist"
+
+    # Feed synthetic EXIF straight into accumulate_photo_stats so the test does
+    # not depend on the cache layer, then render. The second camera label carries
+    # & and < to prove EXIF-derived labels are HTML-escaped.
+    bash -euo pipefail -s \
+        "$TEST_SHURIKEN" \
+        "$TEST_REPO_ROOT/share/templates/default" \
+        "$TEST_TMPDIR/dist" \
+        <<'BASH'
+shuriken="$1"; shift
+template_dir="$1"; shift
+dist_dir="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+DIST_DIR="$dist_dir"
+TEMPLATE_DIR="$template_dir"
+TITLE='Stats album'
+HEIGHT=600
+THUMBHEIGHT=120
+MAXPREVIEWS=40
+ORIGINAL_BASEPATH=''
+TARBALL_INCLUDE=no
+SHURIKEN_OUTPUT_MODE=quiet
+apply_config_defaults
+
+reset_photo_exif_stats
+accumulate_photo_stats 'a.jpg' <<'EXIF'
+  Geometry: 6000x4000+0+0
+  exif:Make: Canon
+  exif:Model: Canon EOS 5D
+  exif:FNumber: 28/10
+  exif:ISOSpeedRatings: 400
+  exif:DateTimeOriginal: 2021:06:14 10:00:00
+EXIF
+accumulate_photo_stats 'b.jpg' <<'EXIF'
+  Geometry: 6000x4000+0+0
+  exif:Make: Canon
+  exif:Model: Canon EOS 5D
+  exif:DateTimeOriginal: 2021:06:14 10:00:00
+EXIF
+accumulate_photo_stats 'c.png' <<'EXIF'
+  Geometry: 4000x6000+0+0
+  exif:Make: Nikon & Co
+  exif:Model: <Z6>
+  exif:DateTimeOriginal: 2022:07:14 10:00:00
+EXIF
+
+render_stats_page . .
+BASH
+
+    html=$(cat "$output_file")
+
+    # Leaderboard entry links to camera-<slug>.html with the right count/percent.
+    test::assert_contains \
+        '<a href="camera-canon-eos-5d.html">Canon EOS 5D</a>' "$html"
+    test::assert_contains '2 (67%)' "$html"
+    # A histogram section is present.
+    test::assert_contains '<h2>ISO</h2>' "$html"
+    test::assert_contains '400' "$html"
+    # EXIF-derived label with & and < is HTML-escaped, not raw markup.
+    test::assert_contains 'Nikon &amp; Co &lt;Z6&gt;' "$html"
+    test::assert_not_contains 'Nikon & Co <Z6>' "$html"
+    # Total photo count drives the percentage denominator.
+    test::assert_contains '3 photos analysed.' "$html"
+    # The Stats nav link is wired into the shared header.
+    test::assert_contains '>Stats</a>' "$html"
+    # Empty categories are omitted (no flash/lens/shutter data was supplied).
+    test::assert_not_contains '<h2>Flash</h2>' "$html"
+    test::assert_not_contains '<h2>Lenses</h2>' "$html"
+    test::assert_not_contains '<h2>Shutter speed</h2>' "$html"
+    test::teardown
 }
 
 test_template_context_validator_fails_fast_without_errexit() {
@@ -5331,6 +5415,9 @@ main() {
     test::run_case \
         'template required context vars come from render specs' \
         test_template_required_context_vars_come_from_render_specs
+    test::run_case \
+        'render_stats_page renders sections and escapes EXIF labels' \
+        test_render_stats_page_renders_sections_and_escapes
     test::run_case \
         'template context validator fails fast without errexit' \
         test_template_context_validator_fails_fast_without_errexit

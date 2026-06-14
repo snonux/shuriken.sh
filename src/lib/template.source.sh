@@ -144,7 +144,7 @@ current_date_text_to() {
 declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_animation_class_html|context_html|animation_class|animation_class|preview details view'
     'render_backhref_css|context_css|backhref|backhref|header splash'
-    'render_backhref_html|context_html|backhref|backhref|footer header preview splash details view'
+    'render_backhref_html|context_html|backhref|backhref|footer header preview splash details view stats'
     'render_background_image_css|context_css|background_image|background_image|header splash'
     'render_blurs_dir_css|context_css|blurs_dir|blurs_dir|header splash'
     'render_current_date_text|current_date_html|||'
@@ -164,6 +164,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_preview_num_html|context_html|preview_num|preview_num|preview details view'
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
+    'render_stats_body_html|context_raw|stats_body|stats_body|stats'
     'render_tarball_include|tarball_include|||'
     'render_tarball_name_html|context_html|tarball_name|tarball_name|footer'
     'render_thumbheight_html|config_html|THUMBHEIGHT||'

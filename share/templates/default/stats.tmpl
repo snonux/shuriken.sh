@@ -1,0 +1,16 @@
+# Stats page body. All of the variable-length, data-driven markup (camera
+# leaderboard, histograms, format breakdown, enum tables) is pre-rendered by
+# render_stats_page in src/lib/stats.source.sh and handed in through the raw
+# context field render_stats_body_html, so this template only supplies the page
+# chrome: the heading, the pre-built body, and a link back to the album. The
+# surrounding <html>/<head>/<body> and footer come from the header/footer
+# templates, which render_stats_page emits around this one (same as view/details).
+cat <<END
+<div class="view stats">
+    <h1 class="stats-title">${render_title_html} &mdash; Stats</h1>
+    <div class="stats-back navigator">
+        <a href="${render_backhref_html}/index.html">Back to album</a>
+    </div>
+    ${render_stats_body_html}
+</div>
+END

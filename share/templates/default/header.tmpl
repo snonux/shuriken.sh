@@ -95,6 +95,67 @@ cat <<END
             white-space: nowrap;
         }
 
+        div.stats {
+            margin: 0 auto;
+            max-width: 900px;
+            text-align: left;
+        }
+
+        h1.stats-title {
+            text-align: center;
+        }
+
+        section.stats-section {
+            background-color: #000000;
+            border: 3px solid #ffffff;
+            margin: 8px auto;
+            padding: 10px;
+        }
+
+        section.stats-section h2 {
+            font-size: 1.1em;
+            margin-top: 0;
+        }
+
+        /* Each bar row is a label, a proportional bar, and the count/percent.
+           Bars are pure CSS (width as a percentage of the top bucket) so the
+           page stays static HTML with no JavaScript or SVG. */
+        ul.stats-bars {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        ul.stats-bars li {
+            align-items: center;
+            display: flex;
+            gap: 8px;
+            margin: 2px 0;
+        }
+
+        span.stats-label {
+            flex: 0 0 9em;
+            word-break: break-word;
+        }
+
+        span.stats-bar-track {
+            background-color: #222222;
+            flex: 1 1 auto;
+            height: 1.1em;
+        }
+
+        span.stats-bar-fill {
+            background-color: #ffffff;
+            display: block;
+            height: 100%;
+        }
+
+        span.stats-count {
+            flex: 0 0 7em;
+            text-align: right;
+            white-space: nowrap;
+        }
+
         img {
             padding: 5px;
         }
@@ -215,6 +276,8 @@ cat <<END
     Site generated at ${render_current_date_text} with <a href="https://codeberg.org/snonux/shuriken.sh">codeberg.org/snonux/shuriken.sh</a>
     -
     &copy; by Paul Buetow
+    -
+    <a href="${render_backhref_html}/stats.html">Stats</a>
 </div>
 END
 fi
