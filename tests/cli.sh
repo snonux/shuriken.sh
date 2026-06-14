@@ -4886,6 +4886,170 @@ test_missing_option_values_fail() {
     done
 }
 
+test::source_shuriken_lib() {
+    # Source every inlined lib function from the generated binary (dropping the
+    # trailing dispatcher line) so unit tests can call functions directly, the
+    # same trick the render-redirect tests use.
+    # shellcheck source=/dev/null
+    source <(sed '$d' "$TEST_SHURIKEN")
+}
+
+test_stats_aggregates_synthetic_exif_fixtures() {
+    local fixture
+
+    test::setup
+    test::source_shuriken_lib
+    reset_photo_exif_stats
+
+    # Canon frame: rationals, ISO under PhotographicSensitivity, enums, geometry.
+    fixture=$'  Geometry: 6000x4000+0+0\n'
+    fixture+=$'  exif:Make: Canon\n'
+    fixture+=$'  exif:Model: Canon EOS 5D Mark IV\n'
+    fixture+=$'  exif:LensModel: EF50mm f/1.8 STM\n'
+    fixture+=$'  exif:FNumber: 14/5\n'
+    fixture+=$'  exif:ExposureTime: 1/250\n'
+    fixture+=$'  exif:FocalLength: 50/1\n'
+    fixture+=$'  exif:PhotographicSensitivity: 400\n'
+    fixture+=$'  exif:ExposureProgram: 3\n'
+    fixture+=$'  exif:MeteringMode: 5\n'
+    fixture+=$'  exif:WhiteBalance: 0\n'
+    fixture+=$'  exif:Flash: 1\n'
+    fixture+=$'  exif:DateTimeOriginal: 2023:06:14 15:30:00'
+    accumulate_photo_stats 'a.jpg' <<< "$fixture"
+
+    # Second Canon frame, portrait geometry, same camera -> leaderboard count 2.
+    fixture=$'  Geometry: 4000x6000+0+0\n'
+    fixture+=$'  exif:Make: Canon\n'
+    fixture+=$'  exif:Model: Canon EOS 5D Mark IV\n'
+    fixture+=$'  exif:DateTimeOriginal: 2024:01:09 08:00:00'
+    accumulate_photo_stats 'b.png' <<< "$fixture"
+
+    test "${STATS_TOTALS[photos]}" -eq 2
+    test "${STATS_CAMERAS[Canon EOS 5D Mark IV]}" -eq 2
+    test "${STATS_CAMERA_SLUGS[Canon EOS 5D Mark IV]}" = 'canon-eos-5d-mark-iv'
+    # Per-camera photo list keeps both frames in encounter order.
+    test "${STATS_CAMERA_PHOTOS[canon-eos-5d-mark-iv]}" = $'a.jpg\nb.png'
+    test "${STATS_LENSES[EF50mm f/1.8 STM]}" -eq 1
+    test "${STATS_YEARS[2023]}" -eq 1
+    test "${STATS_YEARS[2024]}" -eq 1
+    test "${STATS_MONTHS[06]}" -eq 1
+    test "${STATS_MONTHS[01]}" -eq 1
+    # 14/5 = f/2.8 ; 1/250s ; FocalLength 50mm -> 35-70mm ; ISO 400.
+    test "${STATS_APERTURE[f/2.8]}" -eq 1
+    test "${STATS_SHUTTER[1/250s]}" -eq 1
+    test "${STATS_FOCAL[35-70mm]}" -eq 1
+    test "${STATS_ISO[400]}" -eq 1
+    test "${STATS_EXPOSURE_PROGRAM[Aperture priority]}" -eq 1
+    test "${STATS_METERING[Multi-segment]}" -eq 1
+    test "${STATS_WHITE_BALANCE[Auto]}" -eq 1
+    test "${STATS_FLASH[Flash fired]}" -eq 1
+    # 6000x4000 = 24MP -> 20-40MP, 3:2, Landscape; portrait frame -> Portrait.
+    test "${STATS_MEGAPIXELS[20-40MP]}" -eq 2
+    test "${STATS_ASPECT[3:2]}" -eq 2
+    test "${STATS_ORIENTATION[Landscape]}" -eq 1
+    test "${STATS_ORIENTATION[Portrait]}" -eq 1
+    test "${STATS_FORMAT[JPEG]}" -eq 1
+    test "${STATS_FORMAT[PNG]}" -eq 1
+
+    test::teardown
+}
+
+test_stats_tolerates_missing_and_edge_case_fields() {
+    local fixture
+
+    test::setup
+    test::source_shuriken_lib
+    reset_photo_exif_stats
+
+    # Photo with no EXIF and no camera at all: counted, but no leaderboard entry.
+    accumulate_photo_stats 'bare.gif' <<< $'  Format: GIF'
+    test "${STATS_TOTALS[photos]}" -eq 1
+    test "${#STATS_CAMERAS[@]}" -eq 0
+    test "${STATS_FORMAT[GIF]}" -eq 1
+
+    # Make only (no Model) still produces a leaderboard entry and slug.
+    accumulate_photo_stats 'phone.jpg' <<< $'  exif:Make: Apple'
+    test "${STATS_CAMERAS[Apple]}" -eq 1
+    test "${STATS_CAMERA_SLUGS[Apple]}" = 'apple'
+
+    # Rational guards: zero denominator and bare decimal exposure time.
+    fixture=$'  exif:FNumber: 4/0\n'
+    fixture+=$'  exif:ExposureTime: 0.5'
+    accumulate_photo_stats 'edge.jpg' <<< "$fixture"
+    test "${#STATS_APERTURE[@]}" -eq 0
+    test "${STATS_SHUTTER[1/2s]}" -eq 1
+
+    test::teardown
+}
+
+test_stats_bucket_boundaries_and_datetime_parsing() {
+    test::setup
+    test::source_shuriken_lib
+
+    # Aperture/shutter/ISO/focal boundary checks against the plan ladders.
+    test "$(_stats_aperture_bucket "$(_stats_rational_to_decimal 14/5)")" = 'f/2.8'
+    test "$(_stats_aperture_bucket 1.4)" = 'f/1.8 or wider'
+    test "$(_stats_aperture_bucket 22)" = 'f/22 or narrower'
+    test "$(_stats_shutter_bucket 0.002)" = '1/500s'
+    test "$(_stats_shutter_bucket 2)" = 'longer than 1s'
+    test "$(_stats_iso_bucket 100)" = '100'
+    test "$(_stats_iso_bucket 250)" = '400'
+    test "$(_stats_iso_bucket 51200)" = 'over 25600'
+    test "$(_stats_focal_bucket 24)" = '24-35mm'
+    test "$(_stats_focal_bucket 300)" = 'over 200mm'
+    test "$(_stats_megapixels_bucket 24)" = '20-40MP'
+    test "$(_stats_aspect_bucket 1920 1080)" = '16:9'
+    test "$(_stats_aspect_bucket 100 100)" = '1:1'
+    test "$(_stats_orientation_bucket 100 100)" = 'Square'
+
+    # DateTimeOriginal substring parse: must split YYYY/MM without date -d, and
+    # fall back to DateTime when the original is absent.
+    reset_photo_exif_stats
+    accumulate_photo_stats 'd1.jpg' <<< $'  exif:DateTime: 2019:12:25 10:00:00'
+    test "${STATS_YEARS[2019]}" -eq 1
+    test "${STATS_MONTHS[12]}" -eq 1
+
+    test::teardown
+}
+
+test_stats_collect_reads_cached_identify_output() {
+    local incoming_dir
+    local dist_dir
+
+    test::setup
+    test::source_shuriken_lib
+
+    incoming_dir="$TEST_TMPDIR/incoming"
+    dist_dir="$TEST_TMPDIR/dist"
+    mkdir -p "$incoming_dir" "$dist_dir/.shuriken-cache/exif"
+    printf 'fake\n' > "$incoming_dir/one.jpg"
+    printf 'fake\n' > "$incoming_dir/two.jpg"
+
+    export INCOMING_DIR="$incoming_dir"
+    export DIST_DIR="$dist_dir"
+
+    # Pre-seed the EXIF cache with matching signatures so cached_photo_identify_
+    # output serves our fixtures without invoking ImageMagick.
+    {
+        photo_cache_signature 'one.jpg' "$incoming_dir/one.jpg"
+        printf '  exif:Make: Nikon\n'
+        printf '  exif:Model: Nikon Z6\n'
+    } > "$dist_dir/.shuriken-cache/exif/one.jpg.txt"
+    {
+        photo_cache_signature 'two.jpg' "$incoming_dir/two.jpg"
+        printf '  exif:Make: Nikon\n'
+        printf '  exif:Model: Nikon Z6\n'
+    } > "$dist_dir/.shuriken-cache/exif/two.jpg.txt"
+
+    collect_photo_exif_stats
+
+    test "${STATS_TOTALS[photos]}" -eq 2
+    test "${STATS_CAMERAS[Nikon Z6]}" -eq 2
+    test "${STATS_CAMERA_PHOTOS[nikon-z6]}" = $'one.jpg\ntwo.jpg'
+
+    test::teardown
+}
+
 main() {
     trap test::teardown EXIT
 
@@ -5177,6 +5341,18 @@ main() {
     test::run_case \
         '--generate reuses cached EXIF details unless forced' \
         test_generate_reuses_cached_exif_details_unless_forced
+    test::run_case \
+        'stats aggregate synthetic EXIF fixtures' \
+        test_stats_aggregates_synthetic_exif_fixtures
+    test::run_case \
+        'stats tolerate missing and edge-case fields' \
+        test_stats_tolerates_missing_and_edge_case_fields
+    test::run_case \
+        'stats bucket boundaries and datetime parsing' \
+        test_stats_bucket_boundaries_and_datetime_parsing
+    test::run_case \
+        'stats collect reads cached identify output' \
+        test_stats_collect_reads_cached_identify_output
     test::run_case \
         '--generate metadata escapes JSON and custom tarball suffix' \
         test_generate_metadata_escapes_json_and_custom_tarball_suffix
