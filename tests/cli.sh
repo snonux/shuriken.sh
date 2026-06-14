@@ -4095,7 +4095,10 @@ test_template_interrupt_removes_context_file() {
     local fake_bin
     local started_file
     local template_dir
+    local render_pid_file
+    local parent_survived_file
     local child_pid
+    local render_pid
     local -i status=0
 
     test::setup
@@ -4103,6 +4106,8 @@ test_template_interrupt_removes_context_file() {
     template_dir="$TEST_TMPDIR/templates"
     context_file="$TEST_TMPDIR/template-context"
     started_file="$TEST_TMPDIR/template-started"
+    render_pid_file="$TEST_TMPDIR/render-pid"
+    parent_survived_file="$TEST_TMPDIR/parent-survived"
     mkdir -p "$fake_bin" "$template_dir" "$TEST_TMPDIR/dist"
     {
         printf '#!/usr/bin/env bash\n'
@@ -4119,21 +4124,30 @@ test_template_interrupt_removes_context_file() {
         printf 'sleep 30\n'
     } > "$template_dir/preview.tmpl"
 
-    # Run a full template render in a child shell we can signal mid-render. Going
-    # through the template entry point populates a valid render context so the
-    # context build succeeds and the render actually reaches the blocking sleep.
+    # Run the render in a BACKGROUNDED subshell of a parent shell, mirroring
+    # production where source_template_file executes inside backgrounded render
+    # jobs (queue_album_view_render_job). We signal the render subshell directly;
+    # the parent then waits on it and records that it survived. A correct signal
+    # handler re-raises to $BASHPID (the subshell), so the parent lives; a buggy
+    # handler that re-raised to $$ would kill this parent shell instead, leaving
+    # the survival marker unwritten. Going through the template entry point
+    # populates a valid render context so the render reaches the blocking sleep.
     bash -euo pipefail -s \
         "$TEST_SHURIKEN" \
         "$fake_bin" \
         "$template_dir" \
         "$TEST_TMPDIR/dist" \
         "$context_file" \
+        "$render_pid_file" \
+        "$parent_survived_file" \
         <<'BASH' &
 shuriken="$1"; shift
 fake_bin="$1"; shift
 template_dir="$1"; shift
 dist_dir="$1"; shift
 context_file="$1"; shift
+render_pid_file="$1"; shift
+parent_survived_file="$1"; shift
 
 # shellcheck source=/dev/null
 source <(sed '$d' "$shuriken")
@@ -4152,6 +4166,8 @@ TARBALL_INCLUDE=no
 SHURIKEN_OUTPUT_MODE=quiet
 apply_config_defaults
 
+# Background the render so source_template_file runs in its own subshell with a
+# distinct $BASHPID, then expose that subshell PID so the harness can signal it.
 template preview out.html \
     animation_class '' \
     backhref '#' \
@@ -4159,25 +4175,40 @@ template preview out.html \
     page_num 1 \
     photo photo.jpg \
     preview_num 1 \
-    thumbs_dir thumbs
+    thumbs_dir thumbs &
+render_pid=$!
+printf '%s' "$render_pid" > "$render_pid_file"
+
+set +e
+wait "$render_pid"
+set -e
+# Reaching here proves the render subshell's re-raised signal did not propagate
+# to this parent shell.
+printf survived > "$parent_survived_file"
 BASH
     child_pid=$!
 
-    # Wait for the render to begin, then interrupt it with SIGTERM.
+    # Wait for the render to begin, then interrupt the render subshell directly.
     while [ ! -f "$started_file" ] && kill -0 "$child_pid" 2>/dev/null; do
         sleep 0.05
     done
-    kill -TERM "$child_pid" 2>/dev/null || true
+    render_pid=$(cat "$render_pid_file")
+    kill -TERM "$render_pid" 2>/dev/null || true
+
     set +e
     wait "$child_pid"
     status=$?
     set -e
 
-    if (( status == 0 )); then
-        printf 'FAIL: expected interrupted render to exit non-zero\n' >&2
+    # The parent shell must exit cleanly: the render subshell re-raised SIGTERM
+    # to itself ($BASHPID), not to the parent ($$).
+    if (( status != 0 )); then
+        printf 'FAIL: parent shell did not survive render interrupt (status %d)\n' \
+            "$status" >&2
         exit 1
     fi
 
+    test::assert_file_exists "$parent_survived_file"
     test::assert_path_absent "$context_file"
     test::teardown
 }

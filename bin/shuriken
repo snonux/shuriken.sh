@@ -794,10 +794,16 @@ source_template_file() {
     trap 'rm -f "$context_file"; trap - INT TERM HUP RETURN' RETURN
     for sig in INT TERM HUP; do
         # $sig is intentionally expanded now (so each handler re-raises its own
-        # signal); $context_file and $$ are escaped to expand when the trap runs.
+        # signal); $context_file and $BASHPID are escaped to expand when the trap
+        # runs. We re-raise to $BASHPID, not $$: source_template_file commonly
+        # runs in backgrounded render subshells where $$ is the main shuriken
+        # PID, so kill -s $sig $$ would terminate the main shell (mid-cleanup,
+        # after its own staging traps were cleared) instead of this subshell.
+        # $BASHPID is the current (sub)shell's real PID and equals $$ in the
+        # foreground case, so it is correct everywhere.
         # shellcheck disable=SC2064
         trap "rm -f \"\$context_file\"; trap - INT TERM HUP RETURN; \
-            kill -s $sig \$\$" "$sig"
+            kill -s $sig \"\$BASHPID\"" "$sig"
     done
 
     if {
