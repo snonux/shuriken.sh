@@ -144,9 +144,11 @@ current_date_text_to() {
 declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_animation_class_html|context_html|animation_class|animation_class|preview details view'
     'render_backhref_css|context_css|backhref|backhref|header splash'
-    'render_backhref_html|context_html|backhref|backhref|footer header preview splash details view stats'
+    'render_backhref_html|context_html|backhref|backhref|footer header preview splash details view stats camera'
     'render_background_image_css|context_css|background_image|background_image|header splash'
     'render_blurs_dir_css|context_css|blurs_dir|blurs_dir|header splash'
+    'render_camera_name_html|context_html|camera_name|camera_name|camera'
+    'render_camera_thumbs_html|context_raw|camera_thumbs|camera_thumbs|camera'
     'render_current_date_text|current_date_html|||'
     'render_enter_page_html|context_html|enter_page|enter_page|splash'
     'render_exif_details_html|context_raw|exif_details|exif_details|details'

@@ -1,0 +1,24 @@
+# Per-camera filter page body (task um0). Like stats.tmpl, all the variable-length
+# markup -- here the thumbnail grid of every photo shot with this camera -- is
+# pre-rendered by render_camera_pages in src/lib/stats.source.sh and handed in
+# through the raw context field render_camera_thumbs_html, so this template only
+# supplies the page chrome: the heading (the HTML-escaped camera name), the
+# pre-built grid, and a link back to the stats page. The surrounding
+# <html>/<head>/<body> and footer come from the header/footer templates, which
+# render_camera_pages emits around this one (same pattern as stats/view/details).
+#
+# Thumbnails link to the full-size image under photos/ rather than to a per-photo
+# view page: a camera page is built outside the album's pagination loop and so
+# cannot know which <page>-<preview>.html a given photo landed on. Linking to the
+# original image is the sensible derivable target (see render_camera_pages).
+cat <<END
+<div class="view stats camera">
+    <h1 class="stats-title">${render_title_html} &mdash; ${render_camera_name_html}</h1>
+    <div class="stats-back navigator">
+        <a href="${render_backhref_html}/stats.html">Back to stats</a>
+    </div>
+    <div class="camera-thumbs">
+${render_camera_thumbs_html}
+    </div>
+</div>
+END

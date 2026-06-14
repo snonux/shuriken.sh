@@ -3821,6 +3821,108 @@ BASH
     test::teardown
 }
 
+test_render_camera_pages_renders_one_page_per_camera() {
+    local html
+    local html_again
+    local dist_dir
+
+    test::setup
+    dist_dir="$TEST_TMPDIR/dist"
+    mkdir -p "$dist_dir"
+
+    # Feed synthetic EXIF straight into accumulate_photo_stats (same approach as
+    # the stats-page test) to exercise three cameras: one whose label needs
+    # HTML-escaping (& and <), and a slug-collision pair ("Canon EOS 5D" vs
+    # "Canon EOS-5D" both slug to canon-eos-5d, so the second gets -2). Then
+    # render the per-camera pages twice into separate dirs to assert determinism.
+    bash -euo pipefail -s \
+        "$TEST_SHURIKEN" \
+        "$TEST_REPO_ROOT/share/templates/default" \
+        "$dist_dir" \
+        <<'BASH'
+shuriken="$1"; shift
+template_dir="$1"; shift
+dist_dir="$1"; shift
+
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+DIST_DIR="$dist_dir"
+TEMPLATE_DIR="$template_dir"
+TITLE='Stats album'
+HEIGHT=600
+THUMBHEIGHT=120
+MAXPREVIEWS=40
+ORIGINAL_BASEPATH=''
+TARBALL_INCLUDE=no
+SHURIKEN_OUTPUT_MODE=quiet
+apply_config_defaults
+
+feed() {
+    reset_photo_exif_stats
+    accumulate_photo_stats 'a.jpg' <<'EXIF'
+  Geometry: 6000x4000+0+0
+  exif:Make: Canon
+  exif:Model: Canon EOS 5D
+EXIF
+    accumulate_photo_stats 'b.jpg' <<'EXIF'
+  Geometry: 6000x4000+0+0
+  exif:Make: Canon
+  exif:Model: Canon EOS 5D
+EXIF
+    accumulate_photo_stats 'c.png' <<'EXIF'
+  Geometry: 4000x6000+0+0
+  exif:Make: Nikon & Co
+  exif:Model: <Z6>
+EXIF
+    accumulate_photo_stats 'd.jpg' <<'EXIF'
+  Geometry: 6000x4000+0+0
+  exif:Make: Canon
+  exif:Model: Canon EOS-5D
+EXIF
+}
+
+mkdir -p "$dist_dir/run1" "$dist_dir/run2"
+feed
+render_camera_pages run1 ..
+feed
+render_camera_pages run2 ..
+BASH
+
+    # One page per camera, named with the slugs the aggregation stored. The
+    # colliding labels get distinct files (canon-eos-5d and canon-eos-5d-2).
+    test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d.html"
+    test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d-2.html"
+    test::assert_file_exists "$dist_dir/run1/camera-nikon-co-z6.html"
+
+    # The Canon EOS 5D page lists exactly its two photos as thumbnails linking to
+    # the full images under photos/, and not the other camera's photo.
+    html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
+    test::assert_contains '<a href="../photos/a.jpg">' "$html"
+    test::assert_contains '<img class="thumb" src="../thumbs/a.jpg" />' "$html"
+    test::assert_contains '<a href="../photos/b.jpg">' "$html"
+    test::assert_not_contains 'photos/c.png' "$html"
+    test::assert_not_contains 'photos/d.jpg' "$html"
+    # Heading shows the (trusted) camera label and a back-to-stats link.
+    test::assert_contains 'Canon EOS 5D' "$html"
+    test::assert_contains '<a href="../stats.html">Back to stats</a>' "$html"
+
+    # The EXIF-derived label with & and < is HTML-escaped in the heading.
+    html=$(cat "$dist_dir/run1/camera-nikon-co-z6.html")
+    test::assert_contains 'Nikon &amp; Co &lt;Z6&gt;' "$html"
+    test::assert_not_contains 'Nikon & Co <Z6>' "$html"
+    test::assert_contains '<a href="../photos/c.png">' "$html"
+
+    # Output is deterministic: the second run is byte-identical to the first.
+    html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
+    html_again=$(cat "$dist_dir/run2/camera-canon-eos-5d.html")
+    if [ "$html" != "$html_again" ]; then
+        printf 'FAIL: camera page not reproducible across runs\n' >&2
+        exit 1
+    fi
+    test::teardown
+}
+
 test_template_context_validator_fails_fast_without_errexit() {
     local output
     local -i status=0
@@ -5418,6 +5520,9 @@ main() {
     test::run_case \
         'render_stats_page renders sections and escapes EXIF labels' \
         test_render_stats_page_renders_sections_and_escapes
+    test::run_case \
+        'render_camera_pages renders one page per camera' \
+        test_render_camera_pages_renders_one_page_per_camera
     test::run_case \
         'template context validator fails fast without errexit' \
         test_template_context_validator_fails_fast_without_errexit

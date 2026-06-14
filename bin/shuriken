@@ -606,9 +606,11 @@ current_date_text_to() {
 declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_animation_class_html|context_html|animation_class|animation_class|preview details view'
     'render_backhref_css|context_css|backhref|backhref|header splash'
-    'render_backhref_html|context_html|backhref|backhref|footer header preview splash details view stats'
+    'render_backhref_html|context_html|backhref|backhref|footer header preview splash details view stats camera'
     'render_background_image_css|context_css|background_image|background_image|header splash'
     'render_blurs_dir_css|context_css|blurs_dir|blurs_dir|header splash'
+    'render_camera_name_html|context_html|camera_name|camera_name|camera'
+    'render_camera_thumbs_html|context_raw|camera_thumbs|camera_thumbs|camera'
     'render_current_date_text|current_date_html|||'
     'render_enter_page_html|context_html|enter_page|enter_page|splash'
     'render_exif_details_html|context_raw|exif_details|exif_details|details'
@@ -3575,6 +3577,129 @@ render_stats_page() {
         html_dir "$html_dir" \
         backhref "$backhref" \
         tarball_name ''
+}
+
+# ----------------------------------------------------------------------------
+# Per-camera filter pages (task um0)
+# ----------------------------------------------------------------------------
+# render_camera_pages turns the per-camera photo lists collected by the
+# aggregation into one camera-<slug>.html page each, reusing the slugs the
+# aggregation already stored in STATS_CAMERA_SLUGS/STATS_CAMERA_PHOTOS so the
+# filenames match the camera-<slug>.html links pm0's leaderboard emits. Like the
+# stats page, the variable-length markup (the thumbnail grid) is built here as a
+# raw HTML string and handed to camera.tmpl through the camera_thumbs context
+# field; camera.tmpl supplies only the page chrome (heading + back-to-stats
+# link), wrapped by the shared header/footer the same way render_stats_page does.
+#
+# The album's incoming photo and thumbnail directories are the conventional
+# 'photos'/'thumbs' that generate() passes to render_album_pages
+# (render_album_pages 'photos' '.' 'thumbs' ...), so the grid reuses preview.tmpl's
+# thumbnail markup style with those fixed dir names. Each thumbnail links to the
+# full-size image under photos/ (backhref/photos/<file>) rather than a per-photo
+# <page>-<preview>.html view page: a camera page is rendered outside the album
+# pagination loop and cannot know which view page a given photo landed on, so the
+# original image under photos/ is the only target derivable in this context (this
+# choice is also documented in camera.tmpl).
+
+# Dist-relative subdirectories that hold the full-size images and thumbnails.
+# These mirror the literals generate() passes to render_album_pages so camera
+# pages link to the same assets the album pages do.
+declare -gr STATS_CAMERA_PHOTOS_DIR='photos'
+declare -gr STATS_CAMERA_THUMBS_DIR='thumbs'
+
+# Emit one thumbnail anchor for the camera grid: a thumb image (from thumbs/)
+# wrapped in a link to the full-size image (from photos/), both resolved through
+# the page's backhref. The photo filename is HTML-escaped because it ends up in
+# both href and src attributes. Mirrors preview.tmpl's markup but targets the
+# full image instead of a view page (see render_camera_pages header comment).
+_stats_camera_thumbnail() {
+    local -r backhref_html="$1"; shift
+    local -r photo="$1"; shift
+    local photo_html
+
+    photo_html=$(_html_escape "$photo")
+    printf '        <a href="%s/%s/%s">' \
+        "$backhref_html" "$STATS_CAMERA_PHOTOS_DIR" "$photo_html"
+    printf '<img class="thumb" src="%s/%s/%s" /></a>\n' \
+        "$backhref_html" "$STATS_CAMERA_THUMBS_DIR" "$photo_html"
+}
+
+# Build the full thumbnail grid for one camera from its newline-separated photo
+# list. Photos keep aggregation order (the order they were encountered) so the
+# grid is deterministic for a given input. Returns the grid HTML on stdout.
+_stats_build_camera_thumbs() {
+    local -r backhref_html="$1"; shift
+    local -r photos="$1"; shift
+    local photo
+
+    while IFS= read -r photo; do
+        if [ -n "$photo" ]; then
+            _stats_camera_thumbnail "$backhref_html" "$photo"
+        fi
+    done <<< "$photos"
+}
+
+# Render a single camera-<slug>.html: header + camera.tmpl (escaped heading and
+# pre-built thumbnail grid) + footer. The label is HTML-escaped via camera.tmpl's
+# context_html field spec; backhref_html is the already-escaped path used inside
+# the grid anchors so thumbnail links resolve from the page's location.
+_stats_render_camera_page() {
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r label="$1"; shift
+    local -r slug="$1"; shift
+    local -r photos="$1"; shift
+    local backhref_html
+    local camera_thumbs
+    local -r page="camera-$slug.html"
+
+    backhref_html=$(_html_escape "$backhref")
+    camera_thumbs=$(_stats_build_camera_thumbs "$backhref_html" "$photos")
+    template header "$page" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        blurs_dir '' \
+        background_image '' \
+        show_header_bar 'yes'
+    template camera "$page" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        camera_name "$label" \
+        camera_thumbs "$camera_thumbs"
+    template footer "$page" \
+        html_dir "$html_dir" \
+        backhref "$backhref" \
+        tarball_name ''
+}
+
+# Public render entry point (handoff for task rm0). Renders one
+# camera-<slug>.html per camera in STATS_CAMERA_SLUGS, each showing a thumbnail
+# grid of that camera's photos and a link back to the stats page. Call
+# collect_photo_exif_stats first to fill the globals.
+#   render_camera_pages <html_dir> <backhref>
+# html_dir is the dist-relative output directory (top-level album: "."), backhref
+# is the relative path back to the album root ("." for a top-level album), the
+# same values rm0 passes to render_stats_page. Cameras are walked in LC_ALL=C
+# label order (matching pm0's reproducible-output convention) and cameras with no
+# recorded photos are skipped.
+render_camera_pages() {
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local label
+    local slug
+
+    if (( ${#STATS_CAMERA_SLUGS[@]} == 0 )); then
+        return
+    fi
+    while IFS= read -r label; do
+        slug="${STATS_CAMERA_SLUGS[$label]}"
+        if [ -z "${STATS_CAMERA_PHOTOS[$slug]:-}" ]; then
+            continue
+        fi
+        _stats_render_camera_page \
+            "$html_dir" "$backhref" "$label" "$slug" \
+            "${STATS_CAMERA_PHOTOS[$slug]}"
+    done < <(printf '%s\n' "${!STATS_CAMERA_SLUGS[@]}" | LC_ALL=C sort)
 }
 
 # Inlined from src/lib/config.source.sh
