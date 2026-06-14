@@ -1677,6 +1677,34 @@ test_print_config_normalizes_scalar_and_array_tar_opts() {
     test::teardown
 }
 
+test_print_config_empty_tar_opts_falls_back_to_default() {
+    local config_file
+    local empty_array_output
+    local empty_scalar_output
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Empty tar opts' 40
+
+    # An empty scalar TAR_OPTS must fall back to the default "-c" just like an
+    # unset value; the shared resolve_config_array helper yields an empty array
+    # and resolve_tar_opts supplies the default.
+    printf 'TAR_OPTS=%q\n' '' >> "$config_file"
+    empty_scalar_output=$("$TEST_SHURIKEN" --print-config --config "$config_file")
+    test::assert_contains 'TAR_OPTS=( -c )' "$empty_scalar_output"
+
+    # An empty array declaration must behave identically.
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Empty array tar opts' 40
+    printf 'TAR_OPTS=()\n' >> "$config_file"
+    empty_array_output=$("$TEST_SHURIKEN" --print-config --config "$config_file")
+    test::assert_contains 'TAR_OPTS=( -c )' "$empty_array_output"
+    test::teardown
+}
+
 test_print_config_quiet_and_verbose_keep_machine_output() {
     local config_file
     local plain_output
@@ -4855,6 +4883,9 @@ main() {
     test::run_case \
         '--print-config normalizes scalar and array TAR_OPTS' \
         test_print_config_normalizes_scalar_and_array_tar_opts
+    test::run_case \
+        '--print-config empty TAR_OPTS falls back to default' \
+        test_print_config_empty_tar_opts_falls_back_to_default
     test::run_case \
         '--print-config quiet and verbose keep machine output' \
         test_print_config_quiet_and_verbose_keep_machine_output

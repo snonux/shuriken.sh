@@ -144,6 +144,48 @@ log_warning() {
     printf 'WARNING: %s\n' "$*" >&2
 }
 
+# Read a configuration value into the named array, accepting both Bash array
+# and whitespace-separated scalar declarations of the same variable.
+# This is shared by resolve_tar_opts and resolve_sync_destinations so the
+# "array or scalar config" parsing lives in exactly one place.
+#
+# Arguments:
+#   $1  name of the source config variable (e.g. TAR_OPTS)
+#   $2  name of the destination array variable (nameref)
+# Returns:
+#   0 if the variable was declared (the destination may still be empty),
+#   1 if the variable was not declared at all (lets callers apply defaults).
+resolve_config_array() {
+    local -r config_var="$1"; shift
+    local -n config_array_ref="$1"; shift
+    local config_decl
+
+    config_array_ref=()
+
+    # declare -p fails when the variable was never set; callers use the
+    # non-zero return to distinguish "unset" from "set but empty".
+    if ! config_decl=$(declare -p "$config_var" 2>/dev/null); then
+        return 1
+    fi
+
+    case "$config_decl" in
+        declare\ -a*\ "$config_var"=*)
+            # Already a real array: copy it element by element.
+            local -n config_source_ref="$config_var"
+            # shellcheck disable=SC2034
+            config_array_ref=("${config_source_ref[@]}")
+            ;;
+        *)
+            # Scalar string: word-split it into the destination array.
+            local -n config_scalar_ref="$config_var"
+            if [ -n "${config_scalar_ref:-}" ]; then
+                # shellcheck disable=SC2034
+                read -r -a config_array_ref <<< "$config_scalar_ref"
+            fi
+            ;;
+    esac
+}
+
 resolve_default_rc_file() {
     local source_root
 
@@ -402,27 +444,14 @@ tarball() {
 
 resolve_tar_opts() {
     local -n options_ref="$1"; shift
-    local tar_opts_decl
 
-    options_ref=()
-
-    if ! tar_opts_decl=$(declare -p TAR_OPTS 2>/dev/null); then
-        options_ref=(-c)
-        return
-    fi
-
-    case "$tar_opts_decl" in
-        declare\ -a*\ TAR_OPTS=*)
-            options_ref=("${TAR_OPTS[@]}")
-            ;;
-        *)
-            if [ -n "${TAR_OPTS:-}" ]; then
-                read -r -a options_ref <<< "$TAR_OPTS"
-            fi
-            ;;
-    esac
+    # Parse TAR_OPTS (array or scalar) via the shared config-array helper,
+    # then fall back to a plain "-c" whenever no options were configured,
+    # whether TAR_OPTS was unset or set to an empty value.
+    resolve_config_array TAR_OPTS options_ref
 
     if (( ${#options_ref[@]} == 0 )); then
+        # shellcheck disable=SC2034
         options_ref=(-c)
     fi
 }
@@ -2758,26 +2787,14 @@ print_config() {
 
 # Inlined from src/lib/config.sync.source.sh
 resolve_sync_destinations() {
+    # destinations_ref is a nameref output filled by resolve_config_array.
+    # shellcheck disable=SC2034
     local -n destinations_ref="$1"; shift
-    local destinations_decl
 
-    destinations_ref=()
-
-    if ! destinations_decl=$(declare -p SYNC_DESTINATIONS 2>/dev/null); then
-        return
-    fi
-
-    case "$destinations_decl" in
-        declare\ -a*\ SYNC_DESTINATIONS=*)
-            destinations_ref=("${SYNC_DESTINATIONS[@]}")
-            ;;
-        *)
-            if [ -n "${SYNC_DESTINATIONS:-}" ]; then
-                # shellcheck disable=SC2034
-                read -r -a destinations_ref <<< "$SYNC_DESTINATIONS"
-            fi
-            ;;
-    esac
+    # Parse SYNC_DESTINATIONS (array or scalar) via the shared config-array
+    # helper. Unlike TAR_OPTS there is no default: an unset or empty value
+    # simply yields an empty destinations array for callers to validate.
+    resolve_config_array SYNC_DESTINATIONS destinations_ref
 }
 
 sync_dist() {
@@ -3170,10 +3187,16 @@ validate_refresh_splash_config() {
 }
 
 validate_imagemagick() {
-    if command -v magick >/dev/null 2>&1; then
-        return
-    fi
-    if command -v convert >/dev/null 2>&1; then
+    # Reuse the canonical detection in resolve_imagemagick_command instead of
+    # duplicating the magick/convert probing here. Its own error message is
+    # suppressed so we report the failure through config_error, keeping the
+    # validation output consistent (single "ERROR: ..." line, return code 1).
+    # imagemagick_command is a nameref output filled by the resolver; we only
+    # care about the exit status here, not the resolved command.
+    # shellcheck disable=SC2034
+    local -a imagemagick_command=()
+
+    if resolve_imagemagick_command convert imagemagick_command 2>/dev/null; then
         return
     fi
 

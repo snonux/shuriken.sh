@@ -60,6 +60,48 @@ log_warning() {
     printf 'WARNING: %s\n' "$*" >&2
 }
 
+# Read a configuration value into the named array, accepting both Bash array
+# and whitespace-separated scalar declarations of the same variable.
+# This is shared by resolve_tar_opts and resolve_sync_destinations so the
+# "array or scalar config" parsing lives in exactly one place.
+#
+# Arguments:
+#   $1  name of the source config variable (e.g. TAR_OPTS)
+#   $2  name of the destination array variable (nameref)
+# Returns:
+#   0 if the variable was declared (the destination may still be empty),
+#   1 if the variable was not declared at all (lets callers apply defaults).
+resolve_config_array() {
+    local -r config_var="$1"; shift
+    local -n config_array_ref="$1"; shift
+    local config_decl
+
+    config_array_ref=()
+
+    # declare -p fails when the variable was never set; callers use the
+    # non-zero return to distinguish "unset" from "set but empty".
+    if ! config_decl=$(declare -p "$config_var" 2>/dev/null); then
+        return 1
+    fi
+
+    case "$config_decl" in
+        declare\ -a*\ "$config_var"=*)
+            # Already a real array: copy it element by element.
+            local -n config_source_ref="$config_var"
+            # shellcheck disable=SC2034
+            config_array_ref=("${config_source_ref[@]}")
+            ;;
+        *)
+            # Scalar string: word-split it into the destination array.
+            local -n config_scalar_ref="$config_var"
+            if [ -n "${config_scalar_ref:-}" ]; then
+                # shellcheck disable=SC2034
+                read -r -a config_array_ref <<< "$config_scalar_ref"
+            fi
+            ;;
+    esac
+}
+
 resolve_default_rc_file() {
     local source_root
 

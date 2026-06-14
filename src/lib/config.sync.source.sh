@@ -1,24 +1,12 @@
 resolve_sync_destinations() {
+    # destinations_ref is a nameref output filled by resolve_config_array.
+    # shellcheck disable=SC2034
     local -n destinations_ref="$1"; shift
-    local destinations_decl
 
-    destinations_ref=()
-
-    if ! destinations_decl=$(declare -p SYNC_DESTINATIONS 2>/dev/null); then
-        return
-    fi
-
-    case "$destinations_decl" in
-        declare\ -a*\ SYNC_DESTINATIONS=*)
-            destinations_ref=("${SYNC_DESTINATIONS[@]}")
-            ;;
-        *)
-            if [ -n "${SYNC_DESTINATIONS:-}" ]; then
-                # shellcheck disable=SC2034
-                read -r -a destinations_ref <<< "$SYNC_DESTINATIONS"
-            fi
-            ;;
-    esac
+    # Parse SYNC_DESTINATIONS (array or scalar) via the shared config-array
+    # helper. Unlike TAR_OPTS there is no default: an unset or empty value
+    # simply yields an empty destinations array for callers to validate.
+    resolve_config_array SYNC_DESTINATIONS destinations_ref
 }
 
 sync_dist() {

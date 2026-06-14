@@ -152,10 +152,16 @@ validate_refresh_splash_config() {
 }
 
 validate_imagemagick() {
-    if command -v magick >/dev/null 2>&1; then
-        return
-    fi
-    if command -v convert >/dev/null 2>&1; then
+    # Reuse the canonical detection in resolve_imagemagick_command instead of
+    # duplicating the magick/convert probing here. Its own error message is
+    # suppressed so we report the failure through config_error, keeping the
+    # validation output consistent (single "ERROR: ..." line, return code 1).
+    # imagemagick_command is a nameref output filled by the resolver; we only
+    # care about the exit status here, not the resolved command.
+    # shellcheck disable=SC2034
+    local -a imagemagick_command=()
+
+    if resolve_imagemagick_command convert imagemagick_command 2>/dev/null; then
         return
     fi
 

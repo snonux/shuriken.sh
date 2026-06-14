@@ -26,27 +26,14 @@ tarball() {
 
 resolve_tar_opts() {
     local -n options_ref="$1"; shift
-    local tar_opts_decl
 
-    options_ref=()
-
-    if ! tar_opts_decl=$(declare -p TAR_OPTS 2>/dev/null); then
-        options_ref=(-c)
-        return
-    fi
-
-    case "$tar_opts_decl" in
-        declare\ -a*\ TAR_OPTS=*)
-            options_ref=("${TAR_OPTS[@]}")
-            ;;
-        *)
-            if [ -n "${TAR_OPTS:-}" ]; then
-                read -r -a options_ref <<< "$TAR_OPTS"
-            fi
-            ;;
-    esac
+    # Parse TAR_OPTS (array or scalar) via the shared config-array helper,
+    # then fall back to a plain "-c" whenever no options were configured,
+    # whether TAR_OPTS was unset or set to an empty value.
+    resolve_config_array TAR_OPTS options_ref
 
     if (( ${#options_ref[@]} == 0 )); then
+        # shellcheck disable=SC2034
         options_ref=(-c)
     fi
 }
