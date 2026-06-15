@@ -1,7 +1,15 @@
+# A non-empty EXIF summary becomes a title="" attribute so hovering the image
+# shows the camera/exposure details, mirroring the details view.
+if [ -n "$render_exif_tooltip_html" ]; then
+    render_exif_tooltip_attr=" title=\"$render_exif_tooltip_html\""
+else
+    render_exif_tooltip_attr=''
+fi
+
 cat <<END
 <div class='view'>
     <a href="${render_page_num_html}-${render_view_next_html}.html">
-        <img class='view ${render_animation_class_html}' border='0' src='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}' />
+        <img class='view ${render_animation_class_html}' border='0' src='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}'${render_exif_tooltip_attr} />
     </a>
     <div class="navigator">
         <a href="${render_page_num_html}-${render_view_prev_html}.html" class="arrow">&lArr;</a>

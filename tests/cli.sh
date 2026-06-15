@@ -3846,7 +3846,7 @@ preview:animation_class backhref html_dir page_num photo preview_num thumbs_dir
 redirect:html_dir redirect_page
 splash:backhref background_image blurs_dir enter_page html_dir photo photos_dir
 stats:backhref html_dir stats_body
-view:animation_class backhref html_dir page_num photo photos_dir preview_num
+view:animation_class backhref exif_tooltip html_dir page_num photo photos_dir preview_num
 END
     )
     output=$(
@@ -4785,6 +4785,10 @@ test_generate_renders_exif_details() {
     details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
 
     test::assert_contains 'href="1-1-details.html">Details</a>' "$view_html"
+    # The normal image view carries the same EXIF tooltip as the details view.
+    test::assert_contains \
+        'title="Camera: ExampleCam Model &amp; &quot;X&quot;; Aperture: f/2.8; ISO: 400; Shutter speed: 1/125; Taken: 2026:06:04 12:34:56"' \
+        "$view_html"
     test::assert_contains '<table class="details">' "$details_html"
     test::assert_contains \
         'title="Camera: ExampleCam Model &amp; &quot;X&quot;; Aperture: f/2.8; ISO: 400; Shutter speed: 1/125; Taken: 2026:06:04 12:34:56"' \

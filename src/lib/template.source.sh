@@ -152,7 +152,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_current_date_text|current_date_html|||'
     'render_enter_page_html|context_html|enter_page|enter_page|splash'
     'render_exif_details_html|context_raw|exif_details|exif_details|details'
-    'render_exif_tooltip_html|context_html|exif_tooltip|exif_tooltip|details'
+    'render_exif_tooltip_html|context_html|exif_tooltip|exif_tooltip|details view'
     'render_height_html|config_html|HEIGHT||'
     'render_html_dir_html|context_html|html_dir|html_dir|*'
     'render_maxpreviews_html|config_html|MAXPREVIEWS||'

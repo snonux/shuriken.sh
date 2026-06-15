@@ -91,6 +91,7 @@ render_view_page() {
     local -r preview_num="$1"; shift
     local -r photo_file="$1"; shift
     local animation_class
+    local exif_tooltip_text
 
     template header "$page_num-$preview_num.html" \
         html_dir "$html_dir" \
@@ -100,6 +101,12 @@ render_view_page() {
         show_header_bar 'no'
 
     animation_class=$(random_animation_css_class fast "$photo_file")
+    # Reuse the same EXIF tooltip as the details page so hovering the image in
+    # the normal view shows the camera/exposure summary (reads the shared
+    # identify cache, so no extra ImageMagick work).
+    exif_tooltip_text=$(
+        photo_exif_tooltip_text "$photo_file" "$INCOMING_DIR/$photo_file"
+    )
     template view "$page_num-$preview_num.html" \
         html_dir "$html_dir" \
         backhref "$backhref" \
@@ -107,7 +114,8 @@ render_view_page() {
         page_num "$page_num" \
         preview_num "$preview_num" \
         photo "$photo_file" \
-        animation_class "$animation_class"
+        animation_class "$animation_class" \
+        exif_tooltip "$exif_tooltip_text"
     template footer "$page_num-$preview_num.html" \
         html_dir "$html_dir" \
         backhref "$backhref" \
