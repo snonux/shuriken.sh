@@ -19,7 +19,7 @@ prepare_generation_staging_dir() {
         return
     fi
 
-    for cache_dir in photos thumbs blurs .shuriken-cache; do
+    for cache_dir in photos thumbs blurs; do
         if [ -d "$final_dist/$cache_dir" ]; then
             if ! mkdir -p "$staging_dir/$cache_dir"; then
                 return 1

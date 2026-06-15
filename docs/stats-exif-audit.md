@@ -13,8 +13,8 @@ library (there is none to point at):
 
 * `src/lib/imagemagick.source.sh` runs `magick identify -verbose <file>` (or
   `convert <file> -verbose info:` when only the legacy `convert` is present).
-* `src/lib/album.source.sh` caches that raw output per photo under
-  `$DIST_DIR/.shuriken-cache/exif/<photo>.txt` and parses it.
+* `src/lib/album.source.sh` caches that raw output per photo under a volatile
+  `./cache/exif/<photo>.txt` (parallel to `./dist`) and parses it.
 
 The parser detail that drives every decision below: shuriken only reads EXIF
 through this regex (`photo_exif_details_html`, `_photo_exif_values_to`):

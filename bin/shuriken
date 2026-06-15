@@ -1675,10 +1675,19 @@ cached_photo_identify_output() {
     local cached_signature=''
     local current_signature
 
-    cache_dir="$DIST_DIR/.shuriken-cache/exif"
+    # Persist the EXIF cache in a volatile ./cache directory parallel to ./dist
+    # (the staging dir is a sibling of the final dist, so dirname "$DIST_DIR" is
+    # the working dir in both staging and direct contexts). Keeping it outside
+    # dist means it survives a fresh/cleared dist and is never deployed, so an
+    # unchanged photo skips the slow `identify -verbose` on every regenerate.
+    cache_dir="$(dirname "$DIST_DIR")/cache/exif"
     cache_file="$cache_dir/$photo.txt"
     current_signature=$(photo_cache_signature "$photo" "$photo_path")
 
+    # Reuse the cache when its signature still matches the source file. --force
+    # is handled once up front by clear_exif_cache (which empties this directory),
+    # so the first call per photo then rebuilds it and the rest of the run reuses
+    # it -- exactly one identify per photo even under force.
     if [ -f "$cache_file" ]; then
         IFS= read -r cached_signature < "$cache_file" || true
         if [ "$cached_signature" = "$current_signature" ]; then
@@ -2581,6 +2590,16 @@ create_generation_archive() {
     fi
 }
 
+# Empty the volatile EXIF cache (./cache/exif, parallel to ./dist) so a --force
+# run re-runs `identify` from scratch. Done once up front; the cache then
+# repopulates and is reused for the rest of the run (one identify per photo).
+clear_exif_cache() {
+    local -r cache_dir="$(dirname "$DIST_DIR")/cache/exif"
+
+    log_verbose "Force generation; clearing EXIF cache $cache_dir"
+    rm -rf "$cache_dir"
+}
+
 # Aggregate EXIF stats and render the stats page plus the per-camera pages into
 # the dist root (html_dir and backhref are '.', matching render_album_pages).
 # Run after the album pages so the per-photo identify cache is already warm.
@@ -2603,6 +2622,9 @@ generate() {
         log_verbose 'Tarball disabled; no archive will be created'
     fi
 
+    if [ "$SHURIKEN_FORCE_GENERATE" = yes ]; then
+        clear_exif_cache
+    fi
     prepare_generation_photo_assets
     prepare_generation_site_assets
     clear_rendered_html
@@ -4169,7 +4191,7 @@ prepare_generation_staging_dir() {
         return
     fi
 
-    for cache_dir in photos thumbs blurs .shuriken-cache; do
+    for cache_dir in photos thumbs blurs; do
         if [ -d "$final_dist/$cache_dir" ]; then
             if ! mkdir -p "$staging_dir/$cache_dir"; then
                 return 1

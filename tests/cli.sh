@@ -5444,13 +5444,16 @@ test_stats_bucket_boundaries_and_datetime_parsing() {
 test_stats_collect_reads_cached_identify_output() {
     local incoming_dir
     local dist_dir
+    local cache_dir
 
     test::setup
     test::source_shuriken_lib
 
     incoming_dir="$TEST_TMPDIR/incoming"
     dist_dir="$TEST_TMPDIR/dist"
-    mkdir -p "$incoming_dir" "$dist_dir/.shuriken-cache/exif"
+    # The EXIF cache lives in ./cache parallel to ./dist (dirname of DIST_DIR).
+    cache_dir="$TEST_TMPDIR/cache/exif"
+    mkdir -p "$incoming_dir" "$cache_dir"
     printf 'fake\n' > "$incoming_dir/one.jpg"
     printf 'fake\n' > "$incoming_dir/two.jpg"
 
@@ -5463,12 +5466,12 @@ test_stats_collect_reads_cached_identify_output() {
         photo_cache_signature 'one.jpg' "$incoming_dir/one.jpg"
         printf '  exif:Make: Nikon\n'
         printf '  exif:Model: Nikon Z6\n'
-    } > "$dist_dir/.shuriken-cache/exif/one.jpg.txt"
+    } > "$cache_dir/one.jpg.txt"
     {
         photo_cache_signature 'two.jpg' "$incoming_dir/two.jpg"
         printf '  exif:Make: Nikon\n'
         printf '  exif:Model: Nikon Z6\n'
-    } > "$dist_dir/.shuriken-cache/exif/two.jpg.txt"
+    } > "$cache_dir/two.jpg.txt"
 
     collect_photo_exif_stats
 
