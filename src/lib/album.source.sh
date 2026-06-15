@@ -1,3 +1,10 @@
+# Maps each album photo filename to its view-page basename ("<page>-<preview>")
+# as assigned during render_album_pages. The stats camera pages read this so
+# their thumbnails link into the album view (with navigation, details, and the
+# EXIF tooltip) exactly like the main album, instead of the raw image. Declared
+# globally so it always exists for callers even when no album was rendered.
+declare -gA ALBUM_VIEW_PAGE_BY_PHOTO=()
+
 album_photo_files() {
     local -r photos_dir="$1"; shift
 
@@ -741,6 +748,10 @@ render_album_pages() {
     # shellcheck disable=SC2034
     local -a rendered_view_pages=()
 
+    # Rebuild the photo -> view-page map for this album from scratch so a
+    # re-generate (or a smaller incoming set) does not keep stale entries.
+    ALBUM_VIEW_PAGE_BY_PHOTO=()
+
     name=$(album_page_name "$num")
 
     start_preview_page \
@@ -785,6 +796,10 @@ render_album_pages() {
             render_failed
         record_rendered_view_page rendered_view_pages rendered_last_views \
             "$num" "$i"
+        # Read later by the stats camera pages (render_camera_pages); shellcheck
+        # cannot see that cross-function use.
+        # shellcheck disable=SC2034
+        ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$num-$i"
     done < <(album_photo_files "$photos_dir")
 
     finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"

@@ -1512,6 +1512,13 @@ maybe_shuffle() {
 }
 
 # Inlined from src/lib/album.source.sh
+# Maps each album photo filename to its view-page basename ("<page>-<preview>")
+# as assigned during render_album_pages. The stats camera pages read this so
+# their thumbnails link into the album view (with navigation, details, and the
+# EXIF tooltip) exactly like the main album, instead of the raw image. Declared
+# globally so it always exists for callers even when no album was rendered.
+declare -gA ALBUM_VIEW_PAGE_BY_PHOTO=()
+
 album_photo_files() {
     local -r photos_dir="$1"; shift
 
@@ -2255,6 +2262,10 @@ render_album_pages() {
     # shellcheck disable=SC2034
     local -a rendered_view_pages=()
 
+    # Rebuild the photo -> view-page map for this album from scratch so a
+    # re-generate (or a smaller incoming set) does not keep stale entries.
+    ALBUM_VIEW_PAGE_BY_PHOTO=()
+
     name=$(album_page_name "$num")
 
     start_preview_page \
@@ -2299,6 +2310,10 @@ render_album_pages() {
             render_failed
         record_rendered_view_page rendered_view_pages rendered_last_views \
             "$num" "$i"
+        # Read later by the stats camera pages (render_camera_pages); shellcheck
+        # cannot see that cross-function use.
+        # shellcheck disable=SC2034
+        ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$num-$i"
     done < <(album_photo_files "$photos_dir")
 
     finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
@@ -3391,15 +3406,22 @@ _stats_bar_row() {
 }
 
 # Open a <section> with an escaped heading and the <ul> bar container. Split from
-# the row emitters so every section shares identical chrome.
+# the row emitters so every section shares identical chrome. An optional second
+# argument adds an extra CSS class to the <ul> (e.g. the leaderboard uses it to
+# space out and separate its rows of long, wrapping camera names).
 _stats_section_open() {
     local -r heading="$1"; shift
+    local -r list_class="${1:-}"
     local heading_html
+    local ul_class='stats-bars'
 
+    if [ -n "$list_class" ]; then
+        ul_class+=" $list_class"
+    fi
     heading_html=$(_html_escape "$heading")
     printf '<section class="stats-section">\n'
     printf '<h2>%s</h2>\n' "$heading_html"
-    printf '<ul class="stats-bars">\n'
+    printf '<ul class="%s">\n' "$ul_class"
 }
 
 _stats_section_close() {
@@ -3422,7 +3444,7 @@ _stats_render_camera_section() {
         return
     fi
     max=$(_stats_max_count STATS_CAMERAS)
-    _stats_section_open 'Camera leaderboard'
+    _stats_section_open 'Camera leaderboard' 'stats-leaderboard'
     while IFS= read -r label; do
         label_html=$(_html_escape "$label")
         slug="${STATS_CAMERA_SLUGS[$label]}"
@@ -3601,18 +3623,31 @@ _stats_build_body() {
 # html_dir is the dist-relative output directory (top-level album: "."),
 # backhref is the relative path back to the album root ("." for a top-level
 # stats.html), and page_name defaults to "stats" -> stats.html.
+# Pick a seeded-random photo for a stats/camera page's blurred background, the
+# same way the album preview pages do. The context seeds the choice so each page
+# gets a stable (per RANDOM_SEED) but varied background. Degrades to an empty
+# string (plain black background) when no photos exist, e.g. unit tests that
+# render the page without a populated photos directory.
+_stats_random_background() {
+    local -r context="$1"; shift
+
+    randomphoto "$STATS_CAMERA_PHOTOS_DIR" "$context" 2>/dev/null || true
+}
+
 render_stats_page() {
     local -r html_dir="$1"; shift
     local -r backhref="$1"; shift
     local -r page_name="${1:-stats}"
     local stats_body
+    local background_image
 
     stats_body=$(_stats_build_body)
+    background_image=$(_stats_random_background "$page_name.html")
     template header "$page_name.html" \
         html_dir "$html_dir" \
         backhref "$backhref" \
-        blurs_dir '' \
-        background_image '' \
+        blurs_dir "$STATS_BLURS_DIR" \
+        background_image "$background_image" \
         show_header_bar 'yes'
     template stats "$page_name.html" \
         html_dir "$html_dir" \
@@ -3651,6 +3686,9 @@ render_stats_page() {
 # pages link to the same assets the album pages do.
 declare -gr STATS_CAMERA_PHOTOS_DIR='photos'
 declare -gr STATS_CAMERA_THUMBS_DIR='thumbs'
+# Dist-relative directory of blurred images used for the page background, the
+# same one render_album_pages passes to the album preview pages.
+declare -gr STATS_BLURS_DIR='blurs'
 
 # Emit one thumbnail anchor for the camera grid: a thumb image (from thumbs/)
 # wrapped in a link to the full-size image (from photos/), both resolved through
@@ -3661,12 +3699,28 @@ _stats_camera_thumbnail() {
     local -r backhref_html="$1"; shift
     local -r photo="$1"; shift
     local photo_html
+    local animation_class
+    local view_page
 
     photo_html=$(_html_escape "$photo")
-    printf '        <a href="%s/%s/%s">' \
-        "$backhref_html" "$STATS_CAMERA_PHOTOS_DIR" "$photo_html"
-    printf '<img class="thumb" src="%s/%s/%s" /></a>\n' \
-        "$backhref_html" "$STATS_CAMERA_THUMBS_DIR" "$photo_html"
+    # Same seeded animation the album thumbnail uses for this photo, so camera
+    # pages animate identically.
+    animation_class=$(random_animation_css_class slow "$photo")
+    # Link to the photo's album view page (navigation, details, EXIF tooltip)
+    # so a camera page behaves exactly like the main album. Fall back to the
+    # full-size image when the album mapping is unknown (e.g. unit tests that
+    # render camera pages without a rendered album).
+    view_page="${ALBUM_VIEW_PAGE_BY_PHOTO[$photo]:-}"
+    if [ -n "$view_page" ]; then
+        printf '        <a name="%s" href="%s/%s.html">' \
+            "$photo_html" "$backhref_html" "$view_page"
+    else
+        printf '        <a href="%s/%s/%s">' \
+            "$backhref_html" "$STATS_CAMERA_PHOTOS_DIR" "$photo_html"
+    fi
+    printf '<img class="thumb %s" src="%s/%s/%s" /></a>\n' \
+        "$animation_class" "$backhref_html" "$STATS_CAMERA_THUMBS_DIR" \
+        "$photo_html"
 }
 
 # Build the full thumbnail grid for one camera from its newline-separated photo
@@ -3696,15 +3750,17 @@ _stats_render_camera_page() {
     local -r photos="$1"; shift
     local backhref_html
     local camera_thumbs
+    local background_image
     local -r page="camera-$slug.html"
 
     backhref_html=$(_html_escape "$backhref")
     camera_thumbs=$(_stats_build_camera_thumbs "$backhref_html" "$photos")
+    background_image=$(_stats_random_background "$page")
     template header "$page" \
         html_dir "$html_dir" \
         backhref "$backhref" \
-        blurs_dir '' \
-        background_image '' \
+        blurs_dir "$STATS_BLURS_DIR" \
+        background_image "$background_image" \
         show_header_bar 'yes'
     template camera "$page" \
         html_dir "$html_dir" \

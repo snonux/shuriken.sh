@@ -3060,6 +3060,7 @@ test::stats_identify_output() {
 }
 
 test_generate_stats_pages_created_and_nav_linked() {
+    local camera_html
     local config_file
     local fake_bin
     local -i nav_links
@@ -3087,6 +3088,21 @@ test_generate_stats_pages_created_and_nav_linked() {
     test::assert_file_exists "$TEST_TMPDIR/dist/camera-canon-eos-r5.html"
     test::assert_contains 'Canon EOS R5' "$(<"$TEST_TMPDIR/dist/stats.html")"
     test::assert_not_contains '<script' "$(<"$TEST_TMPDIR/dist/stats.html")"
+
+    # The stats page gets a random blurred background like the album pages.
+    test::assert_contains 'background-image: url("./blurs/' \
+        "$(<"$TEST_TMPDIR/dist/stats.html")"
+
+    # Camera-page thumbnails link into the album view pages (behave like the main
+    # album), not the raw image, and point at the thumbs.
+    camera_html=$(<"$TEST_TMPDIR/dist/camera-canon-eos-r5.html")
+    test::assert_contains 'src="./thumbs/' "$camera_html"
+    test::assert_not_contains 'href="./photos/' "$camera_html"
+    if ! grep -Eq 'href="\./[0-9]+-[0-9]+\.html"' <<< "$camera_html"; then
+        printf 'FAIL: camera page does not link thumbnails to album view pages\n' \
+            >&2
+        exit 1
+    fi
 
     # The header bar links to the stats page on at least one generated page.
     nav_links=$(grep -lF 'stats.html">Stats' "$TEST_TMPDIR"/dist/*.html | wc -l)
@@ -4001,6 +4017,8 @@ MAXPREVIEWS=40
 ORIGINAL_BASEPATH=''
 TARBALL_INCLUDE=no
 SHURIKEN_OUTPUT_MODE=quiet
+# Seed so the per-thumbnail animation class is reproducible across runs.
+RANDOM_SEED=camera-test
 apply_config_defaults
 
 feed() {
@@ -4040,11 +4058,14 @@ BASH
     test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d-2.html"
     test::assert_file_exists "$dist_dir/run1/camera-nikon-co-z6.html"
 
-    # The Canon EOS 5D page lists exactly its two photos as thumbnails linking to
-    # the full images under photos/, and not the other camera's photo.
+    # The Canon EOS 5D page lists exactly its two photos as thumbnails, and not
+    # the other camera's photo. With no album rendered here, the thumbnail link
+    # falls back to the full image under photos/; the img carries a thumb class
+    # (plus a seeded animation class) pointing at thumbs/.
     html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
     test::assert_contains '<a href="../photos/a.jpg">' "$html"
-    test::assert_contains '<img class="thumb" src="../thumbs/a.jpg" />' "$html"
+    test::assert_contains 'class="thumb ' "$html"
+    test::assert_contains 'src="../thumbs/a.jpg" />' "$html"
     test::assert_contains '<a href="../photos/b.jpg">' "$html"
     test::assert_not_contains 'photos/c.png' "$html"
     test::assert_not_contains 'photos/d.jpg' "$html"

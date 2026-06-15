@@ -98,23 +98,31 @@ cat <<END
         div.stats {
             margin: 0 auto;
             max-width: 900px;
+            padding: 0 12px;
             text-align: left;
         }
 
         h1.stats-title {
+            margin-bottom: 12px;
             text-align: center;
+        }
+
+        /* Give the "Back to album/stats" link room before the first section. */
+        div.stats-back {
+            margin-bottom: 16px;
         }
 
         section.stats-section {
             background-color: #000000;
             border: 3px solid #ffffff;
-            margin: 8px auto;
-            padding: 10px;
+            margin: 16px auto;
+            padding: 14px 16px;
         }
 
         section.stats-section h2 {
             font-size: 1.1em;
             margin-top: 0;
+            margin-bottom: 12px;
         }
 
         /* Each bar row is a label, a proportional bar, and the count/percent.
@@ -129,8 +137,20 @@ cat <<END
         ul.stats-bars li {
             align-items: center;
             display: flex;
-            gap: 8px;
-            margin: 2px 0;
+            gap: 10px;
+            margin: 4px 0;
+        }
+
+        /* The camera leaderboard labels are long, EXIF-derived names that wrap,
+           so give each row extra vertical padding and a separator line to make
+           the boundary between cameras clear. */
+        ul.stats-leaderboard li {
+            border-bottom: 1px solid #444444;
+            padding: 8px 0;
+        }
+
+        ul.stats-leaderboard li:last-child {
+            border-bottom: none;
         }
 
         span.stats-label {
@@ -160,10 +180,16 @@ cat <<END
             padding: 5px;
         }
 
-        img.thumb { 
+        img.thumb {
             height: ${render_thumbheight_html}px;
             width: ${render_thumbheight_html}px;
             object-fit: cover;
+        }
+
+        /* Camera filter page grid: separate from the back link and let the
+           thumbnails (which already carry their own padding) breathe a little. */
+        div.camera-thumbs {
+            margin-top: 12px;
         }
 
         img.thumb:hover {

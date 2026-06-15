@@ -7,10 +7,11 @@
 # <html>/<head>/<body> and footer come from the header/footer templates, which
 # render_camera_pages emits around this one (same pattern as stats/view/details).
 #
-# Thumbnails link to the full-size image under photos/ rather than to a per-photo
-# view page: a camera page is built outside the album's pagination loop and so
-# cannot know which <page>-<preview>.html a given photo landed on. Linking to the
-# original image is the sensible derivable target (see render_camera_pages).
+# Thumbnails link to each photo's album view page (navigation, details, EXIF
+# tooltip) so a camera page behaves exactly like the main album.
+# render_camera_pages resolves the <page>-<preview>.html target from the map the
+# album build records; a photo with no recorded view page falls back to the
+# full-size image under photos/ (see render_camera_pages).
 cat <<END
 <div class="view stats camera">
     <h1 class="stats-title">${render_title_html} &mdash; ${render_camera_name_html}</h1>
