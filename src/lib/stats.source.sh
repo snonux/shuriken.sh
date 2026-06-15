@@ -879,15 +879,14 @@ render_stats_page() {
 # field; camera.tmpl supplies only the page chrome (heading + back-to-stats
 # link), wrapped by the shared header/footer the same way render_stats_page does.
 #
-# The album's incoming photo and thumbnail directories are the conventional
-# 'photos'/'thumbs' that generate() passes to render_album_pages
-# (render_album_pages 'photos' '.' 'thumbs' ...), so the grid reuses preview.tmpl's
-# thumbnail markup style with those fixed dir names. Each thumbnail links to the
-# full-size image under photos/ (backhref/photos/<file>) rather than a per-photo
-# <page>-<preview>.html view page: a camera page is rendered outside the album
-# pagination loop and cannot know which view page a given photo landed on, so the
-# original image under photos/ is the only target derivable in this context (this
-# choice is also documented in camera.tmpl).
+# Each camera is a self-contained mini album: the gallery (camera-<slug>.html)
+# shows a thumbnail grid, and every thumbnail links to a per-camera view page
+# (camera-<slug>--<index>.html) whose prev/next navigation cycles only through
+# that camera's photos. The "--<index>" suffix never collides with a gallery
+# name because slugs never contain "--". The album's photo/thumb dirs are the
+# conventional 'photos'/'thumbs' generate() passes to render_album_pages, and the
+# view pages link "Details" to the album's own details page for the photo via the
+# ALBUM_VIEW_PAGE_BY_PHOTO map.
 
 # Dist-relative subdirectories that hold the full-size images and thumbnails.
 # These mirror the literals generate() passes to render_album_pages so camera
@@ -899,33 +898,23 @@ declare -gr STATS_CAMERA_THUMBS_DIR='thumbs'
 declare -gr STATS_BLURS_DIR='blurs'
 
 # Emit one thumbnail anchor for the camera grid: a thumb image (from thumbs/)
-# wrapped in a link to the full-size image (from photos/), both resolved through
-# the page's backhref. The photo filename is HTML-escaped because it ends up in
-# both href and src attributes. Mirrors preview.tmpl's markup but targets the
-# full image instead of a view page (see render_camera_pages header comment).
+# wrapped in a link to this camera's view page for that photo
+# (camera-<slug>--<index>.html), both resolved through the page's backhref. The
+# photo filename is HTML-escaped because it ends up in the src attribute; the
+# slug and index are filename-safe by construction.
 _stats_camera_thumbnail() {
     local -r backhref_html="$1"; shift
+    local -r slug="$1"; shift
+    local -ri index="$1"; shift
     local -r photo="$1"; shift
     local photo_html
     local animation_class
-    local view_page
 
     photo_html=$(_html_escape "$photo")
-    # Same seeded animation the album thumbnail uses for this photo, so camera
-    # pages animate identically.
+    # Same seeded animation the album thumbnail uses for this photo.
     animation_class=$(random_animation_css_class slow "$photo")
-    # Link to the photo's album view page (navigation, details, EXIF tooltip)
-    # so a camera page behaves exactly like the main album. Fall back to the
-    # full-size image when the album mapping is unknown (e.g. unit tests that
-    # render camera pages without a rendered album).
-    view_page="${ALBUM_VIEW_PAGE_BY_PHOTO[$photo]:-}"
-    if [ -n "$view_page" ]; then
-        printf '        <a name="%s" href="%s/%s.html">' \
-            "$photo_html" "$backhref_html" "$view_page"
-    else
-        printf '        <a href="%s/%s/%s">' \
-            "$backhref_html" "$STATS_CAMERA_PHOTOS_DIR" "$photo_html"
-    fi
+    printf '        <a name="%s" href="%s/camera-%s--%d.html">' \
+        "$photo_html" "$backhref_html" "$slug" "$index"
     printf '<img class="thumb %s" src="%s/%s/%s" /></a>\n' \
         "$animation_class" "$backhref_html" "$STATS_CAMERA_THUMBS_DIR" \
         "$photo_html"
@@ -936,20 +925,20 @@ _stats_camera_thumbnail() {
 # grid is deterministic for a given input. Returns the grid HTML on stdout.
 _stats_build_camera_thumbs() {
     local -r backhref_html="$1"; shift
+    local -r slug="$1"; shift
     local -r photos="$1"; shift
     local photo
+    local -i index=0
 
     while IFS= read -r photo; do
         if [ -n "$photo" ]; then
-            _stats_camera_thumbnail "$backhref_html" "$photo"
+            (( ++index ))
+            _stats_camera_thumbnail "$backhref_html" "$slug" "$index" "$photo"
         fi
     done <<< "$photos"
 }
 
-# Render a single camera-<slug>.html: header + camera.tmpl (escaped heading and
-# pre-built thumbnail grid) + footer. The label is HTML-escaped via camera.tmpl's
-# context_html field spec; backhref_html is the already-escaped path used inside
-# the grid anchors so thumbnail links resolve from the page's location.
+# Render one camera's mini album: the gallery page plus a view page per photo.
 _stats_render_camera_page() {
     local -r html_dir="$1"; shift
     local -r backhref="$1"; shift
@@ -957,28 +946,151 @@ _stats_render_camera_page() {
     local -r slug="$1"; shift
     local -r photos="$1"; shift
     local backhref_html
+
+    backhref_html=$(_html_escape "$backhref")
+    _stats_render_camera_gallery \
+        "$html_dir" "$backhref" "$backhref_html" "$label" "$slug" "$photos"
+    _stats_render_camera_views \
+        "$html_dir" "$backhref" "$backhref_html" "$slug" "$photos"
+}
+
+# Render camera-<slug>.html: header + camera.tmpl (escaped heading and pre-built
+# thumbnail grid) + footer. The label is HTML-escaped via camera.tmpl's
+# context_html field spec; backhref_html is the already-escaped path used inside
+# the grid anchors so thumbnail links resolve from the page's location.
+_stats_render_camera_gallery() {
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r backhref_html="$1"; shift
+    local -r label="$1"; shift
+    local -r slug="$1"; shift
+    local -r photos="$1"; shift
     local camera_thumbs
     local background_image
     local -r page="camera-$slug.html"
 
-    backhref_html=$(_html_escape "$backhref")
-    camera_thumbs=$(_stats_build_camera_thumbs "$backhref_html" "$photos")
+    camera_thumbs=$(_stats_build_camera_thumbs "$backhref_html" "$slug" "$photos")
     background_image=$(_stats_random_background "$page")
     template header "$page" \
-        html_dir "$html_dir" \
-        backhref "$backhref" \
-        blurs_dir "$STATS_BLURS_DIR" \
-        background_image "$background_image" \
+        html_dir "$html_dir" backhref "$backhref" \
+        blurs_dir "$STATS_BLURS_DIR" background_image "$background_image" \
         show_header_bar 'yes'
     template camera "$page" \
-        html_dir "$html_dir" \
-        backhref "$backhref" \
-        camera_name "$label" \
-        camera_thumbs "$camera_thumbs"
+        html_dir "$html_dir" backhref "$backhref" \
+        camera_name "$label" camera_thumbs "$camera_thumbs"
     template footer "$page" \
-        html_dir "$html_dir" \
-        backhref "$backhref" \
-        tarball_name ''
+        html_dir "$html_dir" backhref "$backhref" tarball_name ''
+}
+
+# Render one camera-<slug>--<index>.html view page per photo, with prev/next
+# wrapping around the camera's own photo list so navigation stays in the camera.
+_stats_render_camera_views() {
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r backhref_html="$1"; shift
+    local -r slug="$1"; shift
+    local -r photos="$1"; shift
+    local photo
+    local -a photo_list=()
+    local -i i
+
+    while IFS= read -r photo; do
+        [ -n "$photo" ] && photo_list+=("$photo")
+    done <<< "$photos"
+
+    local -ri n=${#photo_list[@]}
+    for (( i = 1; i <= n; i++ )); do
+        _stats_render_camera_view_page \
+            "$html_dir" "$backhref" "$backhref_html" "$slug" \
+            "${photo_list[i - 1]}" "$i" \
+            "$(( i == 1 ? n : i - 1 ))" "$(( i == n ? 1 : i + 1 ))"
+    done
+}
+
+# Render a single per-camera view page (header + cameraview body + footer).
+_stats_render_camera_view_page() {
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r backhref_html="$1"; shift
+    local -r slug="$1"; shift
+    local -r photo="$1"; shift
+    local -ri index="$1"; shift
+    local -ri prev="$1"; shift
+    local -ri next="$1"; shift
+    local body
+    local background_image
+    local -r page="camera-$slug--$index.html"
+
+    body=$(_stats_build_cameraview_body \
+        "$backhref_html" "$slug" "$photo" "$prev" "$next")
+    background_image=$(_stats_random_background "$page")
+    template header "$page" \
+        html_dir "$html_dir" backhref "$backhref" \
+        blurs_dir "$STATS_BLURS_DIR" background_image "$background_image" \
+        show_header_bar 'no'
+    template cameraview "$page" \
+        html_dir "$html_dir" backhref "$backhref" cameraview_body "$body"
+    template footer "$page" \
+        html_dir "$html_dir" backhref "$backhref" tarball_name ''
+}
+
+# Build the body of a per-camera view page: the photo (linked to this camera's
+# next photo) plus a navigator whose prev/next cycle within the camera, a link
+# back to the gallery, an optional Details link to the album's details page for
+# the photo, and a direct image link.
+_stats_build_cameraview_body() {
+    local -r backhref_html="$1"; shift
+    local -r slug="$1"; shift
+    local -r photo="$1"; shift
+    local -ri prev="$1"; shift
+    local -ri next="$1"; shift
+    local photo_html
+    local animation_class
+    local tooltip
+    local tooltip_attr=''
+    local view_page
+    local details_link=''
+
+    photo_html=$(_html_escape "$photo")
+    animation_class=$(random_animation_css_class fast "$photo")
+    tooltip=$(photo_exif_tooltip_text "$photo" "$INCOMING_DIR/$photo")
+    if [ -n "$tooltip" ]; then
+        tooltip_attr=" title=\"$(_html_escape "$tooltip")\""
+    fi
+    view_page="${ALBUM_VIEW_PAGE_BY_PHOTO[$photo]:-}"
+    if [ -n "$view_page" ]; then
+        details_link=$(printf ' <a href="%s/%s-details.html">Details</a> |' \
+            "$backhref_html" "$view_page")
+    fi
+    _stats_print_cameraview_body "$backhref_html" "$slug" "$photo_html" \
+        "$animation_class" "$tooltip_attr" "$details_link" "$prev" "$next"
+}
+
+# Emit the per-camera view page markup. Split out so _stats_build_cameraview_body
+# stays focused on assembling the pieces.
+_stats_print_cameraview_body() {
+    local -r backhref_html="$1"; shift
+    local -r slug="$1"; shift
+    local -r photo_html="$1"; shift
+    local -r animation_class="$1"; shift
+    local -r tooltip_attr="$1"; shift
+    local -r details_link="$1"; shift
+    local -ri prev="$1"; shift
+    local -ri next="$1"; shift
+
+    cat <<END
+<div class='view'>
+    <a href="$backhref_html/camera-$slug--$next.html">
+        <img class='view $animation_class' border='0' src='$backhref_html/$STATS_CAMERA_PHOTOS_DIR/$photo_html'$tooltip_attr />
+    </a>
+    <div class="navigator">
+        <a href="$backhref_html/camera-$slug--$prev.html" class="arrow">&lArr;</a>
+        <a href="$backhref_html/camera-$slug.html">Gallery</a> |$details_link
+        <a href="$backhref_html/$STATS_CAMERA_PHOTOS_DIR/$photo_html">Direct link</a>
+        <a href="$backhref_html/camera-$slug--$next.html" class="arrow">&rArr;</a>
+    </div>
+</div>
+END
 }
 
 # Public render entry point (handoff for task rm0). Renders one

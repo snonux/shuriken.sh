@@ -7,19 +7,20 @@
 # <html>/<head>/<body> and footer come from the header/footer templates, which
 # render_camera_pages emits around this one (same pattern as stats/view/details).
 #
-# Thumbnails link to each photo's album view page (navigation, details, EXIF
-# tooltip) so a camera page behaves exactly like the main album.
-# render_camera_pages resolves the <page>-<preview>.html target from the map the
-# album build records; a photo with no recorded view page falls back to the
-# full-size image under photos/ (see render_camera_pages).
+# This is a self-contained mini album: each thumbnail links to a per-camera view
+# page (camera-<slug>--<index>.html) whose prev/next navigation cycles only
+# through this camera's photos (see render_camera_pages). The heading and back
+# link sit in the narrow centered stats column, but the thumbnail grid is a
+# full-width sibling so it flows and wraps with the window like the main album
+# (the album thumbnails are likewise direct, full-width body children).
 cat <<END
 <div class="view stats camera">
     <h1 class="stats-title">${render_title_html} &mdash; ${render_camera_name_html}</h1>
     <div class="stats-back navigator">
         <a href="${render_backhref_html}/stats.html">Back to stats</a>
     </div>
-    <div class="camera-thumbs">
+</div>
+<div class="camera-thumbs">
 ${render_camera_thumbs_html}
-    </div>
 </div>
 END

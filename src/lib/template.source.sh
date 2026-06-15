@@ -148,6 +148,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_background_image_css|context_css|background_image|background_image|header splash'
     'render_blurs_dir_css|context_css|blurs_dir|blurs_dir|header splash'
     'render_camera_name_html|context_html|camera_name|camera_name|camera'
+    'render_cameraview_body_html|context_raw|cameraview_body|cameraview_body|cameraview'
     'render_camera_thumbs_html|context_raw|camera_thumbs|camera_thumbs|camera'
     'render_current_date_text|current_date_html|||'
     'render_enter_page_html|context_html|enter_page|enter_page|splash'

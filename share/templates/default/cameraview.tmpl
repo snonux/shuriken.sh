@@ -1,0 +1,10 @@
+# Per-camera view page body: a self-contained mini-album view. The whole body --
+# the photo and its camera-scoped navigator (prev/next cycle within the camera,
+# plus links back to the gallery, the album details page, and the direct image)
+# -- is pre-rendered by render_camera_pages in src/lib/stats.source.sh and handed
+# in raw through render_cameraview_body_html. The surrounding chrome (header with
+# the blurred background, and footer) comes from the header/footer templates,
+# rendered around this one exactly like the album view pages.
+cat <<END
+${render_cameraview_body_html}
+END

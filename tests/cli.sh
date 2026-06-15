@@ -3061,6 +3061,7 @@ test::stats_identify_output() {
 
 test_generate_stats_pages_created_and_nav_linked() {
     local camera_html
+    local camera_view_html
     local config_file
     local fake_bin
     local -i nav_links
@@ -3093,16 +3094,22 @@ test_generate_stats_pages_created_and_nav_linked() {
     test::assert_contains 'background-image: url("./blurs/' \
         "$(<"$TEST_TMPDIR/dist/stats.html")"
 
-    # Camera-page thumbnails link into the album view pages (behave like the main
-    # album), not the raw image, and point at the thumbs.
+    # The camera gallery is a mini album: thumbnails link to per-camera view
+    # pages (camera-<slug>--<n>.html), not the album view pages or raw images.
     camera_html=$(<"$TEST_TMPDIR/dist/camera-canon-eos-r5.html")
     test::assert_contains 'src="./thumbs/' "$camera_html"
+    test::assert_contains 'href="./camera-canon-eos-r5--1.html"' "$camera_html"
     test::assert_not_contains 'href="./photos/' "$camera_html"
-    if ! grep -Eq 'href="\./[0-9]+-[0-9]+\.html"' <<< "$camera_html"; then
-        printf 'FAIL: camera page does not link thumbnails to album view pages\n' \
-            >&2
-        exit 1
-    fi
+
+    # A per-camera view page exists and its navigation stays within the camera:
+    # prev/next point at this camera's view pages, plus links back to the gallery
+    # and to the album details page for the photo.
+    test::assert_file_exists "$TEST_TMPDIR/dist/camera-canon-eos-r5--1.html"
+    camera_view_html=$(<"$TEST_TMPDIR/dist/camera-canon-eos-r5--1.html")
+    test::assert_contains 'href="./camera-canon-eos-r5--2.html"' "$camera_view_html"
+    test::assert_contains 'href="./camera-canon-eos-r5.html">Gallery</a>' \
+        "$camera_view_html"
+    test::assert_contains '-details.html">Details</a>' "$camera_view_html"
 
     # The header bar links to the stats page on at least one generated page.
     nav_links=$(grep -lF 'stats.html">Stats' "$TEST_TMPDIR"/dist/*.html | wc -l)
@@ -3853,6 +3860,8 @@ test_template_required_context_vars_come_from_render_specs() {
     local output
 
     expected=$(cat <<'END'
+camera:backhref camera_name camera_thumbs html_dir
+cameraview:cameraview_body html_dir
 details:animation_class backhref exif_details exif_tooltip html_dir page_num photo photos_dir preview_num
 footer:backhref html_dir tarball_name
 header:backhref background_image blurs_dir html_dir show_header_bar
@@ -3870,6 +3879,8 @@ END
 repo_root="$1"; shift
 template_name=''
 declare -a template_names=(
+    camera
+    cameraview
     details
     footer
     header
@@ -4021,6 +4032,15 @@ SHURIKEN_OUTPUT_MODE=quiet
 RANDOM_SEED=camera-test
 apply_config_defaults
 
+# The per-camera view pages read each photo's EXIF tooltip from INCOMING_DIR, so
+# provide empty stand-in files (no ImageMagick here, so the tooltip is empty but
+# the view pages still render with full camera navigation).
+INCOMING_DIR="$dist_dir/incoming"
+mkdir -p "$INCOMING_DIR"
+for stub in a.jpg b.jpg c.png d.jpg; do
+    : > "$INCOMING_DIR/$stub"
+done
+
 feed() {
     reset_photo_exif_stats
     accumulate_photo_stats 'a.jpg' <<'EXIF'
@@ -4058,26 +4078,39 @@ BASH
     test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d-2.html"
     test::assert_file_exists "$dist_dir/run1/camera-nikon-co-z6.html"
 
-    # The Canon EOS 5D page lists exactly its two photos as thumbnails, and not
-    # the other camera's photo. With no album rendered here, the thumbnail link
-    # falls back to the full image under photos/; the img carries a thumb class
-    # (plus a seeded animation class) pointing at thumbs/.
+    # The Canon EOS 5D gallery lists exactly its two photos as thumbnails linking
+    # to this camera's own view pages (camera-<slug>--<n>.html), not the other
+    # camera's photo. The img carries a thumb class (plus a seeded animation
+    # class) pointing at thumbs/.
     html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
-    test::assert_contains '<a href="../photos/a.jpg">' "$html"
+    test::assert_contains 'href="../camera-canon-eos-5d--1.html"' "$html"
     test::assert_contains 'class="thumb ' "$html"
     test::assert_contains 'src="../thumbs/a.jpg" />' "$html"
-    test::assert_contains '<a href="../photos/b.jpg">' "$html"
+    test::assert_contains 'href="../camera-canon-eos-5d--2.html"' "$html"
     test::assert_not_contains 'photos/c.png' "$html"
     test::assert_not_contains 'photos/d.jpg' "$html"
+    test::assert_not_contains 'href="../photos/' "$html"
     # Heading shows the (trusted) camera label and a back-to-stats link.
     test::assert_contains 'Canon EOS 5D' "$html"
     test::assert_contains '<a href="../stats.html">Back to stats</a>' "$html"
 
-    # The EXIF-derived label with & and < is HTML-escaped in the heading.
+    # Each per-camera view page exists and its prev/next stay within the camera
+    # (two photos, so view 1's prev and next both point at view 2), with a link
+    # back to the gallery.
+    test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d--1.html"
+    test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d--2.html"
+    html=$(cat "$dist_dir/run1/camera-canon-eos-5d--1.html")
+    test::assert_contains 'href="../camera-canon-eos-5d--2.html" class="arrow"' \
+        "$html"
+    test::assert_contains 'href="../camera-canon-eos-5d.html">Gallery</a>' "$html"
+    test::assert_contains 'src=' "$html"
+
+    # The EXIF-derived label with & and < is HTML-escaped in the heading, and its
+    # single photo links to that camera's own view page.
     html=$(cat "$dist_dir/run1/camera-nikon-co-z6.html")
     test::assert_contains 'Nikon &amp; Co &lt;Z6&gt;' "$html"
     test::assert_not_contains 'Nikon & Co <Z6>' "$html"
-    test::assert_contains '<a href="../photos/c.png">' "$html"
+    test::assert_contains 'href="../camera-nikon-co-z6--1.html"' "$html"
 
     # Output is deterministic: the second run is byte-identical to the first.
     html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
