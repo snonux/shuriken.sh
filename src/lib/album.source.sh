@@ -1,8 +1,8 @@
 # Maps each album photo filename to its view-page basename ("<page>-<preview>")
-# as assigned during render_album_pages. The stats camera pages read this so
-# their thumbnails link into the album view (with navigation, details, and the
-# EXIF tooltip) exactly like the main album, instead of the raw image. Declared
-# globally so it always exists for callers even when no album was rendered.
+# as assigned during render_album_pages. The stats filter mini-albums read this
+# so each view page can link "Details" to the album's own details page for the
+# photo. Declared globally so it always exists for callers even when no album
+# was rendered.
 declare -gA ALBUM_VIEW_PAGE_BY_PHOTO=()
 
 album_photo_files() {
@@ -796,8 +796,8 @@ render_album_pages() {
             render_failed
         record_rendered_view_page rendered_view_pages rendered_last_views \
             "$num" "$i"
-        # Read later by the stats camera pages (render_camera_pages); shellcheck
-        # cannot see that cross-function use.
+        # Read later by the stats filter mini-albums (render_filter_pages) for
+        # their Details links; shellcheck cannot see that cross-function use.
         # shellcheck disable=SC2034
         ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$num-$i"
     done < <(album_photo_files "$photos_dir")
@@ -1073,7 +1073,7 @@ generate_stats_pages() {
     log_verbose 'Stats page enabled; collecting EXIF stats'
     collect_photo_exif_stats
     render_stats_page . .
-    render_camera_pages . .
+    render_filter_pages . .
 }
 
 generate() {

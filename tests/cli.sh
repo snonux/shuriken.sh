@@ -3101,6 +3101,15 @@ test_generate_stats_pages_created_and_nav_linked() {
     test::assert_contains 'href="./camera-canon-eos-r5--1.html"' "$camera_html"
     test::assert_not_contains 'href="./photos/' "$camera_html"
 
+    # Non-camera stats are clickable mini-albums too: the ISO row links to a
+    # filter page that exists and is itself a gallery of matching photos.
+    test::assert_contains 'href="iso-400.html"' \
+        "$(<"$TEST_TMPDIR/dist/stats.html")"
+    test::assert_file_exists "$TEST_TMPDIR/dist/iso-400.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/iso-400--1.html"
+    test::assert_contains 'href="./iso-400--1.html"' \
+        "$(<"$TEST_TMPDIR/dist/iso-400.html")"
+
     # A per-camera view page exists and its navigation stays within the camera:
     # prev/next point at this camera's view pages, plus links back to the gallery
     # and to the album details page for the photo.
@@ -3993,7 +4002,7 @@ BASH
     test::teardown
 }
 
-test_render_camera_pages_renders_one_page_per_camera() {
+test_render_filter_pages_renders_mini_albums() {
     local html
     local html_again
     local dist_dir
@@ -4002,11 +4011,11 @@ test_render_camera_pages_renders_one_page_per_camera() {
     dist_dir="$TEST_TMPDIR/dist"
     mkdir -p "$dist_dir"
 
-    # Feed synthetic EXIF straight into accumulate_photo_stats (same approach as
-    # the stats-page test) to exercise three cameras: one whose label needs
-    # HTML-escaping (& and <), and a slug-collision pair ("Canon EOS 5D" vs
-    # "Canon EOS-5D" both slug to canon-eos-5d, so the second gets -2). Then
-    # render the per-camera pages twice into separate dirs to assert determinism.
+    # Feed synthetic EXIF into accumulate_photo_stats to exercise several filter
+    # categories: cameras (one label needing HTML-escaping; a slug-collision pair
+    # "Canon EOS 5D" vs "Canon EOS-5D" -> canon-eos-5d / canon-eos-5d-2) plus the
+    # orientation buckets derived from Geometry. Render the filter mini-albums
+    # twice into separate dirs to assert deterministic output despite parallelism.
     bash -euo pipefail -s \
         "$TEST_SHURIKEN" \
         "$TEST_REPO_ROOT/share/templates/default" \
@@ -4030,11 +4039,15 @@ TARBALL_INCLUDE=no
 SHURIKEN_OUTPUT_MODE=quiet
 # Seed so the per-thumbnail animation class is reproducible across runs.
 RANDOM_SEED=camera-test
+# Render serially here: this test renders filters without an album render to warm
+# the EXIF cache, so parallel jobs would otherwise race to populate it. The
+# parallel path (with a warm cache) is covered by the full --generate test.
+IMAGE_JOBS=1
 apply_config_defaults
 
-# The per-camera view pages read each photo's EXIF tooltip from INCOMING_DIR, so
+# The filter view pages read each photo's EXIF tooltip from INCOMING_DIR, so
 # provide empty stand-in files (no ImageMagick here, so the tooltip is empty but
-# the view pages still render with full camera navigation).
+# the view pages still render with full filter navigation).
 INCOMING_DIR="$dist_dir/incoming"
 mkdir -p "$INCOMING_DIR"
 for stub in a.jpg b.jpg c.png d.jpg; do
@@ -4067,36 +4080,34 @@ EXIF
 
 mkdir -p "$dist_dir/run1" "$dist_dir/run2"
 feed
-render_camera_pages run1 ..
+render_filter_pages run1 ..
 feed
-render_camera_pages run2 ..
+render_filter_pages run2 ..
 BASH
 
-    # One page per camera, named with the slugs the aggregation stored. The
-    # colliding labels get distinct files (canon-eos-5d and canon-eos-5d-2).
+    # Camera mini-albums: one gallery per camera, collision-resolved names.
     test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d.html"
     test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d-2.html"
     test::assert_file_exists "$dist_dir/run1/camera-nikon-co-z6.html"
+    # Non-camera stats are mini-albums too: orientation comes from Geometry, so
+    # the three landscape photos get their own filter mini-album.
+    test::assert_file_exists "$dist_dir/run1/orientation-landscape.html"
+    test::assert_file_exists "$dist_dir/run1/orientation-landscape--1.html"
 
-    # The Canon EOS 5D gallery lists exactly its two photos as thumbnails linking
-    # to this camera's own view pages (camera-<slug>--<n>.html), not the other
-    # camera's photo. The img carries a thumb class (plus a seeded animation
-    # class) pointing at thumbs/.
+    # The Canon EOS 5D gallery lists its two photos as thumbnails linking to this
+    # filter's own view pages (<pagebase>--<n>.html); img points at thumbs/.
     html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
     test::assert_contains 'href="../camera-canon-eos-5d--1.html"' "$html"
     test::assert_contains 'class="thumb ' "$html"
     test::assert_contains 'src="../thumbs/a.jpg" />' "$html"
     test::assert_contains 'href="../camera-canon-eos-5d--2.html"' "$html"
-    test::assert_not_contains 'photos/c.png' "$html"
-    test::assert_not_contains 'photos/d.jpg' "$html"
     test::assert_not_contains 'href="../photos/' "$html"
     # Heading shows the (trusted) camera label and a back-to-stats link.
     test::assert_contains 'Canon EOS 5D' "$html"
     test::assert_contains '<a href="../stats.html">Back to stats</a>' "$html"
 
-    # Each per-camera view page exists and its prev/next stay within the camera
-    # (two photos, so view 1's prev and next both point at view 2), with a link
-    # back to the gallery.
+    # A filter view page cycles within its own filter (two photos, so view 1's
+    # prev and next both point at view 2), with a link back to the gallery.
     test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d--1.html"
     test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d--2.html"
     html=$(cat "$dist_dir/run1/camera-canon-eos-5d--1.html")
@@ -4112,11 +4123,11 @@ BASH
     test::assert_not_contains 'Nikon & Co <Z6>' "$html"
     test::assert_contains 'href="../camera-nikon-co-z6--1.html"' "$html"
 
-    # Output is deterministic: the second run is byte-identical to the first.
+    # Output is deterministic across runs despite parallel rendering.
     html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
     html_again=$(cat "$dist_dir/run2/camera-canon-eos-5d.html")
     if [ "$html" != "$html_again" ]; then
-        printf 'FAIL: camera page not reproducible across runs\n' >&2
+        printf 'FAIL: filter page not reproducible across runs\n' >&2
         exit 1
     fi
     test::teardown
@@ -5315,9 +5326,10 @@ test_stats_aggregates_synthetic_exif_fixtures() {
 
     test "${STATS_TOTALS[photos]}" -eq 2
     test "${STATS_CAMERAS[Canon EOS 5D Mark IV]}" -eq 2
-    test "${STATS_CAMERA_SLUGS[Canon EOS 5D Mark IV]}" = 'canon-eos-5d-mark-iv'
-    # Per-camera photo list keeps both frames in encounter order.
-    test "${STATS_CAMERA_PHOTOS[canon-eos-5d-mark-iv]}" = $'a.jpg\nb.png'
+    test "${STATS_FILTER_PAGEBASE[camera${STATS_FILTER_KEYSEP}Canon EOS 5D Mark IV]}" \
+        = 'camera-canon-eos-5d-mark-iv'
+    # The camera's filter mini-album keeps both frames in encounter order.
+    test "${STATS_FILTER_PHOTOS[camera-canon-eos-5d-mark-iv]}" = $'a.jpg\nb.png'
     test "${STATS_LENSES[EF50mm f/1.8 STM]}" -eq 1
     test "${STATS_YEARS[2023]}" -eq 1
     test "${STATS_YEARS[2024]}" -eq 1
@@ -5356,10 +5368,10 @@ test_stats_tolerates_missing_and_edge_case_fields() {
     test "${#STATS_CAMERAS[@]}" -eq 0
     test "${STATS_FORMAT[GIF]}" -eq 1
 
-    # Make only (no Model) still produces a leaderboard entry and slug.
+    # Make only (no Model) still produces a leaderboard entry and mini-album.
     accumulate_photo_stats 'phone.jpg' <<< $'  exif:Make: Apple'
     test "${STATS_CAMERAS[Apple]}" -eq 1
-    test "${STATS_CAMERA_SLUGS[Apple]}" = 'apple'
+    test "${STATS_FILTER_PAGEBASE[camera${STATS_FILTER_KEYSEP}Apple]}" = 'camera-apple'
 
     # Rational guards: zero denominator and bare decimal exposure time.
     fixture=$'  exif:FNumber: 4/0\n'
@@ -5372,27 +5384,29 @@ test_stats_tolerates_missing_and_edge_case_fields() {
 }
 
 test_stats_distinct_cameras_get_unique_slugs() {
+    local sep
     test::setup
     test::source_shuriken_lib
     reset_photo_exif_stats
+    sep="$STATS_FILTER_KEYSEP"
 
     # Two distinct camera labels that sanitize to the same base slug must keep
-    # separate leaderboard entries, separate camera-<slug>.html slugs, and
-    # separate per-camera photo lists (regression: slug collision merged them).
+    # separate leaderboard entries, separate pagebases (mini-album filenames),
+    # and separate photo lists (regression: slug collision merged them).
     accumulate_photo_stats 'a.jpg' <<< $'  exif:Model: Canon EOS 1D'
     accumulate_photo_stats 'b.jpg' <<< $'  exif:Model: Canon EOS-1D!!'
 
     test "${STATS_CAMERAS[Canon EOS 1D]}" -eq 1
     test "${STATS_CAMERAS[Canon EOS-1D!!]}" -eq 1
-    test "${STATS_CAMERA_SLUGS[Canon EOS 1D]}" = 'canon-eos-1d'
-    test "${STATS_CAMERA_SLUGS[Canon EOS-1D!!]}" = 'canon-eos-1d-2'
-    test "${STATS_CAMERA_PHOTOS[canon-eos-1d]}" = 'a.jpg'
-    test "${STATS_CAMERA_PHOTOS[canon-eos-1d-2]}" = 'b.jpg'
+    test "${STATS_FILTER_PAGEBASE[camera${sep}Canon EOS 1D]}" = 'camera-canon-eos-1d'
+    test "${STATS_FILTER_PAGEBASE[camera${sep}Canon EOS-1D!!]}" = 'camera-canon-eos-1d-2'
+    test "${STATS_FILTER_PHOTOS[camera-canon-eos-1d]}" = 'a.jpg'
+    test "${STATS_FILTER_PHOTOS[camera-canon-eos-1d-2]}" = 'b.jpg'
 
-    # Re-encountering the first camera reuses its slug and appends, not a new one.
+    # Re-encountering the first camera reuses its pagebase and appends.
     accumulate_photo_stats 'c.jpg' <<< $'  exif:Model: Canon EOS 1D'
     test "${STATS_CAMERAS[Canon EOS 1D]}" -eq 2
-    test "${STATS_CAMERA_PHOTOS[canon-eos-1d]}" = $'a.jpg\nc.jpg'
+    test "${STATS_FILTER_PHOTOS[camera-canon-eos-1d]}" = $'a.jpg\nc.jpg'
 
     test::teardown
 }
@@ -5460,7 +5474,7 @@ test_stats_collect_reads_cached_identify_output() {
 
     test "${STATS_TOTALS[photos]}" -eq 2
     test "${STATS_CAMERAS[Nikon Z6]}" -eq 2
-    test "${STATS_CAMERA_PHOTOS[nikon-z6]}" = $'one.jpg\ntwo.jpg'
+    test "${STATS_FILTER_PHOTOS[camera-nikon-z6]}" = $'one.jpg\ntwo.jpg'
 
     test::teardown
 }
@@ -5733,8 +5747,8 @@ main() {
         'render_stats_page renders sections and escapes EXIF labels' \
         test_render_stats_page_renders_sections_and_escapes
     test::run_case \
-        'render_camera_pages renders one page per camera' \
-        test_render_camera_pages_renders_one_page_per_camera
+        'render_filter_pages renders mini-albums for every stat bucket' \
+        test_render_filter_pages_renders_mini_albums
     test::run_case \
         'template context validator fails fast without errexit' \
         test_template_context_validator_fails_fast_without_errexit

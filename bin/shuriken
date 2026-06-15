@@ -1514,10 +1514,10 @@ maybe_shuffle() {
 
 # Inlined from src/lib/album.source.sh
 # Maps each album photo filename to its view-page basename ("<page>-<preview>")
-# as assigned during render_album_pages. The stats camera pages read this so
-# their thumbnails link into the album view (with navigation, details, and the
-# EXIF tooltip) exactly like the main album, instead of the raw image. Declared
-# globally so it always exists for callers even when no album was rendered.
+# as assigned during render_album_pages. The stats filter mini-albums read this
+# so each view page can link "Details" to the album's own details page for the
+# photo. Declared globally so it always exists for callers even when no album
+# was rendered.
 declare -gA ALBUM_VIEW_PAGE_BY_PHOTO=()
 
 album_photo_files() {
@@ -2311,8 +2311,8 @@ render_album_pages() {
             render_failed
         record_rendered_view_page rendered_view_pages rendered_last_views \
             "$num" "$i"
-        # Read later by the stats camera pages (render_camera_pages); shellcheck
-        # cannot see that cross-function use.
+        # Read later by the stats filter mini-albums (render_filter_pages) for
+        # their Details links; shellcheck cannot see that cross-function use.
         # shellcheck disable=SC2034
         ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$num-$i"
     done < <(album_photo_files "$photos_dir")
@@ -2588,7 +2588,7 @@ generate_stats_pages() {
     log_verbose 'Stats page enabled; collecting EXIF stats'
     collect_photo_exif_stats
     render_stats_page . .
-    render_camera_pages . .
+    render_filter_pages . .
 }
 
 generate() {
@@ -2809,8 +2809,6 @@ print_dry_run_plan() {
 # call without namerefs):
 #
 #   STATS_CAMERAS[<camera label>]      = count          (camera leaderboard)
-#   STATS_CAMERA_SLUGS[<camera label>] = slug            (camera-<slug>.html)
-#   STATS_CAMERA_PHOTOS[<slug>]        = newline-separated photo filenames
 #   STATS_LENSES[<lens model>]         = count           (sparse; may be empty)
 #   STATS_YEARS[<YYYY>]                = count
 #   STATS_MONTHS[<01..12>]             = count
@@ -2828,7 +2826,12 @@ print_dry_run_plan() {
 #   STATS_FLASH[<label>]               = count           (Fired/Did not fire; sparse)
 #   STATS_TOTALS[photos]               = number of photos seen
 #
-# The render tasks should treat every per-category array as possibly empty
+# It also fills the filter mini-album maps (see reset_photo_exif_stats):
+# STATS_FILTER_PHOTOS / STATS_FILTER_TITLE keyed by a unique "pagebase", and
+# STATS_FILTER_PAGEBASE mapping "<prefix>\x1f<label>" -> pagebase so the stats
+# rows can link to each bucket's mini-album.
+#
+# The render side should treat every per-category array as possibly empty
 # (sparse data) and only render a section when it has entries. STATS_TOTALS
 # gives the denominator for percentages.
 
@@ -2837,8 +2840,6 @@ print_dry_run_plan() {
 # not accumulate stale counts.
 reset_photo_exif_stats() {
     declare -gA STATS_CAMERAS=()
-    declare -gA STATS_CAMERA_SLUGS=()
-    declare -gA STATS_CAMERA_PHOTOS=()
     declare -gA STATS_LENSES=()
     declare -gA STATS_YEARS=()
     declare -gA STATS_MONTHS=()
@@ -2856,9 +2857,18 @@ reset_photo_exif_stats() {
     declare -gA STATS_FLASH=()
     declare -gA STATS_TOTALS=()
     STATS_TOTALS[photos]=0
-    # Reverse map slug -> owning camera label, used to keep camera-<slug>.html
-    # filenames unique when two distinct labels sanitize to the same slug.
-    declare -gA STATS_SLUG_OWNERS=()
+    # Every tallied bucket (across all categories) becomes a clickable filter
+    # mini-album. These map a unique, filename-safe "pagebase" (e.g. iso-400,
+    # camera-canon-eos-r5, year-2023) to that bucket's data:
+    #   STATS_FILTER_PHOTOS[pagebase]   = newline-separated photo list
+    #   STATS_FILTER_TITLE[pagebase]    = human heading for the gallery page
+    #   STATS_FILTER_OWNER[pagebase]    = catkey owning the pagebase (collisions)
+    #   STATS_FILTER_PAGEBASE[catkey]   = pagebase for a "<prefix>\x1f<label>"
+    # so the bar rows can link to the matching mini-album.
+    declare -gA STATS_FILTER_PHOTOS=()
+    declare -gA STATS_FILTER_TITLE=()
+    declare -gA STATS_FILTER_OWNER=()
+    declare -gA STATS_FILTER_PAGEBASE=()
 }
 
 # Decode an EXIF rational ("num/den") to a decimal with `scale` digits.
@@ -3099,59 +3109,18 @@ _stats_camera_label() {
     esac
 }
 
-# Resolve a unique camera-page slug for a label into the named output variable.
-# A label keeps the slug it was first assigned (idempotent on re-encounter).
-# Distinct labels whose sanitized slug collides (e.g. two models differing only
-# in punctuation, or an all-symbol label that slugs to empty) get a numeric
-# suffix so each camera maps to its own camera-<slug>.html and its own
-# STATS_CAMERA_PHOTOS list. Uses a nameref output (not command substitution) so
-# its mutation of STATS_SLUG_OWNERS persists in the caller's shell.
-_stats_resolve_camera_slug() {
-    local -n slug_out_ref="$1"; shift
-    local -r label="$1"; shift
-    local base
-    local -i suffix=2
-
-    if [ -n "${STATS_CAMERA_SLUGS["$label"]:-}" ]; then
-        slug_out_ref="${STATS_CAMERA_SLUGS["$label"]}"
-        return
-    fi
-    base=$(_stats_slug "$label")
-    if [ -z "$base" ]; then
-        base=camera
-    fi
-    slug_out_ref="$base"
-    while [ -n "${STATS_SLUG_OWNERS["$slug_out_ref"]:-}" ] \
-        && [ "${STATS_SLUG_OWNERS["$slug_out_ref"]}" != "$label" ]; do
-        slug_out_ref="${base}-${suffix}"
-        (( ++suffix ))
-    done
-    STATS_SLUG_OWNERS["$slug_out_ref"]="$label"
-}
-
-# Increment STATS_CAMERAS for a photo and record it on the per-camera list so
-# um0 can render camera-<slug>.html. Skips photos with no Make/Model at all.
+# Tally a photo's camera (Make+Model) and, when present, its lens into their
+# leaderboard counts and filter mini-albums. Skips photos with no Make/Model.
 _stats_record_camera() {
     local -n values_ref="$1"; shift
     local -r photo="$1"; shift
     local label
-    local slug
 
     label=$(_stats_camera_label "${values_ref[Make]:-}" "${values_ref[Model]:-}")
-    if [ -z "$label" ]; then
-        return
-    fi
-    _stats_resolve_camera_slug slug "$label"
-    STATS_CAMERAS["$label"]=$(( ${STATS_CAMERAS["$label"]:-0} + 1 ))
-    STATS_CAMERA_SLUGS["$label"]="$slug"
-    if [ -n "${STATS_CAMERA_PHOTOS["$slug"]:-}" ]; then
-        STATS_CAMERA_PHOTOS["$slug"]+=$'\n'"$photo"
-    else
-        STATS_CAMERA_PHOTOS["$slug"]="$photo"
-    fi
+    _stats_tally STATS_CAMERAS camera "$label" "$label" "$photo"
     if [ -n "${values_ref[LensModel]:-}" ]; then
-        STATS_LENSES["${values_ref[LensModel]}"]=$((
-            ${STATS_LENSES["${values_ref[LensModel]}"]:-0} + 1 ))
+        _stats_tally STATS_LENSES lens \
+            "${values_ref[LensModel]}" "Lens ${values_ref[LensModel]}" "$photo"
     fi
 }
 
@@ -3161,8 +3130,11 @@ _stats_record_camera() {
 # plain DateTime tags.
 _stats_record_datetime() {
     local -n values_ref="$1"; shift
+    local -r photo="$1"; shift
     local raw=''
     local key
+    local -ra month_names=( '' January February March April May June July
+        August September October November December )
 
     for key in DateTimeOriginal DateTimeDigitized DateTime; do
         if [ -n "${values_ref[$key]:-}" ]; then
@@ -3175,8 +3147,9 @@ _stats_record_datetime() {
     fi
     local -r year="${BASH_REMATCH[1]}"
     local -r month="${BASH_REMATCH[2]}"
-    STATS_YEARS["$year"]=$(( ${STATS_YEARS["$year"]:-0} + 1 ))
-    STATS_MONTHS["$month"]=$(( ${STATS_MONTHS["$month"]:-0} + 1 ))
+    _stats_tally STATS_YEARS year "$year" "Year $year" "$photo"
+    _stats_tally STATS_MONTHS month "$month" \
+        "${month_names[10#$month]:-Month $month}" "$photo"
 }
 
 # Record the aperture, shutter, ISO and focal-length histograms. Each uses the
@@ -3184,19 +3157,21 @@ _stats_record_datetime() {
 # fiddly fields. Missing/unparseable values are simply skipped.
 _stats_record_exposure() {
     local -n values_ref="$1"; shift
-    local decimal
-    local raw
+    local -r photo="$1"; shift
+    local decimal raw bucket
 
     raw="${values_ref[FNumber]:-}"
     decimal=$(_stats_rational_to_decimal "$raw")
     if [ -n "$decimal" ]; then
-        _stats_bump STATS_APERTURE "$(_stats_aperture_bucket "$decimal")"
+        bucket=$(_stats_aperture_bucket "$decimal")
+        _stats_tally STATS_APERTURE aperture "$bucket" "Aperture $bucket" "$photo"
     fi
 
     raw="${values_ref[ExposureTime]:-}"
     decimal=$(_stats_rational_to_decimal "$raw" 6)
     if [ -n "$decimal" ]; then
-        _stats_bump STATS_SHUTTER "$(_stats_shutter_bucket "$decimal")"
+        bucket=$(_stats_shutter_bucket "$decimal")
+        _stats_tally STATS_SHUTTER shutter "$bucket" "Shutter $bucket" "$photo"
     fi
 
     # ISO fallback order mirrors album.source.sh's tooltip builder
@@ -3204,38 +3179,43 @@ _stats_record_exposure() {
     # several ISO tags buckets the same value it shows in its tooltip.
     raw="${values_ref[ISOSpeedRatings]:-${values_ref[PhotographicSensitivity]:-${values_ref[ISO]:-}}}"
     if [[ "$raw" =~ ^[0-9]+$ ]]; then
-        _stats_bump STATS_ISO "$(_stats_iso_bucket "$raw")"
+        bucket=$(_stats_iso_bucket "$raw")
+        _stats_tally STATS_ISO iso "$bucket" "ISO $bucket" "$photo"
     fi
 
     raw="${values_ref[FocalLength]:-}"
     decimal=$(_stats_rational_to_decimal "$raw")
     if [ -n "$decimal" ]; then
-        _stats_bump STATS_FOCAL "$(_stats_focal_bucket "$decimal")"
+        bucket=$(_stats_focal_bucket "$decimal")
+        _stats_tally STATS_FOCAL focal "$bucket" "Focal length $bucket" "$photo"
     fi
 }
 
 # Record the decoded enum stats (exposure program, metering, white balance,
-# flash). Each is skipped when the tag is absent or decodes to nothing.
+# flash). Each is skipped when the tag is absent or decodes to nothing (empty
+# labels are dropped by _stats_tally).
 _stats_record_enums() {
     local -n values_ref="$1"; shift
+    local -r photo="$1"; shift
     local label
 
     if [ -n "${values_ref[ExposureProgram]:-}" ]; then
         label=$(_stats_exposure_program_label "${values_ref[ExposureProgram]}")
-        _stats_bump STATS_EXPOSURE_PROGRAM "$label"
+        _stats_tally STATS_EXPOSURE_PROGRAM exposure-program \
+            "$label" "Exposure program $label" "$photo"
     fi
     if [ -n "${values_ref[MeteringMode]:-}" ]; then
         label=$(_stats_metering_label "${values_ref[MeteringMode]}")
-        _stats_bump STATS_METERING "$label"
+        _stats_tally STATS_METERING metering "$label" "Metering $label" "$photo"
     fi
     if [ -n "${values_ref[WhiteBalance]:-}" ]; then
         label=$(_stats_white_balance_label "${values_ref[WhiteBalance]}")
-        if [ -n "$label" ]; then
-            _stats_bump STATS_WHITE_BALANCE "$label"
-        fi
+        _stats_tally STATS_WHITE_BALANCE white-balance \
+            "$label" "White balance $label" "$photo"
     fi
     if [[ "${values_ref[Flash]:-}" =~ ^[0-9]+$ ]]; then
-        _stats_bump STATS_FLASH "$(_stats_flash_label "${values_ref[Flash]}")"
+        label=$(_stats_flash_label "${values_ref[Flash]}")
+        _stats_tally STATS_FLASH flash "$label" "Flash $label" "$photo"
     fi
 }
 
@@ -3245,7 +3225,8 @@ _stats_record_enums() {
 # parser path in _stats_parse_identify_stream.
 _stats_record_dimensions() {
     local -n values_ref="$1"; shift
-    local mp
+    local -r photo="$1"; shift
+    local mp bucket
 
     if [[ ! "${values_ref[__geometry]:-}" =~ ^([0-9]+)x([0-9]+) ]]; then
         return
@@ -3254,9 +3235,12 @@ _stats_record_dimensions() {
     local -ri height="${BASH_REMATCH[2]}"
 
     mp=$(awk -v w="$width" -v h="$height" 'BEGIN { printf "%.4f", w * h / 1000000 }')
-    _stats_bump STATS_MEGAPIXELS "$(_stats_megapixels_bucket "$mp")"
-    _stats_bump STATS_ASPECT "$(_stats_aspect_bucket "$width" "$height")"
-    _stats_bump STATS_ORIENTATION "$(_stats_orientation_bucket "$width" "$height")"
+    bucket=$(_stats_megapixels_bucket "$mp")
+    _stats_tally STATS_MEGAPIXELS megapixels "$bucket" "Megapixels $bucket" "$photo"
+    bucket=$(_stats_aspect_bucket "$width" "$height")
+    _stats_tally STATS_ASPECT aspect "$bucket" "Aspect ratio $bucket" "$photo"
+    bucket=$(_stats_orientation_bucket "$width" "$height")
+    _stats_tally STATS_ORIENTATION orientation "$bucket" "$bucket" "$photo"
 }
 
 # Record the file-format breakdown. The audit's cheapest path keys off the file
@@ -3266,17 +3250,19 @@ _stats_record_dimensions() {
 _stats_record_format() {
     local -r photo="$1"; shift
     local extension="${photo##*.}"
+    local label
 
     if [[ "$photo" != *.* ]]; then
         return
     fi
     case "${extension,,}" in
-        jpg|jpeg) _stats_bump STATS_FORMAT 'JPEG' ;;
-        png) _stats_bump STATS_FORMAT 'PNG' ;;
-        webp) _stats_bump STATS_FORMAT 'WEBP' ;;
-        gif) _stats_bump STATS_FORMAT 'GIF' ;;
-        *) _stats_bump STATS_FORMAT 'other' ;;
+        jpg|jpeg) label=JPEG ;;
+        png) label=PNG ;;
+        webp) label=WEBP ;;
+        gif) label=GIF ;;
+        *) label=other ;;
     esac
+    _stats_tally STATS_FORMAT format "$label" "$label" "$photo"
 }
 
 # Increment a counter in the named global associative array. Centralizes the
@@ -3290,6 +3276,68 @@ _stats_bump() {
         return
     fi
     array_ref["$key"]=$(( ${array_ref["$key"]:-0} + 1 ))
+}
+
+# Field separator used inside STATS_FILTER_PAGEBASE keys ("<prefix>\x1f<label>").
+# A control char that cannot appear in a prefix or an EXIF label.
+declare -gr STATS_FILTER_KEYSEP=$'\x1f'
+
+# Resolve the unique, filename-safe pagebase for a (prefix, label) filter into
+# the named output variable, caching it so repeated tallies reuse it. Distinct
+# labels in the same category whose slug collides (e.g. two camera models
+# differing only in punctuation) get a numeric suffix. Uses a nameref output --
+# not command substitution -- so the STATS_FILTER_OWNER/PAGEBASE mutations
+# persist in the caller's shell.
+_stats_resolve_filter_pagebase() {
+    local -n pagebase_out_ref="$1"; shift
+    local -r prefix="$1"; shift
+    local -r label="$1"; shift
+    local -r catkey="$prefix$STATS_FILTER_KEYSEP$label"
+    local base slug
+    local -i suffix=2
+
+    if [ -n "${STATS_FILTER_PAGEBASE[$catkey]:-}" ]; then
+        pagebase_out_ref="${STATS_FILTER_PAGEBASE[$catkey]}"
+        return
+    fi
+    slug=$(_stats_slug "$label")
+    if [ -z "$slug" ]; then
+        slug=other
+    fi
+    base="$prefix-$slug"
+    pagebase_out_ref="$base"
+    while [ -n "${STATS_FILTER_OWNER[$pagebase_out_ref]:-}" ] \
+        && [ "${STATS_FILTER_OWNER[$pagebase_out_ref]}" != "$catkey" ]; do
+        pagebase_out_ref="$base-$suffix"
+        (( ++suffix ))
+    done
+    STATS_FILTER_OWNER["$pagebase_out_ref"]="$catkey"
+    STATS_FILTER_PAGEBASE["$catkey"]="$pagebase_out_ref"
+}
+
+# Tally one photo into a bucket: bump the category count AND record the photo on
+# the bucket's filter mini-album (keyed by a unique pagebase). prefix namespaces
+# the pagebase per category, label is the bucket key (also the count-array key),
+# and title is the gallery heading shown for that bucket. Skips empty labels.
+_stats_tally() {
+    local -r count_array="$1"; shift
+    local -r prefix="$1"; shift
+    local -r label="$1"; shift
+    local -r title="$1"; shift
+    local -r photo="$1"; shift
+    local pagebase
+
+    if [ -z "$label" ]; then
+        return
+    fi
+    _stats_bump "$count_array" "$label"
+    _stats_resolve_filter_pagebase pagebase "$prefix" "$label"
+    if [ -n "${STATS_FILTER_PHOTOS[$pagebase]:-}" ]; then
+        STATS_FILTER_PHOTOS["$pagebase"]+=$'\n'"$photo"
+    else
+        STATS_FILTER_PHOTOS["$pagebase"]="$photo"
+        STATS_FILTER_TITLE["$pagebase"]="$title"
+    fi
 }
 
 # Parse one photo's `identify -verbose` stream into an associative array. The
@@ -3322,10 +3370,10 @@ accumulate_photo_stats() {
     _stats_parse_identify_stream exif_values
     STATS_TOTALS[photos]=$(( STATS_TOTALS[photos] + 1 ))
     _stats_record_camera exif_values "$photo"
-    _stats_record_datetime exif_values
-    _stats_record_exposure exif_values
-    _stats_record_enums exif_values
-    _stats_record_dimensions exif_values
+    _stats_record_datetime exif_values "$photo"
+    _stats_record_exposure exif_values "$photo"
+    _stats_record_enums exif_values "$photo"
+    _stats_record_dimensions exif_values "$photo"
     _stats_record_format "$photo"
 }
 
@@ -3429,16 +3477,33 @@ _stats_section_close() {
     printf '</ul>\n</section>\n'
 }
 
+# Wrap an escaped label in a link to its filter mini-album. Every tallied bucket
+# has a pagebase recorded in STATS_FILTER_PAGEBASE during aggregation, keyed by
+# "<prefix>\x1f<label>"; if one is (unexpectedly) absent, the plain label is
+# returned so the row still renders. The stats page and the filter pages share
+# the dist root, so the href is just "<pagebase>.html".
+_stats_filter_link() {
+    local -r prefix="$1"; shift
+    local -r label="$1"; shift
+    local -r label_html="$1"; shift
+    local -r catkey="$prefix$STATS_FILTER_KEYSEP$label"
+    local pagebase
+
+    pagebase="${STATS_FILTER_PAGEBASE[$catkey]:-}"
+    if [ -n "$pagebase" ]; then
+        printf '<a href="%s.html">%s</a>' "$pagebase" "$label_html"
+    else
+        printf '%s' "$label_html"
+    fi
+}
+
 # Render the camera leaderboard: one bar per camera, sorted by count descending,
-# each label linking to camera-<slug>.html (built by sibling task um0). Camera
-# labels come from EXIF, so the label text is HTML-escaped; the slug is filename
-# -safe by construction. Skipped entirely when no camera data was collected.
+# each label linking to its camera mini-album. Camera labels come from EXIF, so
+# the text is HTML-escaped. Skipped entirely when no camera data was collected.
 _stats_render_camera_section() {
     local -ri total="$1"; shift
     local label
-    local label_html
-    local link_html
-    local slug
+    local row_html
     local -i max
 
     if (( ${#STATS_CAMERAS[@]} == 0 )); then
@@ -3447,11 +3512,8 @@ _stats_render_camera_section() {
     max=$(_stats_max_count STATS_CAMERAS)
     _stats_section_open 'Camera leaderboard' 'stats-leaderboard'
     while IFS= read -r label; do
-        label_html=$(_html_escape "$label")
-        slug="${STATS_CAMERA_SLUGS[$label]}"
-        link_html=$(printf '<a href="camera-%s.html">%s</a>' \
-            "$slug" "$label_html")
-        _stats_bar_row "$link_html" "${STATS_CAMERAS[$label]}" "$total" "$max"
+        row_html=$(_stats_filter_link camera "$label" "$(_html_escape "$label")")
+        _stats_bar_row "$row_html" "${STATS_CAMERAS[$label]}" "$total" "$max"
     done < <(_stats_keys_by_count_desc STATS_CAMERAS)
     _stats_section_close
 }
@@ -3476,10 +3538,11 @@ _stats_keys_by_count_desc() {
 _stats_render_ordered_section() {
     local -r heading="$1"; shift
     local -r array_name="$1"; shift
+    local -r prefix="$1"; shift
     local -ri total="$1"; shift
     local -n counts_ref="$array_name"
     local bucket
-    local label_html
+    local row_html
     local -i max
 
     if (( ${#counts_ref[@]} == 0 )); then
@@ -3491,8 +3554,8 @@ _stats_render_ordered_section() {
         if [ -z "${counts_ref[$bucket]:-}" ]; then
             continue
         fi
-        label_html=$(_html_escape "$bucket")
-        _stats_bar_row "$label_html" "${counts_ref[$bucket]}" "$total" "$max"
+        row_html=$(_stats_filter_link "$prefix" "$bucket" "$(_html_escape "$bucket")")
+        _stats_bar_row "$row_html" "${counts_ref[$bucket]}" "$total" "$max"
     done
     _stats_section_close
 }
@@ -3502,10 +3565,11 @@ _stats_render_ordered_section() {
 _stats_render_ranked_section() {
     local -r heading="$1"; shift
     local -r array_name="$1"; shift
+    local -r prefix="$1"; shift
     local -ri total="$1"; shift
     local -n counts_ref="$array_name"
     local key
-    local label_html
+    local row_html
     local -i max
 
     if (( ${#counts_ref[@]} == 0 )); then
@@ -3514,8 +3578,8 @@ _stats_render_ranked_section() {
     max=$(_stats_max_count "$array_name")
     _stats_section_open "$heading"
     while IFS= read -r key; do
-        label_html=$(_html_escape "$key")
-        _stats_bar_row "$label_html" "${counts_ref[$key]}" "$total" "$max"
+        row_html=$(_stats_filter_link "$prefix" "$key" "$(_html_escape "$key")")
+        _stats_bar_row "$row_html" "${counts_ref[$key]}" "$total" "$max"
     done < <(_stats_keys_by_count_desc "$array_name")
     _stats_section_close
 }
@@ -3525,7 +3589,7 @@ _stats_render_ranked_section() {
 _stats_render_temporal_sections() {
     local -ri total="$1"; shift
 
-    _stats_render_ranked_section 'Photos per year' STATS_YEARS "$total"
+    _stats_render_ranked_section 'Photos per year' STATS_YEARS year "$total"
     _stats_render_month_section "$total"
 }
 
@@ -3551,7 +3615,8 @@ _stats_render_month_section() {
         if [ -z "${STATS_MONTHS[$key]:-}" ]; then
             continue
         fi
-        _stats_bar_row "${month_names[$month]}" \
+        _stats_bar_row \
+            "$(_stats_filter_link month "$key" "${month_names[$month]}")" \
             "${STATS_MONTHS[$key]}" "$total" "$max"
     done
     _stats_section_close
@@ -3562,16 +3627,16 @@ _stats_render_month_section() {
 _stats_render_exposure_sections() {
     local -ri total="$1"; shift
 
-    _stats_render_ordered_section 'Aperture' STATS_APERTURE "$total" \
+    _stats_render_ordered_section 'Aperture' STATS_APERTURE aperture "$total" \
         'f/1.8 or wider' 'f/2' 'f/2.8' 'f/4' 'f/5.6' 'f/8' 'f/11' 'f/16' \
         'f/22 or narrower'
-    _stats_render_ordered_section 'Shutter speed' STATS_SHUTTER "$total" \
+    _stats_render_ordered_section 'Shutter speed' STATS_SHUTTER shutter "$total" \
         '1/4000s or faster' '1/2000s' '1/1000s' '1/500s' '1/250s' '1/125s' \
         '1/60s' '1/30s' '1/15s' '1/8s' '1/4s' '1/2s' '1s' 'longer than 1s'
-    _stats_render_ordered_section 'ISO' STATS_ISO "$total" \
+    _stats_render_ordered_section 'ISO' STATS_ISO iso "$total" \
         '50' '100' '200' '400' '800' '1600' '3200' '6400' '12800' '25600' \
         'over 25600'
-    _stats_render_ordered_section 'Focal length' STATS_FOCAL "$total" \
+    _stats_render_ordered_section 'Focal length' STATS_FOCAL focal "$total" \
         'under 24mm' '24-35mm' '35-70mm' '70-135mm' '135-200mm' 'over 200mm'
 }
 
@@ -3580,13 +3645,14 @@ _stats_render_exposure_sections() {
 _stats_render_dimension_sections() {
     local -ri total="$1"; shift
 
-    _stats_render_ordered_section 'Megapixels' STATS_MEGAPIXELS "$total" \
+    _stats_render_ordered_section 'Megapixels' STATS_MEGAPIXELS megapixels \
+        "$total" \
         'under 2MP' '2-5MP' '5-10MP' '10-20MP' '20-40MP' '40-80MP' 'over 80MP'
-    _stats_render_ordered_section 'Aspect ratio' STATS_ASPECT "$total" \
+    _stats_render_ordered_section 'Aspect ratio' STATS_ASPECT aspect "$total" \
         '3:2' '4:3' '16:9' '1:1' '5:4' 'other'
-    _stats_render_ordered_section 'Orientation' STATS_ORIENTATION "$total" \
-        'Landscape' 'Portrait' 'Square'
-    _stats_render_ordered_section 'File format' STATS_FORMAT "$total" \
+    _stats_render_ordered_section 'Orientation' STATS_ORIENTATION orientation \
+        "$total" 'Landscape' 'Portrait' 'Square'
+    _stats_render_ordered_section 'File format' STATS_FORMAT format "$total" \
         'JPEG' 'PNG' 'WEBP' 'GIF' 'other'
 }
 
@@ -3595,12 +3661,13 @@ _stats_render_dimension_sections() {
 _stats_render_enum_sections() {
     local -ri total="$1"; shift
 
-    _stats_render_ranked_section 'Lenses' STATS_LENSES "$total"
+    _stats_render_ranked_section 'Lenses' STATS_LENSES lens "$total"
     _stats_render_ranked_section 'Exposure program' \
-        STATS_EXPOSURE_PROGRAM "$total"
-    _stats_render_ranked_section 'Metering mode' STATS_METERING "$total"
-    _stats_render_ranked_section 'White balance' STATS_WHITE_BALANCE "$total"
-    _stats_render_ranked_section 'Flash' STATS_FLASH "$total"
+        STATS_EXPOSURE_PROGRAM exposure-program "$total"
+    _stats_render_ranked_section 'Metering mode' STATS_METERING metering "$total"
+    _stats_render_ranked_section 'White balance' STATS_WHITE_BALANCE \
+        white-balance "$total"
+    _stats_render_ranked_section 'Flash' STATS_FLASH flash "$total"
 }
 
 # Assemble the full stats body from every section in display order. Returns the
@@ -3632,7 +3699,7 @@ _stats_build_body() {
 _stats_random_background() {
     local -r context="$1"; shift
 
-    randomphoto "$STATS_CAMERA_PHOTOS_DIR" "$context" 2>/dev/null || true
+    randomphoto "$STATS_PHOTOS_DIR" "$context" 2>/dev/null || true
 }
 
 render_stats_page() {
@@ -3661,43 +3728,32 @@ render_stats_page() {
 }
 
 # ----------------------------------------------------------------------------
-# Per-camera filter pages (task um0)
+# Filter mini-album pages
 # ----------------------------------------------------------------------------
-# render_camera_pages turns the per-camera photo lists collected by the
-# aggregation into one camera-<slug>.html page each, reusing the slugs the
-# aggregation already stored in STATS_CAMERA_SLUGS/STATS_CAMERA_PHOTOS so the
-# filenames match the camera-<slug>.html links pm0's leaderboard emits. Like the
-# stats page, the variable-length markup (the thumbnail grid) is built here as a
-# raw HTML string and handed to camera.tmpl through the camera_thumbs context
-# field; camera.tmpl supplies only the page chrome (heading + back-to-stats
-# link), wrapped by the shared header/footer the same way render_stats_page does.
-#
-# Each camera is a self-contained mini album: the gallery (camera-<slug>.html)
-# shows a thumbnail grid, and every thumbnail links to a per-camera view page
-# (camera-<slug>--<index>.html) whose prev/next navigation cycles only through
-# that camera's photos. The "--<index>" suffix never collides with a gallery
-# name because slugs never contain "--". The album's photo/thumb dirs are the
-# conventional 'photos'/'thumbs' generate() passes to render_album_pages, and the
-# view pages link "Details" to the album's own details page for the photo via the
-# ALBUM_VIEW_PAGE_BY_PHOTO map.
+# Every tallied bucket (camera, lens, year, month, aperture, ISO, ...) becomes a
+# clickable, self-contained mini album. render_filter_pages turns each pagebase
+# in STATS_FILTER_PHOTOS into a gallery (<pagebase>.html, a thumbnail grid) plus
+# one view page per photo (<pagebase>--<index>.html) whose prev/next cycle only
+# within that filter. The "--<index>" suffix cannot collide with another gallery
+# name because a pagebase never contains "--". All pages reuse the album's shared
+# photos/thumbs/blurs assets (only the HTML differs); view pages link "Details"
+# to the album's own details page via ALBUM_VIEW_PAGE_BY_PHOTO. Pages render in
+# parallel through the shared job pool, throttled to IMAGE_JOBS. The galleries
+# reuse camera.tmpl and the view pages reuse cameraview.tmpl.
 
-# Dist-relative subdirectories that hold the full-size images and thumbnails.
-# These mirror the literals generate() passes to render_album_pages so camera
-# pages link to the same assets the album pages do.
-declare -gr STATS_CAMERA_PHOTOS_DIR='photos'
-declare -gr STATS_CAMERA_THUMBS_DIR='thumbs'
-# Dist-relative directory of blurred images used for the page background, the
-# same one render_album_pages passes to the album preview pages.
+# Dist-relative subdirectories holding the shared full-size images, thumbnails
+# and blurred backgrounds, matching the literals generate() passes to
+# render_album_pages so filter pages reuse the same asset files.
+declare -gr STATS_PHOTOS_DIR='photos'
+declare -gr STATS_THUMBS_DIR='thumbs'
 declare -gr STATS_BLURS_DIR='blurs'
 
-# Emit one thumbnail anchor for the camera grid: a thumb image (from thumbs/)
-# wrapped in a link to this camera's view page for that photo
-# (camera-<slug>--<index>.html), both resolved through the page's backhref. The
-# photo filename is HTML-escaped because it ends up in the src attribute; the
-# slug and index are filename-safe by construction.
-_stats_camera_thumbnail() {
+# Emit one thumbnail anchor for a filter gallery: a thumb image (from thumbs/)
+# linking to this filter's view page for that photo (<pagebase>--<index>.html).
+# The photo filename is HTML-escaped; the pagebase and index are filename-safe.
+_stats_filter_thumbnail() {
     local -r backhref_html="$1"; shift
-    local -r slug="$1"; shift
+    local -r pagebase="$1"; shift
     local -ri index="$1"; shift
     local -r photo="$1"; shift
     local photo_html
@@ -3706,19 +3762,17 @@ _stats_camera_thumbnail() {
     photo_html=$(_html_escape "$photo")
     # Same seeded animation the album thumbnail uses for this photo.
     animation_class=$(random_animation_css_class slow "$photo")
-    printf '        <a name="%s" href="%s/camera-%s--%d.html">' \
-        "$photo_html" "$backhref_html" "$slug" "$index"
+    printf '        <a name="%s" href="%s/%s--%d.html">' \
+        "$photo_html" "$backhref_html" "$pagebase" "$index"
     printf '<img class="thumb %s" src="%s/%s/%s" /></a>\n' \
-        "$animation_class" "$backhref_html" "$STATS_CAMERA_THUMBS_DIR" \
-        "$photo_html"
+        "$animation_class" "$backhref_html" "$STATS_THUMBS_DIR" "$photo_html"
 }
 
-# Build the full thumbnail grid for one camera from its newline-separated photo
-# list. Photos keep aggregation order (the order they were encountered) so the
-# grid is deterministic for a given input. Returns the grid HTML on stdout.
-_stats_build_camera_thumbs() {
+# Build the full thumbnail grid for one filter from its newline-separated photo
+# list, preserving aggregation (encounter) order for deterministic output.
+_stats_build_filter_thumbs() {
     local -r backhref_html="$1"; shift
-    local -r slug="$1"; shift
+    local -r pagebase="$1"; shift
     local -r photos="$1"; shift
     local photo
     local -i index=0
@@ -3726,43 +3780,26 @@ _stats_build_camera_thumbs() {
     while IFS= read -r photo; do
         if [ -n "$photo" ]; then
             (( ++index ))
-            _stats_camera_thumbnail "$backhref_html" "$slug" "$index" "$photo"
+            _stats_filter_thumbnail "$backhref_html" "$pagebase" "$index" "$photo"
         fi
     done <<< "$photos"
 }
 
-# Render one camera's mini album: the gallery page plus a view page per photo.
-_stats_render_camera_page() {
-    local -r html_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r label="$1"; shift
-    local -r slug="$1"; shift
-    local -r photos="$1"; shift
-    local backhref_html
-
-    backhref_html=$(_html_escape "$backhref")
-    _stats_render_camera_gallery \
-        "$html_dir" "$backhref" "$backhref_html" "$label" "$slug" "$photos"
-    _stats_render_camera_views \
-        "$html_dir" "$backhref" "$backhref_html" "$slug" "$photos"
-}
-
-# Render camera-<slug>.html: header + camera.tmpl (escaped heading and pre-built
-# thumbnail grid) + footer. The label is HTML-escaped via camera.tmpl's
-# context_html field spec; backhref_html is the already-escaped path used inside
-# the grid anchors so thumbnail links resolve from the page's location.
-_stats_render_camera_gallery() {
+# Render a filter gallery page (<pagebase>.html): header + camera.tmpl (heading +
+# pre-built thumbnail grid) + footer. camera.tmpl is reused for every filter; the
+# heading is the bucket's title (camera name, "ISO 400", "Year 2023", ...).
+_stats_render_filter_gallery() {
     local -r html_dir="$1"; shift
     local -r backhref="$1"; shift
     local -r backhref_html="$1"; shift
-    local -r label="$1"; shift
-    local -r slug="$1"; shift
-    local -r photos="$1"; shift
-    local camera_thumbs
+    local -r pagebase="$1"; shift
+    local thumbs
     local background_image
-    local -r page="camera-$slug.html"
+    local -r page="$pagebase.html"
+    local -r title="${STATS_FILTER_TITLE[$pagebase]:-}"
 
-    camera_thumbs=$(_stats_build_camera_thumbs "$backhref_html" "$slug" "$photos")
+    thumbs=$(_stats_build_filter_thumbs \
+        "$backhref_html" "$pagebase" "${STATS_FILTER_PHOTOS[$pagebase]}")
     background_image=$(_stats_random_background "$page")
     template header "$page" \
         html_dir "$html_dir" backhref "$backhref" \
@@ -3770,52 +3807,28 @@ _stats_render_camera_gallery() {
         show_header_bar 'yes'
     template camera "$page" \
         html_dir "$html_dir" backhref "$backhref" \
-        camera_name "$label" camera_thumbs "$camera_thumbs"
+        camera_name "$title" camera_thumbs "$thumbs"
     template footer "$page" \
         html_dir "$html_dir" backhref "$backhref" tarball_name ''
 }
 
-# Render one camera-<slug>--<index>.html view page per photo, with prev/next
-# wrapping around the camera's own photo list so navigation stays in the camera.
-_stats_render_camera_views() {
+# Render one filter view page (<pagebase>--<index>.html): header + cameraview
+# body + footer, with prev/next cycling within the filter.
+_stats_render_filter_view_page() {
     local -r html_dir="$1"; shift
     local -r backhref="$1"; shift
     local -r backhref_html="$1"; shift
-    local -r slug="$1"; shift
-    local -r photos="$1"; shift
-    local photo
-    local -a photo_list=()
-    local -i i
-
-    while IFS= read -r photo; do
-        [ -n "$photo" ] && photo_list+=("$photo")
-    done <<< "$photos"
-
-    local -ri n=${#photo_list[@]}
-    for (( i = 1; i <= n; i++ )); do
-        _stats_render_camera_view_page \
-            "$html_dir" "$backhref" "$backhref_html" "$slug" \
-            "${photo_list[i - 1]}" "$i" \
-            "$(( i == 1 ? n : i - 1 ))" "$(( i == n ? 1 : i + 1 ))"
-    done
-}
-
-# Render a single per-camera view page (header + cameraview body + footer).
-_stats_render_camera_view_page() {
-    local -r html_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r backhref_html="$1"; shift
-    local -r slug="$1"; shift
+    local -r pagebase="$1"; shift
     local -r photo="$1"; shift
     local -ri index="$1"; shift
     local -ri prev="$1"; shift
     local -ri next="$1"; shift
     local body
     local background_image
-    local -r page="camera-$slug--$index.html"
+    local -r page="$pagebase--$index.html"
 
-    body=$(_stats_build_cameraview_body \
-        "$backhref_html" "$slug" "$photo" "$prev" "$next")
+    body=$(_stats_build_filterview_body \
+        "$backhref_html" "$pagebase" "$photo" "$prev" "$next")
     background_image=$(_stats_random_background "$page")
     template header "$page" \
         html_dir "$html_dir" backhref "$backhref" \
@@ -3827,13 +3840,13 @@ _stats_render_camera_view_page() {
         html_dir "$html_dir" backhref "$backhref" tarball_name ''
 }
 
-# Build the body of a per-camera view page: the photo (linked to this camera's
-# next photo) plus a navigator whose prev/next cycle within the camera, a link
-# back to the gallery, an optional Details link to the album's details page for
-# the photo, and a direct image link.
-_stats_build_cameraview_body() {
+# Build a filter view page body: the photo (linked to the filter's next photo)
+# plus a navigator whose prev/next cycle within the filter, a link back to the
+# gallery, an optional Details link to the album's details page, and a direct
+# image link.
+_stats_build_filterview_body() {
     local -r backhref_html="$1"; shift
-    local -r slug="$1"; shift
+    local -r pagebase="$1"; shift
     local -r photo="$1"; shift
     local -ri prev="$1"; shift
     local -ri next="$1"; shift
@@ -3855,15 +3868,15 @@ _stats_build_cameraview_body() {
         details_link=$(printf ' <a href="%s/%s-details.html">Details</a> |' \
             "$backhref_html" "$view_page")
     fi
-    _stats_print_cameraview_body "$backhref_html" "$slug" "$photo_html" \
+    _stats_print_filterview_body "$backhref_html" "$pagebase" "$photo_html" \
         "$animation_class" "$tooltip_attr" "$details_link" "$prev" "$next"
 }
 
-# Emit the per-camera view page markup. Split out so _stats_build_cameraview_body
+# Emit the filter view page markup. Split out so _stats_build_filterview_body
 # stays focused on assembling the pieces.
-_stats_print_cameraview_body() {
+_stats_print_filterview_body() {
     local -r backhref_html="$1"; shift
-    local -r slug="$1"; shift
+    local -r pagebase="$1"; shift
     local -r photo_html="$1"; shift
     local -r animation_class="$1"; shift
     local -r tooltip_attr="$1"; shift
@@ -3873,47 +3886,95 @@ _stats_print_cameraview_body() {
 
     cat <<END
 <div class='view'>
-    <a href="$backhref_html/camera-$slug--$next.html">
-        <img class='view $animation_class' border='0' src='$backhref_html/$STATS_CAMERA_PHOTOS_DIR/$photo_html'$tooltip_attr />
+    <a href="$backhref_html/$pagebase--$next.html">
+        <img class='view $animation_class' border='0' src='$backhref_html/$STATS_PHOTOS_DIR/$photo_html'$tooltip_attr />
     </a>
     <div class="navigator">
-        <a href="$backhref_html/camera-$slug--$prev.html" class="arrow">&lArr;</a>
-        <a href="$backhref_html/camera-$slug.html">Gallery</a> |$details_link
-        <a href="$backhref_html/$STATS_CAMERA_PHOTOS_DIR/$photo_html">Direct link</a>
-        <a href="$backhref_html/camera-$slug--$next.html" class="arrow">&rArr;</a>
+        <a href="$backhref_html/$pagebase--$prev.html" class="arrow">&lArr;</a>
+        <a href="$backhref_html/$pagebase.html">Gallery</a> |$details_link
+        <a href="$backhref_html/$STATS_PHOTOS_DIR/$photo_html">Direct link</a>
+        <a href="$backhref_html/$pagebase--$next.html" class="arrow">&rArr;</a>
     </div>
 </div>
 END
 }
 
-# Public render entry point (handoff for task rm0). Renders one
-# camera-<slug>.html per camera in STATS_CAMERA_SLUGS, each showing a thumbnail
-# grid of that camera's photos and a link back to the stats page. Call
-# collect_photo_exif_stats first to fill the globals.
-#   render_camera_pages <html_dir> <backhref>
-# html_dir is the dist-relative output directory (top-level album: "."), backhref
-# is the relative path back to the album root ("." for a top-level album), the
-# same values rm0 passes to render_stats_page. Cameras are walked in LC_ALL=C
-# label order (matching pm0's reproducible-output convention) and cameras with no
-# recorded photos are skipped.
-render_camera_pages() {
+# Enqueue one filter's mini-album (gallery + a view page per photo) onto the
+# shared render job pool, waiting for a free slot (<= IMAGE_JOBS) before each
+# background render so parallelism follows the configured IMAGE_JOBS.
+_stats_enqueue_filter_album() {
     local -r html_dir="$1"; shift
     local -r backhref="$1"; shift
-    local label
-    local slug
+    local -r backhref_html="$1"; shift
+    local -r pagebase="$1"; shift
+    local -r pids_name="$1"; shift
+    local -r statuses_name="$1"; shift
+    local -r labels_name="$1"; shift
+    local -r failed_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n pids_ref="$pids_name"
+    # shellcheck disable=SC2178
+    local -n labels_ref="$labels_name"
+    local photo
+    local -a photo_list=()
+    local -i i n
 
-    if (( ${#STATS_CAMERA_SLUGS[@]} == 0 )); then
+    while IFS= read -r photo; do
+        [ -n "$photo" ] && photo_list+=("$photo")
+    done <<< "${STATS_FILTER_PHOTOS[$pagebase]}"
+    n=${#photo_list[@]}
+
+    wait_for_template_render_job_slot \
+        "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
+    _stats_render_filter_gallery \
+        "$html_dir" "$backhref" "$backhref_html" "$pagebase" &
+    pids_ref+=("$!")
+    labels_ref["$!"]="filter gallery $pagebase"
+
+    for (( i = 1; i <= n; i++ )); do
+        wait_for_template_render_job_slot \
+            "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
+        _stats_render_filter_view_page \
+            "$html_dir" "$backhref" "$backhref_html" "$pagebase" \
+            "${photo_list[i - 1]}" "$i" \
+            "$(( i == 1 ? n : i - 1 ))" "$(( i == n ? 1 : i + 1 ))" &
+        pids_ref+=("$!")
+        labels_ref["$!"]="filter view $pagebase--$i"
+    done
+}
+
+# Public entry point: render every filter mini-album in parallel. Call
+# collect_photo_exif_stats first to fill STATS_FILTER_PHOTOS. html_dir is the
+# dist-relative output dir ("." for a top-level album) and backhref the relative
+# path back to the album root ("."), the same values render_stats_page uses.
+# Pagebases are walked in LC_ALL=C order for reproducible enqueue order.
+render_filter_pages() {
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local backhref_html
+    local pagebase
+    # Render job pool, throttled to IMAGE_JOBS by the job-pool helpers.
+    local -a render_job_pids=()
+    # shellcheck disable=SC2034
+    local -A render_job_statuses=()
+    # shellcheck disable=SC2034
+    local -A render_job_labels=()
+    local -i render_failed=0
+
+    if (( ${#STATS_FILTER_PHOTOS[@]} == 0 )); then
         return
     fi
-    while IFS= read -r label; do
-        slug="${STATS_CAMERA_SLUGS[$label]}"
-        if [ -z "${STATS_CAMERA_PHOTOS[$slug]:-}" ]; then
-            continue
-        fi
-        _stats_render_camera_page \
-            "$html_dir" "$backhref" "$label" "$slug" \
-            "${STATS_CAMERA_PHOTOS[$slug]}"
-    done < <(printf '%s\n' "${!STATS_CAMERA_SLUGS[@]}" | LC_ALL=C sort)
+    backhref_html=$(_html_escape "$backhref")
+    while IFS= read -r pagebase; do
+        _stats_enqueue_filter_album \
+            "$html_dir" "$backhref" "$backhref_html" "$pagebase" \
+            render_job_pids render_job_statuses render_job_labels render_failed
+    done < <(printf '%s\n' "${!STATS_FILTER_PHOTOS[@]}" | LC_ALL=C sort)
+    wait_for_template_render_jobs \
+        render_job_pids render_job_statuses render_job_labels render_failed
+    if (( render_failed != 0 )); then
+        return 1
+    fi
 }
 
 # Inlined from src/lib/config.source.sh
