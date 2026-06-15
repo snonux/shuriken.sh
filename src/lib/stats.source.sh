@@ -76,6 +76,10 @@ reset_photo_exif_stats() {
     declare -gA STATS_FILTER_TITLE=()
     declare -gA STATS_FILTER_OWNER=()
     declare -gA STATS_FILTER_PAGEBASE=()
+    # Cached background photo list (filled lazily by _stats_random_background);
+    # cleared so a fresh generation rescans the (possibly changed) photos dir.
+    declare -ga STATS_BG_PHOTOS=()
+    STATS_BG_PHOTOS_LOADED=''
 }
 
 # Decode an EXIF rational ("num/den") to a decimal with `scale` digits.
@@ -903,10 +907,39 @@ _stats_build_body() {
 # gets a stable (per RANDOM_SEED) but varied background. Degrades to an empty
 # string (plain black background) when no photos exist, e.g. unit tests that
 # render the page without a populated photos directory.
+# Load the sorted photo list for blurred backgrounds once into a global. This
+# runs for every filter page (thousands of them), so the per-call directory scan
+# randomphoto would otherwise do dominates the build. render_filter_pages loads
+# it before forking the render jobs so each background subshell inherits the
+# populated array instead of rescanning.
+_stats_load_background_photos() {
+    if [ -n "${STATS_BG_PHOTOS_LOADED:-}" ]; then
+        return
+    fi
+    declare -ga STATS_BG_PHOTOS=()
+    local photo
+    while IFS= read -r photo; do
+        STATS_BG_PHOTOS+=("$photo")
+    done < <(
+        find "$DIST_DIR/$STATS_PHOTOS_DIR" -maxdepth 1 -type f -printf '%f\n' \
+            2>/dev/null | sort
+    )
+    STATS_BG_PHOTOS_LOADED=yes
+}
+
+# Pick a seeded-random photo for a stats/camera page's blurred background from
+# the cached photo list. Empty (plain black) when no photos exist.
 _stats_random_background() {
     local -r context="$1"; shift
+    local -i index
 
-    randomphoto "$STATS_PHOTOS_DIR" "$context" 2>/dev/null || true
+    _stats_load_background_photos
+    if (( ${#STATS_BG_PHOTOS[@]} == 0 )); then
+        return
+    fi
+    index=$(random_index "photo:$STATS_PHOTOS_DIR:$context" \
+        "${#STATS_BG_PHOTOS[@]}")
+    printf '%s' "${STATS_BG_PHOTOS[index]}"
 }
 
 render_stats_page() {
@@ -1172,6 +1205,9 @@ render_filter_pages() {
         return
     fi
     backhref_html=$(_html_escape "$backhref")
+    # Load the background photo list once now so every forked render job inherits
+    # the cached array rather than rescanning the photos directory per page.
+    _stats_load_background_photos
     while IFS= read -r pagebase; do
         _stats_enqueue_filter_album \
             "$html_dir" "$backhref" "$backhref_html" "$pagebase" \
