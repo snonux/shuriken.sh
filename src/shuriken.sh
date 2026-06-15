@@ -32,6 +32,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
     DIST_DIR
     TEMPLATE_DIR
+    FAVICON
     TITLE
     HEIGHT
     THUMBHEIGHT
@@ -46,6 +47,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
 )
 declare -Ar CLI_OPTION_SPEC=(
     [--config]='kind=value target=SHURIKEN_CLI_CONFIG_FILE argument=path'
+    [--favicon]='kind=value config=FAVICON argument=path'
     [--incoming]='kind=value config=INCOMING_DIR'
     [--dist]='kind=value config=DIST_DIR'
     [--template]='kind=value config=TEMPLATE_DIR'

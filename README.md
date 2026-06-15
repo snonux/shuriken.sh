@@ -74,9 +74,9 @@ When `--config PATH` is not provided, `--generate`, `--dry-run`,
 If the file is missing, run `shuriken --init` first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
-`DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
-`IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`,
-`STATS_PAGE`, `TARBALL_INCLUDE`, `TAR_TIMEOUT`, `SYNC_DELETE`, and
+`DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`,
+`MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`,
+`SPLASH_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`, `TAR_TIMEOUT`, `SYNC_DELETE`, and
 `SYNC_DESTINATIONS`.
 
 Before generating, `shuriken` validates the loaded config and command-line
@@ -95,7 +95,8 @@ values that generation would use after applying command-line overrides. Its
 tarball filename uses `<timestamp>` as a placeholder so the output is stable.
 
 `--print-config` writes stable shell-style assignments to stdout in this order:
-`CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `TITLE`, `HEIGHT`,
+`CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`, `TITLE`,
+`HEIGHT`,
 `THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`,
 `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`,
 `TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, `SYNC_DELETE`,
@@ -110,7 +111,9 @@ metadata records the generator version and timestamp, config source, template
 directory, supported source image and generated file counts, tarball status, and
 effective settings useful for debugging a published album.
 Generation also writes `favicon.ico` into the output directory and the default
-templates link to it.
+templates link to it. By default this is the bundled shuriken favicon; set
+`FAVICON` in the config or pass `--favicon PATH` to publish your own favicon
+file instead (it is copied in as `favicon.ico`).
 
 Normal generation preserves reusable generated artifacts from the previous
 `DIST_DIR` while still rerendering HTML, random splash/background choices,
@@ -139,6 +142,7 @@ The following long options override config values:
 | `--incoming PATH` | `INCOMING_DIR` |
 | `--dist PATH` | `DIST_DIR` |
 | `--template PATH` | `TEMPLATE_DIR` |
+| `--favicon PATH` | `FAVICON` |
 | `--title TEXT` | `TITLE` |
 | `--height VALUE` | `HEIGHT` |
 | `--thumbheight VALUE` | `THUMBHEIGHT` |

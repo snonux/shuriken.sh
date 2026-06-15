@@ -1047,8 +1047,14 @@ copy_site_favicon() {
     local asset_dir
     local favicon_src
 
-    asset_dir=$(resolve_default_asset_dir)
-    favicon_src="$asset_dir/favicon.ico"
+    # Use the configured favicon when set, otherwise the bundled default. Either
+    # way it is published as favicon.ico (the name the templates link to).
+    if [ -n "${FAVICON:-}" ]; then
+        favicon_src="$FAVICON"
+    else
+        asset_dir=$(resolve_default_asset_dir)
+        favicon_src="$asset_dir/favicon.ico"
+    fi
 
     if [ ! -r "$favicon_src" ]; then
         config_error "favicon file $favicon_src must be readable"

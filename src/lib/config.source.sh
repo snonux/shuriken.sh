@@ -30,6 +30,9 @@ missing_config() {
 }
 
 apply_config_defaults() {
+    # Empty FAVICON means use the bundled default favicon; otherwise it is a path
+    # to a custom favicon file copied into the album as favicon.ico.
+    FAVICON="${FAVICON:-}"
     HEIGHT="${HEIGHT:-}"
     IMAGE_JOBS="${IMAGE_JOBS:-3}"
     IMAGEMAGICK_TIMEOUT="${IMAGEMAGICK_TIMEOUT:-60}"

@@ -195,6 +195,19 @@ validate_common_config() {
     validate_yes_no_config_var SPLASH_PAGE || return
     validate_yes_no_config_var STATS_PAGE || return
     validate_yes_no_config_var TARBALL_INCLUDE || return
+    validate_favicon_config || return
+}
+
+# A custom FAVICON (when set) must be a readable file; empty means the bundled
+# default favicon is used.
+validate_favicon_config() {
+    if [ -z "${FAVICON:-}" ]; then
+        return
+    fi
+    if [ ! -f "$FAVICON" ] || [ ! -r "$FAVICON" ]; then
+        config_error "FAVICON file $FAVICON must be a readable file"
+        return 1
+    fi
 }
 
 validate_generation_config() {

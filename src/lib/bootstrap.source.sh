@@ -15,6 +15,7 @@ usage() {
     --incoming PATH
     --dist PATH
     --template PATH
+    --favicon PATH
     --title TEXT
     --height VALUE
     --thumbheight VALUE

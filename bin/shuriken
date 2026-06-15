@@ -32,6 +32,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     INCOMING_DIR
     DIST_DIR
     TEMPLATE_DIR
+    FAVICON
     TITLE
     HEIGHT
     THUMBHEIGHT
@@ -46,6 +47,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
 )
 declare -Ar CLI_OPTION_SPEC=(
     [--config]='kind=value target=SHURIKEN_CLI_CONFIG_FILE argument=path'
+    [--favicon]='kind=value config=FAVICON argument=path'
     [--incoming]='kind=value config=INCOMING_DIR'
     [--dist]='kind=value config=DIST_DIR'
     [--template]='kind=value config=TEMPLATE_DIR'
@@ -102,6 +104,7 @@ usage() {
     --incoming PATH
     --dist PATH
     --template PATH
+    --favicon PATH
     --title TEXT
     --height VALUE
     --thumbheight VALUE
@@ -2562,8 +2565,14 @@ copy_site_favicon() {
     local asset_dir
     local favicon_src
 
-    asset_dir=$(resolve_default_asset_dir)
-    favicon_src="$asset_dir/favicon.ico"
+    # Use the configured favicon when set, otherwise the bundled default. Either
+    # way it is published as favicon.ico (the name the templates link to).
+    if [ -n "${FAVICON:-}" ]; then
+        favicon_src="$FAVICON"
+    else
+        asset_dir=$(resolve_default_asset_dir)
+        favicon_src="$asset_dir/favicon.ico"
+    fi
 
     if [ ! -r "$favicon_src" ]; then
         config_error "favicon file $favicon_src must be readable"
@@ -4098,6 +4107,9 @@ missing_config() {
 }
 
 apply_config_defaults() {
+    # Empty FAVICON means use the bundled default favicon; otherwise it is a path
+    # to a custom favicon file copied into the album as favicon.ico.
+    FAVICON="${FAVICON:-}"
     HEIGHT="${HEIGHT:-}"
     IMAGE_JOBS="${IMAGE_JOBS:-3}"
     IMAGEMAGICK_TIMEOUT="${IMAGEMAGICK_TIMEOUT:-60}"
@@ -4148,6 +4160,7 @@ print_config() {
     print_shell_assignment INCOMING_DIR "$INCOMING_DIR"
     print_shell_assignment DIST_DIR "$DIST_DIR"
     print_shell_assignment TEMPLATE_DIR "$TEMPLATE_DIR"
+    print_shell_assignment FAVICON "$FAVICON"
     print_shell_assignment TITLE "$TITLE"
     print_shell_assignment HEIGHT "$HEIGHT"
     print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
@@ -4625,6 +4638,19 @@ validate_common_config() {
     validate_yes_no_config_var SPLASH_PAGE || return
     validate_yes_no_config_var STATS_PAGE || return
     validate_yes_no_config_var TARBALL_INCLUDE || return
+    validate_favicon_config || return
+}
+
+# A custom FAVICON (when set) must be a readable file; empty means the bundled
+# default favicon is used.
+validate_favicon_config() {
+    if [ -z "${FAVICON:-}" ]; then
+        return
+    fi
+    if [ ! -f "$FAVICON" ] || [ ! -r "$FAVICON" ]; then
+        config_error "FAVICON file $FAVICON must be a readable file"
+        return 1
+    fi
 }
 
 validate_generation_config() {
@@ -4882,6 +4908,7 @@ run_action_body_context() {
         INCOMING_DIR
         DIST_DIR
         TEMPLATE_DIR
+        FAVICON
         TITLE
         HEIGHT
         THUMBHEIGHT
@@ -4995,6 +5022,7 @@ log_configured_action() {
     log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
     log_verbose "Effective output directory: ${DIST_DIR:-}"
     log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
+    log_verbose "Effective favicon: ${FAVICON:-(bundled default)}"
     log_verbose "Effective image jobs: $IMAGE_JOBS"
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"

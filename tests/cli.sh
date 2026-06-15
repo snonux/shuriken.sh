@@ -1300,6 +1300,7 @@ CONFIG_SOURCE=$TEST_REPO_ROOT/src/shuriken.default.conf
 INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
+FAVICON=''
 TITLE=A\\ simple\\ Shuriken
 HEIGHT=1200
 THUMBHEIGHT=300
@@ -1347,6 +1348,7 @@ CONFIG_SOURCE=$config_file
 INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
+FAVICON=''
 TITLE=Minimal\\ defaults
 HEIGHT=''
 THUMBHEIGHT=30
@@ -1487,6 +1489,7 @@ CONFIG_SOURCE=$config_file
 INCOMING_DIR=$TEST_TMPDIR/custom-incoming
 DIST_DIR=$TEST_TMPDIR/custom-dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
+FAVICON=''
 TITLE=Selected\\ config
 HEIGHT=120
 THUMBHEIGHT=30
@@ -1529,6 +1532,7 @@ CONFIG_SOURCE=./shuriken.conf
 INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
+FAVICON=''
 TITLE=Current\\ directory\\ config
 HEIGHT=120
 THUMBHEIGHT=30
@@ -1596,6 +1600,7 @@ CONFIG_SOURCE=./shuriken.conf
 INCOMING_DIR=$TEST_TMPDIR/cli-incoming
 DIST_DIR=$dist_dir
 TEMPLATE_DIR=$TEST_TMPDIR/cli-template
+FAVICON=''
 TITLE=CLI\\ title
 HEIGHT=456
 THUMBHEIGHT=45
@@ -3049,6 +3054,49 @@ test_generate_cli_no_splash_overrides_config() {
     test::assert_not_contains 'Enter album' "$top_index_html"
     test::assert_not_contains '<script' "$top_index_html"
     test::assert_not_contains 'javascript:' "$top_index_html"
+    test::teardown
+}
+
+test_generate_uses_custom_favicon() {
+    local config_file
+    local fake_bin
+    local favicon_src
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    favicon_src="$TEST_TMPDIR/my-favicon.ico"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    printf 'CUSTOM-FAVICON-MARKER\n' > "$favicon_src"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Favicon album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate --favicon "$favicon_src"
+    )
+
+    # The published favicon.ico is the custom file, not the bundled default.
+    test::assert_file_exists "$TEST_TMPDIR/dist/favicon.ico"
+    test "$(<"$TEST_TMPDIR/dist/favicon.ico")" = 'CUSTOM-FAVICON-MARKER'
+    # --print-config reports the configured favicon path.
+    test::assert_contains "FAVICON=$favicon_src" \
+        "$(cd "$TEST_TMPDIR" && "$TEST_SHURIKEN" --print-config --favicon "$favicon_src")"
+
+    # A missing favicon is rejected before any output is written.
+    rm -rf "$TEST_TMPDIR/dist"
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output "$TEST_SHURIKEN" \
+            --generate --favicon "$TEST_TMPDIR/nope.ico"
+    )
+    test::assert_contains 'FAVICON file' "$output"
+    test::assert_path_absent "$TEST_TMPDIR/dist"
     test::teardown
 }
 
@@ -5701,6 +5749,9 @@ main() {
     test::run_case \
         '--generate --no-splash keeps root index redirect' \
         test_generate_cli_no_splash_overrides_config
+    test::run_case \
+        '--generate --favicon uses a custom favicon' \
+        test_generate_uses_custom_favicon
     test::run_case \
         '--generate creates stats and per-camera pages with nav link' \
         test_generate_stats_pages_created_and_nav_linked

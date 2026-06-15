@@ -42,6 +42,7 @@ run_action_body_context() {
         INCOMING_DIR
         DIST_DIR
         TEMPLATE_DIR
+        FAVICON
         TITLE
         HEIGHT
         THUMBHEIGHT
@@ -155,6 +156,7 @@ log_configured_action() {
     log_verbose "Effective incoming directory: ${INCOMING_DIR:-}"
     log_verbose "Effective output directory: ${DIST_DIR:-}"
     log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
+    log_verbose "Effective favicon: ${FAVICON:-(bundled default)}"
     log_verbose "Effective image jobs: $IMAGE_JOBS"
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"
