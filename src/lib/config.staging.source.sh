@@ -2,11 +2,21 @@ generation_staging_dir() {
     local -r final_dist="$1"; shift
     local final_base
     local staging_parent
+    local staging_dir
 
     final_base=$(basename "$final_dist")
     staging_parent=$(existing_parent_dir "$final_dist")
 
-    mktemp -d "$staging_parent/.shuriken.$final_base.staging.XXXXXX"
+    staging_dir=$(mktemp -d "$staging_parent/.shuriken.$final_base.staging.XXXXXX") \
+        || return 1
+    # mktemp -d forces mode 0700; relax it to the umask-default directory mode
+    # (what mkdir would have used) so this directory -- which becomes DIST_DIR
+    # after the swap -- matches its mkdir-created subdirectories and is served and
+    # synced with sane permissions. Otherwise the published album root stays 0700,
+    # so the first `shuriken --sync` creates the remote directory 0700 and the web
+    # server cannot read it.
+    chmod "$(printf '%o' "$(( 0777 & ~0$(umask) ))")" "$staging_dir" || return 1
+    printf '%s\n' "$staging_dir"
 }
 
 prepare_generation_staging_dir() {

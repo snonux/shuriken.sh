@@ -2776,6 +2776,13 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_file_exists "$TEST_TMPDIR/dist/shuriken.json"
     test::assert_no_html_subdir_output "$TEST_TMPDIR/dist"
 
+    # The published dist root must carry the same (umask-default) permissions as
+    # its mkdir-created subdirectories, not the 0700 the mktemp staging dir starts
+    # with -- otherwise `--sync` creates the remote album dir 0700 and the web
+    # server cannot read it.
+    test "$(stat -c '%a' "$TEST_TMPDIR/dist")" \
+        = "$(stat -c '%a' "$TEST_TMPDIR/dist/photos")"
+
     page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
     details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
     top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
