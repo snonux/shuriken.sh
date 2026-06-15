@@ -3762,6 +3762,26 @@ _stats_random_background() {
     printf '%s' "${STATS_BG_PHOTOS[index]}"
 }
 
+# Pick a seeded-random photo from a newline-separated list (a filter's own
+# photos) for a filter gallery's blurred background, so the background fits the
+# category. Empty when the list is empty.
+_stats_pick_background() {
+    local -r context="$1"; shift
+    local -r photos="$1"; shift
+    local -a list=()
+    local photo
+    local -i index
+
+    while IFS= read -r photo; do
+        [ -n "$photo" ] && list+=("$photo")
+    done <<< "$photos"
+    if (( ${#list[@]} == 0 )); then
+        return
+    fi
+    index=$(random_index "photo:filter:$context" "${#list[@]}")
+    printf '%s' "${list[index]}"
+}
+
 render_stats_page() {
     local -r html_dir="$1"; shift
     local -r backhref="$1"; shift
@@ -3869,7 +3889,10 @@ _stats_render_filter_gallery() {
 
     thumbs=$(_stats_build_filter_thumbs \
         "$backhref_html" "${STATS_FILTER_PHOTOS[$pagebase]}")
-    background_image=$(_stats_random_background "$pagebase/index")
+    # Background fits the category: a random photo from this filter's own set,
+    # mirroring how the album preview pages pick a random album photo.
+    background_image=$(_stats_pick_background \
+        "$pagebase" "${STATS_FILTER_PHOTOS[$pagebase]}")
     template header index.html \
         html_dir "$html_dir" backhref "$backhref" \
         blurs_dir "$STATS_BLURS_DIR" background_image "$background_image" \
@@ -3897,7 +3920,9 @@ _stats_render_filter_view_page() {
 
     body=$(_stats_build_filterview_body \
         "$STATS_FILTER_BACKHREF" "$photo" "$prev" "$next")
-    background_image=$(_stats_random_background "$pagebase/$index")
+    # The view page's blurred background is the photo it shows, exactly like the
+    # album view pages.
+    background_image="$photo"
     template header "$page" \
         html_dir "$html_dir" backhref "$backhref" \
         blurs_dir "$STATS_BLURS_DIR" background_image "$background_image" \
@@ -4029,9 +4054,6 @@ render_filter_pages() {
     if (( ${#STATS_FILTER_PHOTOS[@]} == 0 )); then
         return
     fi
-    # Load the background photo list once now so every forked render job inherits
-    # the cached array rather than rescanning the photos directory per page.
-    _stats_load_background_photos
     while IFS= read -r pagebase; do
         _stats_enqueue_filter_album "$pagebase" \
             render_job_pids render_job_statuses render_job_labels render_failed
