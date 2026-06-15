@@ -1865,8 +1865,9 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains \
         "  $dist_dir/[redirect].html (14 navigation redirects)" \
         "$output"
-    test::assert_contains "  $dist_dir/stats.html (EXIF stats page)" "$output"
-    test::assert_contains "  $dist_dir/camera-*.html (per-camera pages)" \
+    test::assert_contains "  $dist_dir/stats/index.html (EXIF stats page)" \
+        "$output"
+    test::assert_contains "  $dist_dir/stats/*/ (filter mini-albums)" \
         "$output"
     test::assert_not_contains "$dist_dir/html" "$output"
     test::assert_contains "  $dist_dir/incoming-<timestamp>.tar" "$output"
@@ -1902,8 +1903,8 @@ test_dry_run_no_stats_omits_stats_plan() {
     )
 
     test::assert_contains 'Stats page: no' "$output"
-    test::assert_not_contains 'stats.html (EXIF stats page)' "$output"
-    test::assert_not_contains 'camera-*.html (per-camera pages)' "$output"
+    test::assert_not_contains 'stats/index.html (EXIF stats page)' "$output"
+    test::assert_not_contains 'stats/*/ (filter mini-albums)' "$output"
     test::assert_path_absent "$dist_dir"
     test::teardown
 }
@@ -3084,44 +3085,47 @@ test_generate_stats_pages_created_and_nav_linked() {
             "$TEST_SHURIKEN" --generate --random-seed stats-seed
     )
 
-    # Stats page and the per-camera page (Canon EOS R5 -> canon-eos-r5) exist.
-    test::assert_file_exists "$TEST_TMPDIR/dist/stats.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/camera-canon-eos-r5.html"
-    test::assert_contains 'Canon EOS R5' "$(<"$TEST_TMPDIR/dist/stats.html")"
-    test::assert_not_contains '<script' "$(<"$TEST_TMPDIR/dist/stats.html")"
+    # Only the main album is in the dist root; all stats content is under stats/.
+    # The overview is stats/index.html and each mini-album is stats/<pagebase>/.
+    test::assert_path_absent "$TEST_TMPDIR/dist/stats.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/stats/index.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/stats/camera-canon-eos-r5/index.html"
+    test::assert_contains 'Canon EOS R5' \
+        "$(<"$TEST_TMPDIR/dist/stats/index.html")"
+    test::assert_not_contains '<script' \
+        "$(<"$TEST_TMPDIR/dist/stats/index.html")"
 
-    # The stats page gets a random blurred background like the album pages.
-    test::assert_contains 'background-image: url("./blurs/' \
-        "$(<"$TEST_TMPDIR/dist/stats.html")"
+    # The stats overview gets a random blurred background (one level deep -> ..).
+    test::assert_contains 'background-image: url("../blurs/' \
+        "$(<"$TEST_TMPDIR/dist/stats/index.html")"
 
-    # The camera gallery is a mini album: thumbnails link to per-camera view
-    # pages (camera-<slug>--<n>.html), not the album view pages or raw images.
-    camera_html=$(<"$TEST_TMPDIR/dist/camera-canon-eos-r5.html")
-    test::assert_contains 'src="./thumbs/' "$camera_html"
-    test::assert_contains 'href="./camera-canon-eos-r5--1.html"' "$camera_html"
-    test::assert_not_contains 'href="./photos/' "$camera_html"
+    # The camera gallery is a mini album: thumbnails link to view pages in the
+    # same dir (<index>.html), and the thumb image points at the album root.
+    camera_html=$(<"$TEST_TMPDIR/dist/stats/camera-canon-eos-r5/index.html")
+    test::assert_contains 'src="../../thumbs/' "$camera_html"
+    test::assert_contains 'href="1.html"' "$camera_html"
 
     # Non-camera stats are clickable mini-albums too: the ISO row links to a
-    # filter page that exists and is itself a gallery of matching photos.
-    test::assert_contains 'href="iso-400.html"' \
-        "$(<"$TEST_TMPDIR/dist/stats.html")"
-    test::assert_file_exists "$TEST_TMPDIR/dist/iso-400.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/iso-400--1.html"
-    test::assert_contains 'href="./iso-400--1.html"' \
-        "$(<"$TEST_TMPDIR/dist/iso-400.html")"
+    # filter mini-album that exists and is itself a gallery of matching photos.
+    test::assert_contains 'href="iso-400/index.html"' \
+        "$(<"$TEST_TMPDIR/dist/stats/index.html")"
+    test::assert_file_exists "$TEST_TMPDIR/dist/stats/iso-400/index.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/stats/iso-400/1.html"
+    test::assert_contains 'href="1.html"' \
+        "$(<"$TEST_TMPDIR/dist/stats/iso-400/index.html")"
 
-    # A per-camera view page exists and its navigation stays within the camera:
-    # prev/next point at this camera's view pages, plus links back to the gallery
-    # and to the album details page for the photo.
-    test::assert_file_exists "$TEST_TMPDIR/dist/camera-canon-eos-r5--1.html"
-    camera_view_html=$(<"$TEST_TMPDIR/dist/camera-canon-eos-r5--1.html")
-    test::assert_contains 'href="./camera-canon-eos-r5--2.html"' "$camera_view_html"
-    test::assert_contains 'href="./camera-canon-eos-r5.html">Gallery</a>' \
-        "$camera_view_html"
+    # A per-camera view page exists and its navigation stays within the filter:
+    # prev/next point at sibling view pages, plus a Gallery link and a Details
+    # link back to the album details page for the photo.
+    test::assert_file_exists "$TEST_TMPDIR/dist/stats/camera-canon-eos-r5/1.html"
+    camera_view_html=$(<"$TEST_TMPDIR/dist/stats/camera-canon-eos-r5/1.html")
+    test::assert_contains 'href="2.html"' "$camera_view_html"
+    test::assert_contains 'href="index.html">Gallery</a>' "$camera_view_html"
     test::assert_contains '-details.html">Details</a>' "$camera_view_html"
 
-    # The header bar links to the stats page on at least one generated page.
-    nav_links=$(grep -lF 'stats.html">Stats' "$TEST_TMPDIR"/dist/*.html | wc -l)
+    # The header bar links to the stats overview on at least one generated page.
+    nav_links=$(grep -lF 'stats/index.html">Stats' "$TEST_TMPDIR"/dist/*.html \
+        | wc -l)
     test "$nav_links" -gt 0
 
     python3 - "$TEST_TMPDIR/dist/shuriken.json" <<'PY'
@@ -3158,14 +3162,10 @@ test_generate_no_stats_suppresses_pages_and_nav() {
             "$TEST_SHURIKEN" --generate --no-stats --random-seed stats-seed
     )
 
-    # No stats page, no per-camera pages.
-    test::assert_path_absent "$TEST_TMPDIR/dist/stats.html"
-    if compgen -G "$TEST_TMPDIR/dist/camera-*.html" >/dev/null; then
-        printf 'FAIL: --no-stats still produced camera pages\n' >&2
-        exit 1
-    fi
+    # No stats directory at all (no overview, no mini-albums).
+    test::assert_path_absent "$TEST_TMPDIR/dist/stats"
     # No stats nav link anywhere.
-    if grep -RF 'stats.html">Stats' "$TEST_TMPDIR"/dist/*.html; then
+    if grep -RF 'stats/index.html">Stats' "$TEST_TMPDIR"/dist/*.html; then
         printf 'FAIL: --no-stats still rendered the Stats nav link\n' >&2
         exit 1
     fi
@@ -3981,9 +3981,10 @@ BASH
 
     html=$(cat "$output_file")
 
-    # Leaderboard entry links to camera-<slug>.html with the right count/percent.
+    # Leaderboard entry links to the camera's mini-album with the right
+    # count/percent (relative to the stats overview: <pagebase>/index.html).
     test::assert_contains \
-        '<a href="camera-canon-eos-5d.html">Canon EOS 5D</a>' "$html"
+        '<a href="camera-canon-eos-5d/index.html">Canon EOS 5D</a>' "$html"
     test::assert_contains '2 (67%)' "$html"
     # A histogram section is present.
     test::assert_contains '<h2>ISO</h2>' "$html"
@@ -4078,54 +4079,61 @@ EXIF
 EXIF
 }
 
-mkdir -p "$dist_dir/run1" "$dist_dir/run2"
+# render_filter_pages writes under $DIST_DIR/stats/, so point DIST_DIR at a
+# fresh per-run dir to compare the two runs for determinism.
 feed
-render_filter_pages run1 ..
+DIST_DIR="$dist_dir/run1"
+mkdir -p "$DIST_DIR"
+render_filter_pages
 feed
-render_filter_pages run2 ..
+DIST_DIR="$dist_dir/run2"
+mkdir -p "$DIST_DIR"
+render_filter_pages
 BASH
 
-    # Camera mini-albums: one gallery per camera, collision-resolved names.
-    test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d.html"
-    test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d-2.html"
-    test::assert_file_exists "$dist_dir/run1/camera-nikon-co-z6.html"
+    # Each mini-album is its own stats/<pagebase>/ directory (gallery index.html +
+    # view pages <index>.html), keeping the album root uncluttered. Camera names
+    # are collision-resolved (canon-eos-5d / canon-eos-5d-2).
+    local s="$dist_dir/run1/stats"
+    test::assert_file_exists "$s/camera-canon-eos-5d/index.html"
+    test::assert_file_exists "$s/camera-canon-eos-5d-2/index.html"
+    test::assert_file_exists "$s/camera-nikon-co-z6/index.html"
     # Non-camera stats are mini-albums too: orientation comes from Geometry, so
     # the three landscape photos get their own filter mini-album.
-    test::assert_file_exists "$dist_dir/run1/orientation-landscape.html"
-    test::assert_file_exists "$dist_dir/run1/orientation-landscape--1.html"
+    test::assert_file_exists "$s/orientation-landscape/index.html"
+    test::assert_file_exists "$s/orientation-landscape/1.html"
 
-    # The Canon EOS 5D gallery lists its two photos as thumbnails linking to this
-    # filter's own view pages (<pagebase>--<n>.html); img points at thumbs/.
-    html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
-    test::assert_contains 'href="../camera-canon-eos-5d--1.html"' "$html"
+    # The Canon EOS 5D gallery lists its two photos as thumbnails linking to
+    # sibling view pages (<index>.html); the thumb image points at the album
+    # root via ../../ .
+    html=$(cat "$s/camera-canon-eos-5d/index.html")
+    test::assert_contains 'href="1.html"' "$html"
     test::assert_contains 'class="thumb ' "$html"
-    test::assert_contains 'src="../thumbs/a.jpg" />' "$html"
-    test::assert_contains 'href="../camera-canon-eos-5d--2.html"' "$html"
-    test::assert_not_contains 'href="../photos/' "$html"
+    test::assert_contains 'src="../../thumbs/a.jpg" />' "$html"
+    test::assert_contains 'href="2.html"' "$html"
     # Heading shows the (trusted) camera label and a back-to-stats link.
     test::assert_contains 'Canon EOS 5D' "$html"
-    test::assert_contains '<a href="../stats.html">Back to stats</a>' "$html"
+    test::assert_contains '<a href="../../stats/index.html">Back to stats</a>' \
+        "$html"
 
     # A filter view page cycles within its own filter (two photos, so view 1's
     # prev and next both point at view 2), with a link back to the gallery.
-    test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d--1.html"
-    test::assert_file_exists "$dist_dir/run1/camera-canon-eos-5d--2.html"
-    html=$(cat "$dist_dir/run1/camera-canon-eos-5d--1.html")
-    test::assert_contains 'href="../camera-canon-eos-5d--2.html" class="arrow"' \
-        "$html"
-    test::assert_contains 'href="../camera-canon-eos-5d.html">Gallery</a>' "$html"
-    test::assert_contains 'src=' "$html"
+    test::assert_file_exists "$s/camera-canon-eos-5d/1.html"
+    test::assert_file_exists "$s/camera-canon-eos-5d/2.html"
+    html=$(cat "$s/camera-canon-eos-5d/1.html")
+    test::assert_contains 'href="2.html" class="arrow"' "$html"
+    test::assert_contains 'href="index.html">Gallery</a>' "$html"
+    test::assert_contains "src='../../photos/" "$html"
 
-    # The EXIF-derived label with & and < is HTML-escaped in the heading, and its
-    # single photo links to that camera's own view page.
-    html=$(cat "$dist_dir/run1/camera-nikon-co-z6.html")
+    # The EXIF-derived label with & and < is HTML-escaped in the heading.
+    html=$(cat "$s/camera-nikon-co-z6/index.html")
     test::assert_contains 'Nikon &amp; Co &lt;Z6&gt;' "$html"
     test::assert_not_contains 'Nikon & Co <Z6>' "$html"
-    test::assert_contains 'href="../camera-nikon-co-z6--1.html"' "$html"
+    test::assert_contains 'href="1.html"' "$html"
 
     # Output is deterministic across runs despite parallel rendering.
-    html=$(cat "$dist_dir/run1/camera-canon-eos-5d.html")
-    html_again=$(cat "$dist_dir/run2/camera-canon-eos-5d.html")
+    html=$(cat "$dist_dir/run1/stats/camera-canon-eos-5d/index.html")
+    html_again=$(cat "$dist_dir/run2/stats/camera-canon-eos-5d/index.html")
     if [ "$html" != "$html_again" ]; then
         printf 'FAIL: filter page not reproducible across runs\n' >&2
         exit 1

@@ -2606,8 +2606,10 @@ clear_exif_cache() {
 generate_stats_pages() {
     log_verbose 'Stats page enabled; collecting EXIF stats'
     collect_photo_exif_stats
-    render_stats_page . .
-    render_filter_pages . .
+    # Keep the album root uncluttered: the stats overview is stats/index.html and
+    # every filter mini-album lives under stats/<pagebase>/ (see render_filter_pages).
+    render_stats_page stats .. index
+    render_filter_pages
 }
 
 generate() {
@@ -2800,10 +2802,11 @@ print_dry_run_plan() {
     printf '  %s/[redirect].html (%s navigation redirects)\n' \
         "${plan_ref["dist_dir"]}" "${plan_ref["redirect_count"]}"
     if [ "${plan_ref["stats_page"]}" = yes ]; then
-        # The exact camera-page count needs EXIF aggregation, which dry-run
-        # does not perform, so list them as a wildcard.
-        printf '  %s/stats.html (EXIF stats page)\n' "${plan_ref["dist_dir"]}"
-        printf '  %s/camera-*.html (per-camera pages)\n' \
+        # The exact filter mini-album set needs EXIF aggregation, which dry-run
+        # does not perform, so list them as a wildcard under stats/.
+        printf '  %s/stats/index.html (EXIF stats page)\n' \
+            "${plan_ref["dist_dir"]}"
+        printf '  %s/stats/*/ (filter mini-albums)\n' \
             "${plan_ref["dist_dir"]}"
     fi
     if [ "${plan_ref["tarball_include"]}" = yes ]; then
@@ -3517,7 +3520,9 @@ _stats_filter_link() {
 
     pagebase="${STATS_FILTER_PAGEBASE[$catkey]:-}"
     if [ -n "$pagebase" ]; then
-        printf '<a href="%s.html">%s</a>' "$pagebase" "$label_html"
+        # The stats overview lives at stats/index.html and each mini-album at
+        # stats/<pagebase>/index.html, so link relative to the overview.
+        printf '<a href="%s/index.html">%s</a>' "$pagebase" "$label_html"
     else
         printf '%s' "$label_html"
     fi
@@ -3802,13 +3807,20 @@ render_stats_page() {
 declare -gr STATS_PHOTOS_DIR='photos'
 declare -gr STATS_THUMBS_DIR='thumbs'
 declare -gr STATS_BLURS_DIR='blurs'
+# Everything stats-related lives under this dist subdirectory so the album root
+# only holds the main album: the stats overview is stats/index.html and each
+# filter mini-album is stats/<pagebase>/ (gallery index.html + view pages
+# <index>.html). This keeps the file count in any single directory bounded.
+declare -gr STATS_DIR='stats'
+# Relative path from a filter mini-album page (dist/stats/<pagebase>/...) back to
+# the album root (dist/), used for shared assets and album links.
+declare -gr STATS_FILTER_BACKHREF='../..'
 
 # Emit one thumbnail anchor for a filter gallery: a thumb image (from thumbs/)
 # linking to this filter's view page for that photo (<pagebase>--<index>.html).
 # The photo filename is HTML-escaped; the pagebase and index are filename-safe.
 _stats_filter_thumbnail() {
     local -r backhref_html="$1"; shift
-    local -r pagebase="$1"; shift
     local -ri index="$1"; shift
     local -r photo="$1"; shift
     local photo_html
@@ -3817,8 +3829,9 @@ _stats_filter_thumbnail() {
     photo_html=$(_html_escape "$photo")
     # Same seeded animation the album thumbnail uses for this photo.
     animation_class=$(random_animation_css_class slow "$photo")
-    printf '        <a name="%s" href="%s/%s--%d.html">' \
-        "$photo_html" "$backhref_html" "$pagebase" "$index"
+    # The view page sits in the same directory as this gallery, so link to it by
+    # bare index; the thumbnail image lives at the album root via backhref.
+    printf '        <a name="%s" href="%d.html">' "$photo_html" "$index"
     printf '<img class="thumb %s" src="%s/%s/%s" /></a>\n' \
         "$animation_class" "$backhref_html" "$STATS_THUMBS_DIR" "$photo_html"
 }
@@ -3827,7 +3840,6 @@ _stats_filter_thumbnail() {
 # list, preserving aggregation (encounter) order for deterministic output.
 _stats_build_filter_thumbs() {
     local -r backhref_html="$1"; shift
-    local -r pagebase="$1"; shift
     local -r photos="$1"; shift
     local photo
     local -i index=0
@@ -3835,7 +3847,7 @@ _stats_build_filter_thumbs() {
     while IFS= read -r photo; do
         if [ -n "$photo" ]; then
             (( ++index ))
-            _stats_filter_thumbnail "$backhref_html" "$pagebase" "$index" "$photo"
+            _stats_filter_thumbnail "$backhref_html" "$index" "$photo"
         fi
     done <<< "$photos"
 }
@@ -3843,36 +3855,35 @@ _stats_build_filter_thumbs() {
 # Render a filter gallery page (<pagebase>.html): header + camera.tmpl (heading +
 # pre-built thumbnail grid) + footer. camera.tmpl is reused for every filter; the
 # heading is the bucket's title (camera name, "ISO 400", "Year 2023", ...).
+# Each filter mini-album lives in its own directory stats/<pagebase>/, so the
+# gallery is index.html and the view pages are <index>.html. backhref is fixed
+# (../.. back to the album root). camera.tmpl/cameraview.tmpl are reused.
 _stats_render_filter_gallery() {
-    local -r html_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r backhref_html="$1"; shift
     local -r pagebase="$1"; shift
     local thumbs
     local background_image
-    local -r page="$pagebase.html"
+    local -r html_dir="$STATS_DIR/$pagebase"
+    local -r backhref="$STATS_FILTER_BACKHREF"
+    local -r backhref_html="$STATS_FILTER_BACKHREF"
     local -r title="${STATS_FILTER_TITLE[$pagebase]:-}"
 
     thumbs=$(_stats_build_filter_thumbs \
-        "$backhref_html" "$pagebase" "${STATS_FILTER_PHOTOS[$pagebase]}")
-    background_image=$(_stats_random_background "$page")
-    template header "$page" \
+        "$backhref_html" "${STATS_FILTER_PHOTOS[$pagebase]}")
+    background_image=$(_stats_random_background "$pagebase/index")
+    template header index.html \
         html_dir "$html_dir" backhref "$backhref" \
         blurs_dir "$STATS_BLURS_DIR" background_image "$background_image" \
         show_header_bar 'yes'
-    template camera "$page" \
+    template camera index.html \
         html_dir "$html_dir" backhref "$backhref" \
         camera_name "$title" camera_thumbs "$thumbs"
-    template footer "$page" \
+    template footer index.html \
         html_dir "$html_dir" backhref "$backhref" tarball_name ''
 }
 
 # Render one filter view page (<pagebase>--<index>.html): header + cameraview
 # body + footer, with prev/next cycling within the filter.
 _stats_render_filter_view_page() {
-    local -r html_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r backhref_html="$1"; shift
     local -r pagebase="$1"; shift
     local -r photo="$1"; shift
     local -ri index="$1"; shift
@@ -3880,11 +3891,13 @@ _stats_render_filter_view_page() {
     local -ri next="$1"; shift
     local body
     local background_image
-    local -r page="$pagebase--$index.html"
+    local -r html_dir="$STATS_DIR/$pagebase"
+    local -r backhref="$STATS_FILTER_BACKHREF"
+    local -r page="$index.html"
 
     body=$(_stats_build_filterview_body \
-        "$backhref_html" "$pagebase" "$photo" "$prev" "$next")
-    background_image=$(_stats_random_background "$page")
+        "$STATS_FILTER_BACKHREF" "$photo" "$prev" "$next")
+    background_image=$(_stats_random_background "$pagebase/$index")
     template header "$page" \
         html_dir "$html_dir" backhref "$backhref" \
         blurs_dir "$STATS_BLURS_DIR" background_image "$background_image" \
@@ -3901,7 +3914,6 @@ _stats_render_filter_view_page() {
 # image link.
 _stats_build_filterview_body() {
     local -r backhref_html="$1"; shift
-    local -r pagebase="$1"; shift
     local -r photo="$1"; shift
     local -ri prev="$1"; shift
     local -ri next="$1"; shift
@@ -3923,15 +3935,17 @@ _stats_build_filterview_body() {
         details_link=$(printf ' <a href="%s/%s-details.html">Details</a> |' \
             "$backhref_html" "$view_page")
     fi
-    _stats_print_filterview_body "$backhref_html" "$pagebase" "$photo_html" \
+    _stats_print_filterview_body "$backhref_html" "$photo_html" \
         "$animation_class" "$tooltip_attr" "$details_link" "$prev" "$next"
 }
 
 # Emit the filter view page markup. Split out so _stats_build_filterview_body
 # stays focused on assembling the pieces.
+# The prev/next/gallery links are same-directory (this view page lives in the
+# filter's own stats/<pagebase>/ dir); the image, details, and direct links go
+# back to the album root via backhref.
 _stats_print_filterview_body() {
     local -r backhref_html="$1"; shift
-    local -r pagebase="$1"; shift
     local -r photo_html="$1"; shift
     local -r animation_class="$1"; shift
     local -r tooltip_attr="$1"; shift
@@ -3941,14 +3955,14 @@ _stats_print_filterview_body() {
 
     cat <<END
 <div class='view'>
-    <a href="$backhref_html/$pagebase--$next.html">
+    <a href="$next.html">
         <img class='view $animation_class' border='0' src='$backhref_html/$STATS_PHOTOS_DIR/$photo_html'$tooltip_attr />
     </a>
     <div class="navigator">
-        <a href="$backhref_html/$pagebase--$prev.html" class="arrow">&lArr;</a>
-        <a href="$backhref_html/$pagebase.html">Gallery</a> |$details_link
+        <a href="$prev.html" class="arrow">&lArr;</a>
+        <a href="index.html">Gallery</a> |$details_link
         <a href="$backhref_html/$STATS_PHOTOS_DIR/$photo_html">Direct link</a>
-        <a href="$backhref_html/$pagebase--$next.html" class="arrow">&rArr;</a>
+        <a href="$next.html" class="arrow">&rArr;</a>
     </div>
 </div>
 END
@@ -3958,9 +3972,6 @@ END
 # shared render job pool, waiting for a free slot (<= IMAGE_JOBS) before each
 # background render so parallelism follows the configured IMAGE_JOBS.
 _stats_enqueue_filter_album() {
-    local -r html_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r backhref_html="$1"; shift
     local -r pagebase="$1"; shift
     local -r pids_name="$1"; shift
     local -r statuses_name="$1"; shift
@@ -3981,8 +3992,7 @@ _stats_enqueue_filter_album() {
 
     wait_for_template_render_job_slot \
         "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
-    _stats_render_filter_gallery \
-        "$html_dir" "$backhref" "$backhref_html" "$pagebase" &
+    _stats_render_filter_gallery "$pagebase" &
     pids_ref+=("$!")
     labels_ref["$!"]="filter gallery $pagebase"
 
@@ -3990,11 +4000,10 @@ _stats_enqueue_filter_album() {
         wait_for_template_render_job_slot \
             "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
         _stats_render_filter_view_page \
-            "$html_dir" "$backhref" "$backhref_html" "$pagebase" \
-            "${photo_list[i - 1]}" "$i" \
+            "$pagebase" "${photo_list[i - 1]}" "$i" \
             "$(( i == 1 ? n : i - 1 ))" "$(( i == n ? 1 : i + 1 ))" &
         pids_ref+=("$!")
-        labels_ref["$!"]="filter view $pagebase--$i"
+        labels_ref["$!"]="filter view $pagebase/$i"
     done
 }
 
@@ -4003,10 +4012,11 @@ _stats_enqueue_filter_album() {
 # dist-relative output dir ("." for a top-level album) and backhref the relative
 # path back to the album root ("."), the same values render_stats_page uses.
 # Pagebases are walked in LC_ALL=C order for reproducible enqueue order.
+# Render every filter mini-album under dist/stats/<pagebase>/ in parallel. Each
+# mini-album's location and backhref are fixed by the layout (see STATS_DIR /
+# STATS_FILTER_BACKHREF), so no path arguments are needed. Call
+# collect_photo_exif_stats first to fill STATS_FILTER_PHOTOS.
 render_filter_pages() {
-    local -r html_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local backhref_html
     local pagebase
     # Render job pool, throttled to IMAGE_JOBS by the job-pool helpers.
     local -a render_job_pids=()
@@ -4019,13 +4029,11 @@ render_filter_pages() {
     if (( ${#STATS_FILTER_PHOTOS[@]} == 0 )); then
         return
     fi
-    backhref_html=$(_html_escape "$backhref")
     # Load the background photo list once now so every forked render job inherits
     # the cached array rather than rescanning the photos directory per page.
     _stats_load_background_photos
     while IFS= read -r pagebase; do
-        _stats_enqueue_filter_album \
-            "$html_dir" "$backhref" "$backhref_html" "$pagebase" \
+        _stats_enqueue_filter_album "$pagebase" \
             render_job_pids render_job_statuses render_job_labels render_failed
     done < <(printf '%s\n' "${!STATS_FILTER_PHOTOS[@]}" | LC_ALL=C sort)
     wait_for_template_render_jobs \

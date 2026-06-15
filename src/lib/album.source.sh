@@ -1091,8 +1091,10 @@ clear_exif_cache() {
 generate_stats_pages() {
     log_verbose 'Stats page enabled; collecting EXIF stats'
     collect_photo_exif_stats
-    render_stats_page . .
-    render_filter_pages . .
+    # Keep the album root uncluttered: the stats overview is stats/index.html and
+    # every filter mini-album lives under stats/<pagebase>/ (see render_filter_pages).
+    render_stats_page stats .. index
+    render_filter_pages
 }
 
 generate() {
@@ -1285,10 +1287,11 @@ print_dry_run_plan() {
     printf '  %s/[redirect].html (%s navigation redirects)\n' \
         "${plan_ref["dist_dir"]}" "${plan_ref["redirect_count"]}"
     if [ "${plan_ref["stats_page"]}" = yes ]; then
-        # The exact camera-page count needs EXIF aggregation, which dry-run
-        # does not perform, so list them as a wildcard.
-        printf '  %s/stats.html (EXIF stats page)\n' "${plan_ref["dist_dir"]}"
-        printf '  %s/camera-*.html (per-camera pages)\n' \
+        # The exact filter mini-album set needs EXIF aggregation, which dry-run
+        # does not perform, so list them as a wildcard under stats/.
+        printf '  %s/stats/index.html (EXIF stats page)\n' \
+            "${plan_ref["dist_dir"]}"
+        printf '  %s/stats/*/ (filter mini-albums)\n' \
             "${plan_ref["dist_dir"]}"
     fi
     if [ "${plan_ref["tarball_include"]}" = yes ]; then
