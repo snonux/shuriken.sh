@@ -115,9 +115,22 @@ templates link to it.
 Normal generation preserves reusable generated artifacts from the previous
 `DIST_DIR` while still rerendering HTML, random splash/background choices,
 animation classes, timestamps, and shuffled preview order. Existing scaled
-photos, thumbnails, blurs, and cached EXIF identify output are reused when the
-source image is unchanged. Pass `--force` with `--generate` to skip that cache
-copy and rebuild all generated image artifacts and EXIF data from scratch.
+photos, thumbnails, and blurs are reused from the previous output when the source
+image is unchanged.
+
+The per-photo EXIF `identify` output is cached in a separate `cache/` directory
+created next to `DIST_DIR` (i.e. parallel to `dist/` in the working directory).
+This cache is volatile and safe to delete, is **not** part of the published
+output (it is never written into `DIST_DIR`, so `--sync` does not deploy it), and
+persists across runs even if `DIST_DIR` is removed or rebuilt. Because reading
+EXIF from full-size originals is the slowest part of generation, keeping this
+cache makes regenerating an album dramatically faster: an unchanged photo skips
+`identify` entirely. `--clean` removes `DIST_DIR` but leaves `cache/` in place;
+delete `cache/` by hand to force a full EXIF rebuild on the next run.
+
+Pass `--force` with `--generate` to rebuild all generated image artifacts and
+re-read every photo's EXIF from scratch (it clears `cache/` once up front, then
+repopulates it during the run).
 
 The following long options override config values:
 
