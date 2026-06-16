@@ -67,6 +67,104 @@ render_previous_page_link() {
         prev "$prev_page"
 }
 
+# Assemble one complete preview page (page-N.html) in a single call: header,
+# optional previous-page link, every thumbnail in order, then the footer (with
+# a next-page link unless this is the last page). The appends to the one page
+# file happen here, in sequence, so the per-page ordering is preserved even when
+# this whole function runs as one backgrounded render job (parallelism is only
+# ACROSS pages, never within a page). The page's photos are the trailing
+# positional arguments; each photo's preview index is its 1-based position.
+render_full_preview_page() {
+    local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    local -r page_name="$1"; shift
+    local -r page_num="$1"; shift
+    local -r header_bar="$1"; shift
+    local -r prev_page="$1"; shift
+    local -r next_page="$1"; shift
+    local -i preview_num=0
+    local photo
+
+    start_preview_page \
+        "$photos_dir" "$html_dir" "$blurs_dir" "$backhref" "$page_name" \
+        "$header_bar"
+    if [ -n "$prev_page" ]; then
+        render_previous_page_link "$page_name" "$html_dir" "$prev_page"
+    fi
+
+    for photo in "$@"; do
+        (( ++preview_num ))
+        render_preview_thumbnail \
+            "$page_name" "$html_dir" "$thumbs_dir" "$backhref" \
+            "$page_num" "$preview_num" "$photo"
+    done
+
+    if [ -n "$next_page" ]; then
+        finish_preview_page_with_next \
+            "$page_name" "$html_dir" "$backhref" "$tarball_name" \
+            "$next_page" "$prev_page"
+    else
+        finish_preview_page "$page_name" "$html_dir" "$backhref" "$tarball_name"
+    fi
+}
+
+# Enqueue one complete preview page as a background render job, throttled to
+# IMAGE_JOBS via the shared template render job pool. Mirrors
+# queue_album_view_render_job: wait for a free slot, background the whole-page
+# assembly, then track its pid/label so a failed job flips render_failed and
+# makes generation fail loudly. The page's photos are passed as trailing
+# positional args; the background subshell forks a private copy of them, so the
+# caller is free to reuse its per-page accumulator for the next page.
+queue_preview_page_render_job() {
+    local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    local -r page_name="$1"; shift
+    local -r page_num="$1"; shift
+    local -r header_bar="$1"; shift
+    local -r prev_page="$1"; shift
+    local -r next_page="$1"; shift
+    # shellcheck disable=SC2178
+    local -n render_job_pids_ref="$1"; shift
+    # Passed by name to wait_for_template_render_job_slot.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_statuses_ref="$1"; shift
+    # Passed by name to wait_for_template_render_job_slot and assigned below.
+    # shellcheck disable=SC2034,SC2178
+    local -n render_job_labels_ref="$1"; shift
+    # shellcheck disable=SC2178
+    local -n render_failed_ref="$1"; shift
+    # Remaining positional args ("$@") are this page's photos in order.
+
+    wait_for_template_render_job_slot \
+        render_job_pids_ref \
+        render_job_statuses_ref \
+        render_job_labels_ref \
+        render_failed_ref
+    render_full_preview_page \
+        "$photos_dir" \
+        "$html_dir" \
+        "$thumbs_dir" \
+        "$blurs_dir" \
+        "$backhref" \
+        "$tarball_name" \
+        "$page_name" \
+        "$page_num" \
+        "$header_bar" \
+        "$prev_page" \
+        "$next_page" \
+        "$@" &
+    render_job_pids_ref+=("$!")
+    render_job_labels_ref["$!"]="template render job for preview $page_name"
+}
+
 render_preview_thumbnail() {
     local -r page_name="$1"; shift
     local -r html_dir="$1"; shift
@@ -453,25 +551,6 @@ create_all_photo_derivatives() {
     fi
 }
 
-render_album_page_thumbnail() {
-    local -r page_name="$1"; shift
-    local -r html_dir="$1"; shift
-    local -r thumbs_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r page_num="$1"; shift
-    local -r preview_num="$1"; shift
-    local -r photo="$1"; shift
-
-    render_preview_thumbnail \
-        "$page_name" \
-        "$html_dir" \
-        "$thumbs_dir" \
-        "$backhref" \
-        "$page_num" \
-        "$preview_num" \
-        "$photo"
-}
-
 render_photo_view_and_details() {
     local -r photos_dir="$1"; shift
     local -r blurs_dir="$1"; shift
@@ -516,17 +595,72 @@ record_rendered_view_page() {
     last_views_ref["$page"]="$preview"
 }
 
+# Render every navigation redirect for a single view page (the prev/next
+# wrap-around stubs that bounce N-0 / N-(last+1) to the neighbouring page).
+# Each redirect is its own self-contained file (the template overwrites it), so
+# this whole group is safe to run as one independent background job; only the
+# files for distinct pages are produced here. The wrap-around redirects for the
+# very last page (0-MAXPREVIEWS and the loop-to-1 links) are emitted as part of
+# that page's group.
+render_page_view_redirects() {
+    local -r html_dir="$1"; shift
+    local -ri page="$1"; shift
+    local -ri lastview="$1"; shift
+    local -ri max_page="$1"; shift
+    local -r prevredirect="${page}-0"
+    local -r nextredirect="${page}-$(( lastview + 1 ))"
+
+    template redirect "$prevredirect.html" \
+        html_dir "$html_dir" \
+        redirect_page "$(( page - 1 ))-${MAXPREVIEWS}"
+    template redirect "$prevredirect-details.html" \
+        html_dir "$html_dir" \
+        redirect_page "$(( page - 1 ))-${MAXPREVIEWS}-details"
+
+    if (( page == max_page )); then
+        template redirect "0-$MAXPREVIEWS.html" \
+            html_dir "$html_dir" \
+            redirect_page "${page}-$lastview"
+        template redirect "0-$MAXPREVIEWS-details.html" \
+            html_dir "$html_dir" \
+            redirect_page "${page}-$lastview-details"
+        template redirect "$nextredirect.html" \
+            html_dir "$html_dir" \
+            redirect_page '1-1'
+        template redirect "$nextredirect-details.html" \
+            html_dir "$html_dir" \
+            redirect_page '1-1-details'
+    else
+        template redirect "$nextredirect.html" \
+            html_dir "$html_dir" \
+            redirect_page "$(( page + 1 ))-1"
+        template redirect "$nextredirect-details.html" \
+            html_dir "$html_dir" \
+            redirect_page "$(( page + 1 ))-1-details"
+    fi
+}
+
+# Render all navigation redirects in parallel, one background job per view page,
+# throttled to IMAGE_JOBS via the shared template render job pool. This blocks
+# until every redirect is on disk (and fails loudly if any job failed), so
+# callers can rely on the redirects existing once it returns -- the redirect
+# groups are mutually independent, so only timing changes, not output.
 render_view_redirects() {
     local -r html_dir="$1"; shift
     # shellcheck disable=SC2178
     local -n view_pages_ref="$1"; shift
     # shellcheck disable=SC2178
-    local -n last_views_ref="$1"; shift
-    local lastview
+    local -n redirect_last_views_ref="$1"; shift
     local max_page
-    local nextredirect
     local page
-    local prevredirect
+    # Render job pool, throttled to IMAGE_JOBS by the job-pool helpers.
+    # shellcheck disable=SC2034
+    local -a render_job_pids=()
+    # shellcheck disable=SC2034
+    local -A render_job_statuses=()
+    # shellcheck disable=SC2034
+    local -A render_job_labels=()
+    local -i render_failed=0
 
     if (( ${#view_pages_ref[@]} == 0 )); then
         return
@@ -535,39 +669,21 @@ render_view_redirects() {
     max_page=${view_pages_ref[$(( ${#view_pages_ref[@]} - 1 ))]}
 
     for page in "${view_pages_ref[@]}"; do
-        lastview=${last_views_ref[$page]}
-        prevredirect="${page}-0"
-        nextredirect="${page}-$(( lastview + 1 ))"
-
-        template redirect "$prevredirect.html" \
-            html_dir "$html_dir" \
-            redirect_page "$(( page - 1 ))-${MAXPREVIEWS}"
-        template redirect "$prevredirect-details.html" \
-            html_dir "$html_dir" \
-            redirect_page "$(( page - 1 ))-${MAXPREVIEWS}-details"
-
-        if (( page == max_page )); then
-            template redirect "0-$MAXPREVIEWS.html" \
-                html_dir "$html_dir" \
-                redirect_page "${page}-$lastview"
-            template redirect "0-$MAXPREVIEWS-details.html" \
-                html_dir "$html_dir" \
-                redirect_page "${page}-$lastview-details"
-            template redirect "$nextredirect.html" \
-                html_dir "$html_dir" \
-                redirect_page '1-1'
-            template redirect "$nextredirect-details.html" \
-                html_dir "$html_dir" \
-                redirect_page '1-1-details'
-        else
-            template redirect "$nextredirect.html" \
-                html_dir "$html_dir" \
-                redirect_page "$(( page + 1 ))-1"
-            template redirect "$nextredirect-details.html" \
-                html_dir "$html_dir" \
-                redirect_page "$(( page + 1 ))-1-details"
-        fi
+        wait_for_template_render_job_slot \
+            render_job_pids render_job_statuses render_job_labels render_failed
+        render_page_view_redirects \
+            "$html_dir" "$page" "${redirect_last_views_ref[$page]}" \
+            "$max_page" &
+        render_job_pids+=("$!")
+        # shellcheck disable=SC2034
+        render_job_labels["$!"]="template render job for redirect page $page"
     done
+
+    wait_for_template_render_jobs \
+        render_job_pids render_job_statuses render_job_labels render_failed
+    if (( render_failed != 0 )); then
+        return 1
+    fi
 }
 
 render_album_index_redirect() {
@@ -620,47 +736,6 @@ album_page_name() {
     local -r page_num="$1"; shift
 
     printf 'page-%s\n' "$page_num"
-}
-
-advance_album_preview_page() {
-    local -r photos_dir="$1"; shift
-    local -r html_dir="$1"; shift
-    local -r blurs_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r tarball_name="$1"; shift
-    # shellcheck disable=SC2178
-    local -n page_name_ref="$1"; shift
-    # shellcheck disable=SC2178
-    local -n prev_page_ref="$1"; shift
-    # shellcheck disable=SC2178
-    local -n page_num_ref="$1"; shift
-    # shellcheck disable=SC2178
-    local -n preview_num_ref="$1"; shift
-    local next_page_name
-
-    next_page_name=$(album_page_name "$(( page_num_ref + 1 ))")
-    finish_preview_page_with_next \
-        "$page_name_ref" \
-        "$html_dir" \
-        "$backhref" \
-        "$tarball_name" \
-        "$next_page_name" \
-        "${prev_page_ref:-}"
-
-    prev_page_ref="$page_name_ref"
-    (( ++page_num_ref ))
-    # shellcheck disable=SC2034
-    preview_num_ref=1
-    page_name_ref=$(album_page_name "$page_num_ref")
-
-    start_preview_page \
-        "$photos_dir" \
-        "$html_dir" \
-        "$blurs_dir" \
-        "$backhref" \
-        "$page_name_ref" \
-        'no'
-    render_previous_page_link "$page_name_ref" "$html_dir" "$prev_page_ref"
 }
 
 queue_album_view_render_job() {
@@ -723,6 +798,71 @@ wait_for_album_view_render_jobs() {
     fi
 }
 
+# Group the album's photos into pages of at most MAXPREVIEWS, in their final
+# (shuffled/sorted) order. The result is emitted one line per page as a
+# tab-separated record "<page_num>\t<photo>\t<photo>..." so the caller can walk
+# pages without keeping every page in memory at once. Order is fully
+# deterministic (album_photo_files already applies the seeded shuffle), so the
+# downstream parallelism only changes timing, never which photo lands where.
+album_page_records() {
+    local -r photos_dir="$1"; shift
+    local photo
+    local -i num=1
+    local -i count=0
+    local line=''
+
+    while IFS= read -r photo; do
+        if (( count == MAXPREVIEWS )); then
+            printf '%d\t%s\n' "$num" "$line"
+            (( ++num ))
+            count=0
+            line=''
+        fi
+        if (( count == 0 )); then
+            line="$photo"
+        else
+            line="$line"$'\t'"$photo"
+        fi
+        (( ++count ))
+    done < <(album_photo_files "$photos_dir")
+
+    if (( count > 0 )); then
+        printf '%d\t%s\n' "$num" "$line"
+    fi
+}
+
+# Per-photo bookkeeping shared by the album loop: queue the view+details render
+# job, record the page/preview as a rendered view page (for redirect generation)
+# and remember the photo -> view-page mapping for the stats mini-albums. Kept
+# separate from the preview-page assembly so each concern stays small.
+_album_record_view_photo() {
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    local -ri page_num="$1"; shift
+    local -ri preview_num="$1"; shift
+    local -r photo="$1"; shift
+    local -r pids_name="$1"; shift
+    local -r statuses_name="$1"; shift
+    local -r labels_name="$1"; shift
+    local -r failed_name="$1"; shift
+    local -r view_pages_name="$1"; shift
+    local -r last_views_name="$1"; shift
+
+    queue_album_view_render_job \
+        "$photos_dir" "$blurs_dir" "$html_dir" "$backhref" "$tarball_name" \
+        "$page_num" "$preview_num" "$photo" \
+        "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
+    record_rendered_view_page "$view_pages_name" "$last_views_name" \
+        "$page_num" "$preview_num"
+    # Read later by the stats filter mini-albums (render_filter_pages) for
+    # their Details links; shellcheck cannot see that cross-function use.
+    # shellcheck disable=SC2034
+    ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$page_num-$preview_num"
+}
+
 render_album_pages() {
     local -r photos_dir="$1"; shift
     local -r html_dir="$1"; shift
@@ -731,87 +871,82 @@ render_album_pages() {
     local -r backhref="$1"; shift
     local -r tarball_name="$1"; shift
 
+    local header_bar
     local name
+    local next_name
+    local page_num
     local photo
-    # Passed by name to advance_album_preview_page.
-    # shellcheck disable=SC2034
-    local prev
-    local -i i=0
-    local -i num=1
-    # Passed by name to queue_album_view_render_job.
+    local prev_name=''
+    local record
+    local -i preview_num
+    # Passed by name to the render-pool helpers below.
     # shellcheck disable=SC2034
     local -i render_failed=0
-    # Passed by name to queue_album_view_render_job.
     # shellcheck disable=SC2034
     local -a render_job_pids=()
-    # Passed by name to queue_album_view_render_job.
     # shellcheck disable=SC2034
     local -A render_job_labels=()
-    # Passed by name to queue_album_view_render_job.
     # shellcheck disable=SC2034
     local -A render_job_statuses=()
     # Passed by name to record_rendered_view_page and render_view_redirects.
     # shellcheck disable=SC2034
     local -A rendered_last_views=()
-    # Passed by name to record_rendered_view_page and render_view_redirects.
     # shellcheck disable=SC2034
     local -a rendered_view_pages=()
+    local -a page_photos=()
+    local -a page_records=()
 
     # Rebuild the photo -> view-page map for this album from scratch so a
-    # re-generate (or a smaller incoming set) does not keep stale entries.
+    # re-generate (or a smaller incoming set) does not keep stale entries. The
+    # per-photo entries are written in _album_record_view_photo, which shellcheck
+    # cannot see from here.
+    # shellcheck disable=SC2034
     ALBUM_VIEW_PAGE_BY_PHOTO=()
 
-    name=$(album_page_name "$num")
+    # Materialise the full deterministic page layout first so each preview page
+    # knows up front whether it has a following page (and thus a "next" link).
+    mapfile -t page_records < <(album_page_records "$photos_dir")
 
-    start_preview_page \
-        "$photos_dir" "$html_dir" "$blurs_dir" "$backhref" "$name" 'yes'
-
-    while IFS= read -r photo; do
-        (( ++i ))
-
-        if (( i > MAXPREVIEWS )); then
-            advance_album_preview_page \
-                "$photos_dir" \
-                "$html_dir" \
-                "$blurs_dir" \
-                "$backhref" \
-                "$tarball_name" \
-                name \
-                prev \
-                num \
-                i
+    for record in "${page_records[@]}"; do
+        page_num=${record%%$'\t'*}
+        name=$(album_page_name "$page_num")
+        # The first page shows the header bar; later pages do not (matches the
+        # previous start_preview_page calls).
+        if [ -z "$prev_name" ]; then
+            header_bar='yes'
+        else
+            header_bar='no'
         fi
 
-        render_album_page_thumbnail \
-            "$name" \
-            "$html_dir" \
-            "$thumbs_dir" \
-            "$backhref" \
-            "$num" \
-            "$i" \
-            "$photo"
-        queue_album_view_render_job \
-            "$photos_dir" \
-            "$blurs_dir" \
-            "$html_dir" \
-            "$backhref" \
-            "$tarball_name" \
-            "$num" \
-            "$i" \
-            "$photo" \
-            render_job_pids \
-            render_job_statuses \
-            render_job_labels \
-            render_failed
-        record_rendered_view_page rendered_view_pages rendered_last_views \
-            "$num" "$i"
-        # Read later by the stats filter mini-albums (render_filter_pages) for
-        # their Details links; shellcheck cannot see that cross-function use.
-        # shellcheck disable=SC2034
-        ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$num-$i"
-    done < <(album_photo_files "$photos_dir")
+        # Split the tab-separated photo list for this page into an array.
+        IFS=$'\t' read -r -a page_photos <<< "${record#*$'\t'}"
 
-    finish_preview_page "$name" "$html_dir" "$backhref" "$tarball_name"
+        preview_num=0
+        for photo in "${page_photos[@]}"; do
+            (( ++preview_num ))
+            _album_record_view_photo \
+                "$photos_dir" "$blurs_dir" "$html_dir" "$backhref" \
+                "$tarball_name" "$page_num" "$preview_num" "$photo" \
+                render_job_pids render_job_statuses render_job_labels \
+                render_failed rendered_view_pages rendered_last_views
+        done
+
+        # A page has a "next" link unless it is the last record.
+        next_name=''
+        if (( page_num < ${#page_records[@]} )); then
+            next_name=$(album_page_name "$(( page_num + 1 ))")
+        fi
+        queue_preview_page_render_job \
+            "$photos_dir" "$html_dir" "$thumbs_dir" "$blurs_dir" "$backhref" \
+            "$tarball_name" "$name" "$page_num" "$header_bar" \
+            "$prev_name" "$next_name" \
+            render_job_pids render_job_statuses render_job_labels \
+            render_failed \
+            "${page_photos[@]}"
+
+        prev_name="$name"
+    done
+
     if ! wait_for_album_view_render_jobs \
         render_job_pids \
         render_job_statuses \
