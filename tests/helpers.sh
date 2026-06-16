@@ -196,6 +196,17 @@ if [ "${1:-}" = identify ]; then
     if [ -n "${TEST_IMAGEMAGICK_IDENTIFY_LOG:-}" ]; then
         printf '%s\n' "$*" >> "$TEST_IMAGEMAGICK_IDENTIFY_LOG"
     fi
+    # Simulate a corrupt photo / identify failure when the fixture matches the
+    # configured failing target (or "*" for any photo). Emit an error to stderr
+    # and exit non-zero so callers can exercise the failure path.
+    if [ -n "${TEST_IMAGEMAGICK_IDENTIFY_FAIL:-}" ]; then
+        target="${@: -1}"
+        if [ "$TEST_IMAGEMAGICK_IDENTIFY_FAIL" = '*' ] \
+            || [[ "$target" == *"$TEST_IMAGEMAGICK_IDENTIFY_FAIL"* ]]; then
+            printf 'identify: corrupt image\n' >&2
+            exit 1
+        fi
+    fi
     if [ -n "${TEST_IMAGEMAGICK_IDENTIFY_OUTPUT:-}" ]; then
         printf '%s\n' "$TEST_IMAGEMAGICK_IDENTIFY_OUTPUT"
     fi

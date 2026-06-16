@@ -28,6 +28,7 @@ cached_photo_identify_output() {
     local cache_file
     local cached_signature=''
     local current_signature
+    local identify_status
 
     # Persist the EXIF cache in a volatile ./cache directory parallel to ./dist
     # (the staging dir is a sibling of the final dist, so dirname "$DIST_DIR" is
@@ -52,8 +53,34 @@ cached_photo_identify_output() {
 
     mkdir -p "$cache_dir"
     printf '%s\n' "$current_signature" > "$cache_file"
+
+    # Capture the identify exit status instead of swallowing it with `|| true`.
+    # Errors are still hidden from stdout (so a corrupt photo does not pollute
+    # the EXIF output), but a non-zero status now drives a warning + no-cache
+    # rather than silently leaving a signature-only cache entry behind.
+    identify_status=0
     imagemagick_identify -verbose "$photo_path" >> "$cache_file" 2>/dev/null \
-        || true
+        || identify_status=$?
+
+    if [ "$identify_status" -ne 0 ]; then
+        # Failed identify (corrupt photo, timeout, missing binary, ...): warn
+        # naming the photo and remove the cache file. Removing it is essential:
+        # a file holding only the signature line is a valid-looking cache hit,
+        # so the next run would silently reuse the empty result forever -- never
+        # retrying identify and never warning again (the original data-loss bug).
+        # Deleting it makes the next run retry and warn.
+        #
+        # We deliberately do NOT abort: this runs inside backgrounded render jobs
+        # under `set -euo pipefail`, and one unreadable photo must not kill the
+        # whole generation. The photo still renders, just with empty tooltip and
+        # stats, now accompanied by a warning.
+        rm -f "$cache_file"
+        log_warning \
+            "could not read EXIF for $photo (ImageMagick identify failed);" \
+            "tooltip/stats will be missing"
+        return 0
+    fi
+
     print_cached_photo_identify_output "$cache_file"
 }
 

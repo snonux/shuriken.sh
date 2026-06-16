@@ -2083,6 +2083,60 @@ PY
     test::teardown
 }
 
+# Regression for 9n0 (+data-loss): a failed `identify` must warn, must not abort
+# the whole generation, and must NOT leave a cache file containing only the
+# signature line (which the next run would treat as a valid empty cache hit and
+# silently reuse forever). We make the fake ImageMagick fail `identify` for one
+# photo and assert: exit 0, a warning naming that photo, the photo still rendered,
+# and no leftover cache entry (so the next run retries).
+test_generate_warns_and_skips_cache_on_identify_failure() {
+    local config_file
+    local fake_bin
+    local output
+    local status
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Identify failure album' 40
+
+    status=0
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" \
+            TEST_IMAGEMAGICK_IDENTIFY_FAIL='01-landscape.jpg' \
+            "$TEST_SHURIKEN" --generate 2>&1
+    ) || status=$?
+
+    # A missing-EXIF photo must NOT abort the run.
+    if [ "$status" -ne 0 ]; then
+        printf 'FAIL: expected --generate to succeed, got exit %s\n' \
+            "$status" >&2
+        printf '%s\n' "$output" >&2
+        exit 1
+    fi
+    test::assert_contains \
+        'WARNING: could not read EXIF for 01-landscape.jpg' "$output"
+    test::assert_contains 'tooltip/stats will be missing' "$output"
+
+    # The photo is still rendered despite the EXIF failure.
+    test::assert_file_exists "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
+
+    # No bad cache entry is persisted for the failed photo, so the next run
+    # retries `identify` (and warns again) rather than silently reusing an empty
+    # result. Photos that succeeded are cached normally.
+    test::assert_path_absent "$TEST_TMPDIR/cache/exif/01-landscape.jpg.txt"
+    test::assert_file_exists "$TEST_TMPDIR/cache/exif/02-portrait.jpg.txt"
+
+    test::teardown
+}
+
 test_generate_missing_incoming_fails() {
     local output
 
@@ -5757,6 +5811,9 @@ main() {
     test::run_case \
         '--generate ignores unsupported incoming files with warning' \
         test_generate_ignores_unsupported_incoming_files_with_warning
+    test::run_case \
+        '--generate warns and skips cache on identify failure' \
+        test_generate_warns_and_skips_cache_on_identify_failure
     test::run_case \
         '--generate missing incoming fails' \
         test_generate_missing_incoming_fails
