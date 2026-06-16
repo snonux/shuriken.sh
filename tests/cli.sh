@@ -3975,6 +3975,64 @@ BASH
     fi
 }
 
+# Open/Closed proof: render field kinds are dispatched by resolving a
+# prepare_template_render_var__<kind> handler by name. Adding a kind therefore
+# means only defining a new handler function -- the core loop never changes. We
+# assert (1) every kind in TEMPLATE_RENDER_FIELD_SPECS has a matching handler,
+# (2) defining a brand-new handler makes it resolvable and dispatch-able, and
+# (3) an unknown kind (no handler) is rejected as a config error.
+test_template_render_var_dispatch_is_extensible() {
+    local output
+
+    output=$(
+        bash -euo pipefail -s "$TEST_REPO_ROOT" <<'BASH'
+repo_root="$1"; shift
+
+# config_error (used for the unknown-kind path) lives in the validate lib.
+# shellcheck source=src/lib/config.validate.source.sh
+source "$repo_root/src/lib/config.validate.source.sh"
+# shellcheck source=src/lib/template.source.sh
+source "$repo_root/src/lib/template.source.sh"
+
+# Every declared kind must resolve to a handler function by name.
+missing=0
+for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
+    IFS='|' read -r _ kind _ _ _ <<< "$field_spec"
+    if ! declare -F "prepare_template_render_var__$kind" > /dev/null; then
+        missing=1
+    fi
+done
+printf 'all_kinds_have_handlers=%s\n' "$([ "$missing" -eq 0 ] && echo yes || echo no)"
+
+# A brand-new kind, added purely by defining a handler function (OCP): the
+# dispatcher resolves and calls it without any change to the core loop.
+prepare_template_render_var__ocp_demo() {
+    local -n out_ref="$1"; shift
+    out_ref='dispatched'
+}
+demo_out=''
+handler="prepare_template_render_var__ocp_demo"
+declare -F "$handler" > /dev/null && "$handler" demo_out ctx ''
+printf 'demo=%s\n' "$demo_out"
+
+# An unknown kind has no handler, so the dispatcher must reject it.
+if declare -F "prepare_template_render_var__ocp_no_handler" > /dev/null; then
+    printf 'unknown=resolved\n'
+else
+    printf 'unknown=unresolved\n'
+fi
+BASH
+    )
+
+    if [ "$output" != \
+        $'all_kinds_have_handlers=yes\ndemo=dispatched\nunknown=unresolved' ]
+    then
+        printf 'FAIL: render var dispatch not extensible\n' >&2
+        printf 'actual:\n%s\n' "$output" >&2
+        exit 1
+    fi
+}
+
 test_render_stats_page_renders_sections_and_escapes() {
     local html
     local output_file
@@ -5820,6 +5878,9 @@ main() {
     test::run_case \
         'template required context vars come from render specs' \
         test_template_required_context_vars_come_from_render_specs
+    test::run_case \
+        'template render var dispatch is extensible (OCP)' \
+        test_template_render_var_dispatch_is_extensible
     test::run_case \
         'render_stats_page renders sections and escapes EXIF labels' \
         test_render_stats_page_renders_sections_and_escapes

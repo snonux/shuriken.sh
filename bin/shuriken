@@ -924,19 +924,183 @@ serialize_template_render_context() {
     done
 }
 
+# --- Per-kind render handlers (Open/Closed dispatch) --------------------------
+#
+# Each TEMPLATE_RENDER_FIELD_SPECS "kind" is implemented by one
+# prepare_template_render_var__<kind> function. prepare_template_render_vars
+# resolves the handler by name (prepare_template_render_var__$kind) and calls
+# it, so a NEW kind is added simply by defining a new handler function with the
+# matching name -- the core loop never needs editing (Open/Closed Principle).
+#
+# Every handler shares the same calling convention so the loop can invoke them
+# uniformly:
+#     prepare_template_render_var__<kind> <render_value_out> \
+#         <context_name> <source_name>
+# The first argument is an output nameref the handler writes the final
+# render_value into; handlers that do not need the context name or source_name
+# simply ignore those arguments. Handlers reproduce exactly what the old
+# "case $kind" arms produced (same escaping and defaults), so rendered output
+# is byte-identical.
+#
+# Note: SC2317 cannot see these handlers being called -- the dispatch is by
+# computed name -- so they would look unreachable/unused. The disable directive
+# on each handler documents that it is reached dynamically via declare -F lookup.
+
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__context_css() {
+    local -n out_ref="$1"; shift
+    local -r context_name="$1"; shift
+    local -r source_name="$1"; shift
+    local context_value
+
+    template_context_value_to context_value "$context_name" "$source_name"
+    css_string_escape_to out_ref "$context_value"
+}
+
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__context_html() {
+    local -n out_ref="$1"; shift
+    local -r context_name="$1"; shift
+    local -r source_name="$1"; shift
+    local context_value
+
+    template_context_value_to context_value "$context_name" "$source_name"
+    html_escape_to out_ref "$context_value"
+}
+
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__context_raw() {
+    local -n out_ref="$1"; shift
+    local -r context_name="$1"; shift
+    local -r source_name="$1"; shift
+
+    template_context_value_to out_ref "$context_name" "$source_name"
+}
+
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__current_date_html() {
+    local -n out_ref="$1"; shift
+    local context_value
+
+    current_date_text_to context_value
+    html_escape_to out_ref "$context_value"
+}
+
+# config_html resolves its value from a named config variable. The inner
+# source_name dispatch (HEIGHT/MAXPREVIEWS/TITLE/etc.) stays here so config
+# handling is self-contained; its behavior is identical to the old arm.
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__config_html() {
+    local -n out_ref="$1"; shift
+    local -r _context_name="$1"; shift
+    local -r source_name="$1"; shift
+    local context_value
+
+    case "$source_name" in
+        HEIGHT)
+            context_value="$HEIGHT"
+            ;;
+        MAXPREVIEWS)
+            # Refresh-only configs do not require generation
+            # sizing fields; render absent values as empty.
+            context_value="${MAXPREVIEWS:-}"
+            ;;
+        ORIGINAL_BASEPATH)
+            context_value="$ORIGINAL_BASEPATH"
+            ;;
+        STATS_PAGE)
+            # Always defaulted by apply_config_defaults; degrade to
+            # "no" (link hidden) if somehow unset so the header bar
+            # never references a stats page that was not generated.
+            context_value="${STATS_PAGE:-no}"
+            ;;
+        THUMBHEIGHT)
+            # Refresh-only configs do not require generation
+            # sizing fields; render absent values as empty.
+            context_value="${THUMBHEIGHT:-}"
+            ;;
+        TITLE)
+            context_value="$TITLE"
+            ;;
+        *)
+            config_error "unknown template render config $source_name"
+            return 1
+            ;;
+    esac
+    html_escape_to out_ref "$context_value"
+}
+
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__original_basepath_is_set() {
+    # shellcheck disable=SC2034  # written through the output nameref
+    local -n out_ref="$1"; shift
+
+    if [ -n "$ORIGINAL_BASEPATH" ]; then
+        out_ref='yes'
+    else
+        out_ref='no'
+    fi
+}
+
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__preview_num_next_html() {
+    # shellcheck disable=SC2034  # written through the output nameref
+    local -n out_ref="$1"; shift
+    local -r context_name="$1"; shift
+    local -r source_name="$1"; shift
+    local context_value
+
+    template_context_value_to context_value "$context_name" "$source_name"
+    if [ -n "$context_value" ]; then
+        html_escape_to out_ref "$(( context_value + 1 ))"
+    else
+        out_ref=''
+    fi
+}
+
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__preview_num_prev_html() {
+    # shellcheck disable=SC2034  # written through the output nameref
+    local -n out_ref="$1"; shift
+    local -r context_name="$1"; shift
+    local -r source_name="$1"; shift
+    local context_value
+
+    template_context_value_to context_value "$context_name" "$source_name"
+    if [ -n "$context_value" ]; then
+        html_escape_to out_ref "$(( context_value - 1 ))"
+    else
+        out_ref=''
+    fi
+}
+
+# shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
+prepare_template_render_var__tarball_include() {
+    local -n out_ref="$1"; shift
+
+    # shellcheck disable=SC2034  # written through the output nameref
+    out_ref="$TARBALL_INCLUDE"
+}
+
+# Core render loop. For each field spec it resolves the per-kind handler by name
+# (prepare_template_render_var__<kind>) and dispatches to it; adding a kind means
+# defining a new handler function, never touching this loop. An unknown kind --
+# one with no matching handler function -- is a config error, preserving the old
+# "unknown template render field kind" behavior.
 prepare_template_render_vars() {
     local -r render_vars_name="$1"; shift
     local -r context_name="$1"; shift
     # shellcheck disable=SC2178
     local -n render_vars_ref="$render_vars_name"
-    local context_value
     local field_spec
+    local handler
     local kind
     local render_value
     local render_var
     local _required_context_var
     local _required_templates
     local source_name
+    local -i status=0
 
     render_vars_ref=()
 
@@ -944,93 +1108,18 @@ prepare_template_render_vars() {
         IFS='|' read -r render_var kind source_name \
             _required_context_var _required_templates <<< "$field_spec"
 
-        case "$kind" in
-            context_css)
-                template_context_value_to \
-                    context_value "$context_name" "$source_name"
-                css_string_escape_to render_value "$context_value"
-                ;;
-            context_html)
-                template_context_value_to \
-                    context_value "$context_name" "$source_name"
-                html_escape_to render_value "$context_value"
-                ;;
-            context_raw)
-                template_context_value_to \
-                    render_value "$context_name" "$source_name"
-                ;;
-            current_date_html)
-                current_date_text_to context_value
-                html_escape_to render_value "$context_value"
-                ;;
-            config_html)
-                case "$source_name" in
-                    HEIGHT)
-                        context_value="$HEIGHT"
-                        ;;
-                    MAXPREVIEWS)
-                        # Refresh-only configs do not require generation
-                        # sizing fields; render absent values as empty.
-                        context_value="${MAXPREVIEWS:-}"
-                        ;;
-                    ORIGINAL_BASEPATH)
-                        context_value="$ORIGINAL_BASEPATH"
-                        ;;
-                    STATS_PAGE)
-                        # Always defaulted by apply_config_defaults; degrade to
-                        # "no" (link hidden) if somehow unset so the header bar
-                        # never references a stats page that was not generated.
-                        context_value="${STATS_PAGE:-no}"
-                        ;;
-                    THUMBHEIGHT)
-                        # Refresh-only configs do not require generation
-                        # sizing fields; render absent values as empty.
-                        context_value="${THUMBHEIGHT:-}"
-                        ;;
-                    TITLE)
-                        context_value="$TITLE"
-                        ;;
-                    *)
-                        config_error \
-                            "unknown template render config $source_name"
-                        return 1
-                        ;;
-                esac
-                html_escape_to render_value "$context_value"
-                ;;
-            original_basepath_is_set)
-                if [ -n "$ORIGINAL_BASEPATH" ]; then
-                    render_value='yes'
-                else
-                    render_value='no'
-                fi
-                ;;
-            preview_num_next_html)
-                template_context_value_to \
-                    context_value "$context_name" "$source_name"
-                if [ -n "$context_value" ]; then
-                    html_escape_to render_value "$(( context_value + 1 ))"
-                else
-                    render_value=''
-                fi
-                ;;
-            preview_num_prev_html)
-                template_context_value_to \
-                    context_value "$context_name" "$source_name"
-                if [ -n "$context_value" ]; then
-                    html_escape_to render_value "$(( context_value - 1 ))"
-                else
-                    render_value=''
-                fi
-                ;;
-            tarball_include)
-                render_value="$TARBALL_INCLUDE"
-                ;;
-            *)
-                config_error "unknown template render field kind $kind"
-                return 1
-                ;;
-        esac
+        handler="prepare_template_render_var__$kind"
+        if ! declare -F "$handler" > /dev/null; then
+            config_error "unknown template render field kind $kind"
+            return 1
+        fi
+
+        render_value=''
+        "$handler" render_value "$context_name" "$source_name"
+        status=$?
+        if (( status != 0 )); then
+            return "$status"
+        fi
 
         render_vars_ref["$render_var"]="$render_value"
     done
