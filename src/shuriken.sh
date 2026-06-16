@@ -101,6 +101,12 @@ source "$SHURIKEN_SOURCE_DIR/lib/job-pool.source.sh"
 source "$SHURIKEN_SOURCE_DIR/lib/image.source.sh"
 # shellcheck source=src/lib/random.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/random.source.sh"
+# shellcheck source=src/lib/image-pipeline.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/image-pipeline.source.sh"
+# shellcheck source=src/lib/album-metadata.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/album-metadata.source.sh"
+# shellcheck source=src/lib/album-render.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/album-render.source.sh"
 # shellcheck source=src/lib/album.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/album.source.sh"
 # shellcheck source=src/lib/config.source.sh
