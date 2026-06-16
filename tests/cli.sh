@@ -3780,7 +3780,7 @@ test_generate_template_failure_preserves_dist() {
     PATH="$fake_bin:$PATH" \
         test::generate_fixture_images "$TEST_TMPDIR/incoming"
     cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
-    printf 'return 42\n' > "$template_dir/preview.tmpl"
+    printf 'return 42\n' > "$template_dir/previewpage.tmpl"
     mkdir -p "$TEST_TMPDIR/dist"
     printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
     test::write_album_config \
@@ -3794,7 +3794,7 @@ test_generate_template_failure_preserves_dist() {
             test::capture_failure_output "$TEST_SHURIKEN" --generate
     )
 
-    test::assert_contains 'Rendering preview template into ' "$output"
+    test::assert_contains 'Rendering previewpage template into ' "$output"
     test "$(<"$TEST_TMPDIR/dist/index.html")" = 'old index'
     test::assert_path_absent "$TEST_TMPDIR/dist/photos/01-landscape.jpg"
     test::assert_path_absent "$TEST_TMPDIR/dist/shuriken.json"
@@ -3819,7 +3819,7 @@ test_generate_templates_cannot_read_generation_locals() {
     cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
     # shellcheck disable=SC2016
     printf 'printf "legacy num: %%s\\n" "${num}"\n' \
-        > "$template_dir/preview.tmpl"
+        > "$template_dir/previewpage.tmpl"
     mkdir -p "$TEST_TMPDIR/dist"
     printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
     test::write_album_config \
@@ -3858,7 +3858,7 @@ test_generate_templates_cannot_read_renderer_internals() {
     cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
     # shellcheck disable=SC2016
     printf 'printf "context key: %%s\\n" "${context_key}"\n' \
-        > "$template_dir/preview.tmpl"
+        > "$template_dir/previewpage.tmpl"
     mkdir -p "$TEST_TMPDIR/dist"
     printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
     test::write_album_config \
@@ -3897,7 +3897,7 @@ test_generate_templates_cannot_read_serialized_context_hook() {
     cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
     # shellcheck disable=SC2016
     printf 'printf "bash env: %%s\\n" "${BASH_ENV}"\n' \
-        > "$template_dir/preview.tmpl"
+        > "$template_dir/previewpage.tmpl"
     mkdir -p "$TEST_TMPDIR/dist"
     printf 'old index\n' > "$TEST_TMPDIR/dist/index.html"
     test::write_album_config \
@@ -3932,6 +3932,7 @@ header:backhref background_image blurs_dir html_dir show_header_bar
 next:html_dir next
 prev:html_dir prev
 preview:animation_class backhref html_dir page_num photo preview_num thumbs_dir
+previewpage:html_dir preview_thumbs
 redirect:html_dir redirect_page
 splash:backhref background_image blurs_dir enter_page html_dir photo photos_dir
 stats:backhref html_dir stats_body
@@ -3951,6 +3952,7 @@ declare -a template_names=(
     next
     prev
     preview
+    previewpage
     redirect
     splash
     stats

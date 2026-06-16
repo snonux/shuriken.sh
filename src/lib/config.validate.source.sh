@@ -101,6 +101,7 @@ validate_template_dir() {
         next
         prev
         preview
+        previewpage
         redirect
         view
     )

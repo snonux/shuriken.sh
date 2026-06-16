@@ -1,0 +1,14 @@
+# Preview-page thumbnail grid (task wn0). The album preview page (page-N.html)
+# used to render EACH thumbnail with its own "template preview" call, paying the
+# full source_template_file cost (an "env -i bash" invocation) per thumbnail.
+# render_full_preview_page now pre-builds the markup for ALL of a page's
+# thumbnails in bash (render_preview_thumbnail / build into one string) and hands
+# the whole grid in through the raw context field render_preview_thumbs_html, so
+# this template emits every thumbnail for the page in ONE render call instead of
+# N. The per-thumbnail markup is byte-identical to the old preview.tmpl output
+# (same <a name=... href=...><img class='thumb <anim>' .../></a> structure, order
+# and seeded animation classes). The surrounding header/footer still come from
+# their own templates, which render_full_preview_page emits around this one.
+cat <<END
+${render_preview_thumbs_html}
+END

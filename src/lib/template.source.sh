@@ -165,6 +165,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_photos_dir_html|context_html|photos_dir|photos_dir|splash details view'
     'render_prev_html|context_html|prev|prev|prev'
     'render_preview_num_html|context_html|preview_num|preview_num|preview details view'
+    'render_preview_thumbs_html|context_raw|preview_thumbs|preview_thumbs|previewpage'
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
     'render_stats_body_html|context_raw|stats_body|stats_body|stats'

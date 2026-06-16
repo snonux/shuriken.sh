@@ -660,6 +660,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_photos_dir_html|context_html|photos_dir|photos_dir|splash details view'
     'render_prev_html|context_html|prev|prev|prev'
     'render_preview_num_html|context_html|preview_num|preview_num|preview details view'
+    'render_preview_thumbs_html|context_raw|preview_thumbs|preview_thumbs|previewpage'
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
     'render_stats_body_html|context_raw|stats_body|stats_body|stats'
@@ -2335,12 +2336,19 @@ render_full_preview_page() {
         render_previous_page_link "$page_name" "$html_dir" "$prev_page"
     fi
 
+    # Batch all of this page's thumbnails into ONE template call. Building the
+    # markup in bash and emitting it via the raw "preview_thumbs" field collapses
+    # what used to be N "template preview" renders (one env -i bash per
+    # thumbnail) into a single previewpage render per page.
+    local preview_thumbs=''
     for photo in "$@"; do
         (( ++preview_num ))
-        render_preview_thumbnail \
-            "$page_name" "$html_dir" "$thumbs_dir" "$backhref" \
-            "$page_num" "$preview_num" "$photo"
+        append_preview_thumbnail preview_thumbs \
+            "$thumbs_dir" "$backhref" "$page_num" "$preview_num" "$photo"
     done
+    template previewpage "$page_name.html" \
+        html_dir "$html_dir" \
+        preview_thumbs "$preview_thumbs"
 
     if [ -n "$next_page" ]; then
         finish_preview_page_with_next \
@@ -2404,25 +2412,58 @@ queue_preview_page_render_job() {
     render_job_labels_ref["$!"]="template render job for preview $page_name"
 }
 
-render_preview_thumbnail() {
-    local -r page_name="$1"; shift
-    local -r html_dir="$1"; shift
+# Append one thumbnail's markup to a page's accumulating thumbnail-grid buffer.
+# Produces exactly the bytes the old per-thumbnail preview.tmpl emitted (the
+# <a name=... href=...><img class='thumb <anim>' .../></a> block), so batching
+# all thumbnails into one previewpage render stays byte-identical. Every
+# interpolated value is HTML-escaped like the template's context_html fields; the
+# seeded "slow" animation class is preserved exactly. Blocks are separated by a
+# newline; the previewpage template adds the single trailing newline, matching
+# the old N sequential renders.
+append_preview_thumbnail() {
+    local -n buffer_ref="$1"; shift
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
     local -r page_num="$1"; shift
     local -r preview_num="$1"; shift
     local -r photo_file="$1"; shift
     local animation_class
+    local block
 
     animation_class=$(random_animation_css_class slow "$photo_file")
-    template preview "$page_name.html" \
-        html_dir "$html_dir" \
-        backhref "$backhref" \
-        thumbs_dir "$thumbs_dir" \
-        page_num "$page_num" \
-        preview_num "$preview_num" \
-        photo "$photo_file" \
-        animation_class "$animation_class"
+    block=$(build_preview_thumbnail \
+        "$thumbs_dir" "$backhref" "$page_num" "$preview_num" "$photo_file" \
+        "$animation_class")
+    if [ -z "$buffer_ref" ]; then
+        buffer_ref="$block"
+    else
+        buffer_ref+=$'\n'"$block"
+    fi
+}
+
+# Render the HTML for a single preview thumbnail (HTML-escaping every value the
+# way preview.tmpl's context_html fields did). Returned without a trailing
+# newline so callers control separators.
+build_preview_thumbnail() {
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r page_num="$1"; shift
+    local -r preview_num="$1"; shift
+    local -r photo_file="$1"; shift
+    local -r animation_class="$1"; shift
+    local photo_html
+    local anim_html
+    local backhref_html
+    local thumbs_dir_html
+
+    photo_html=$(_html_escape "$photo_file")
+    anim_html=$(_html_escape "$animation_class")
+    backhref_html=$(_html_escape "$backhref")
+    thumbs_dir_html=$(_html_escape "$thumbs_dir")
+    printf '<a name=%s href=%s>\n' \
+        "'$photo_html'" "'$page_num-$preview_num.html'"
+    printf "  <img class='thumb %s' src='%s/%s/%s' />\n</a>" \
+        "$anim_html" "$backhref_html" "$thumbs_dir_html" "$photo_html"
 }
 
 render_view_page() {
@@ -4848,6 +4889,7 @@ validate_template_dir() {
         next
         prev
         preview
+        previewpage
         redirect
         view
     )
