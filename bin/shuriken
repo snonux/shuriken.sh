@@ -3084,7 +3084,7 @@ refresh_splash() {
     log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
 }
 
-# Inlined from src/lib/stats.source.sh
+# Inlined from src/lib/stats-aggregate.source.sh
 # Stats aggregation for the album stats page (feature plan:
 # /home/paul/.pi/plans/shuriken-stats-site.md, field audit:
 # docs/stats-exif-audit.md). This module turns the per-photo
@@ -3688,6 +3688,16 @@ collect_photo_exif_stats() {
     done < <(incoming_image_files)
 }
 
+# Inlined from src/lib/stats-render.source.sh
+# Stats overview page rendering. Split out of stats.source.sh (task cn0) so the
+# HTML/layout concern lives apart from the EXIF aggregation/bucketing (now in
+# stats-aggregate.source.sh) and the per-filter mini-albums (now in
+# stats-filter-album.source.sh). This module reads the STATS_* globals filled by
+# collect_photo_exif_stats and turns them into the static stats overview page
+# (bar charts, sections, camera leaderboard). All libs are sourced before run,
+# so the STATS_* maps and the STATS_*_DIR constants defined in the sibling
+# modules are available here at runtime.
+
 # ----------------------------------------------------------------------------
 # Rendering (task pm0)
 # ----------------------------------------------------------------------------
@@ -4075,6 +4085,15 @@ render_stats_page() {
         backhref "$backhref" \
         tarball_name ''
 }
+
+# Inlined from src/lib/stats-filter-album.source.sh
+# Per-filter mini-album page rendering. Split out of stats.source.sh (task cn0)
+# so this concern is separate from the EXIF aggregation (stats-aggregate.source.sh)
+# and the stats overview page (stats-render.source.sh). Every tallied bucket
+# becomes a clickable mini album under dist/stats/<pagebase>/. This module reads
+# the STATS_FILTER_* globals filled by collect_photo_exif_stats plus the
+# album-side ALBUM_VIEW_PAGE_BY_PHOTO map at runtime; all libs are sourced before
+# run so cross-module references resolve.
 
 # ----------------------------------------------------------------------------
 # Filter mini-album pages
