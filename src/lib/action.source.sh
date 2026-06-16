@@ -188,6 +188,16 @@ run_configured_action() {
 
     case "$SHURIKEN_CLI_ACTION" in
         --clean)
+            # Validate DIST_DIR before any destructive rm -rf. Unlike the bare
+            # check that used to live here, validate_clean_dist_dir rejects unset,
+            # empty, and dangerous paths (/, HOME, cwd, system dirs) so a
+            # misconfigured DIST_DIR can never nuke the wrong tree.
+            validate_clean_dist_dir
+            status=$?
+            if (( status != 0 )); then
+                return "$status"
+            fi
+
             if [ -d "$DIST_DIR" ]; then
                 log_info "Cleaning $DIST_DIR"
                 rm -rf "$DIST_DIR"

@@ -305,6 +305,54 @@ test_clean_cli_dist_overrides_config() {
     test::teardown
 }
 
+# --clean must refuse to delete a DIST_DIR that resolves to a dangerous path
+# (here: the user's HOME). We point HOME at a directory we fully control under
+# TEST_TMPDIR and seed it with a sentinel file, so a regression can only "delete"
+# our throwaway temp dir -- never a real HOME -- and we assert nothing was
+# removed and the command failed with a clear error.
+test_clean_rejects_dangerous_dist_dir() {
+    local config_file
+    local fake_home
+    local output
+
+    test::setup
+    fake_home="$TEST_TMPDIR/fake-home"
+    mkdir -p "$fake_home"
+    touch "$fake_home/sentinel"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    printf 'DIST_DIR=%q\n' "$fake_home" > "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        HOME="$fake_home" \
+            test::capture_failure_output "$TEST_SHURIKEN" --clean
+    )
+
+    test::assert_contains 'refusing to clean DIST_DIR' "$output"
+    test::assert_contains 'is HOME' "$output"
+    test::assert_dir_exists "$fake_home"
+    test::assert_file_exists "$fake_home/sentinel"
+    test::teardown
+}
+
+# --clean must also refuse an empty DIST_DIR (which would otherwise rm -rf "").
+test_clean_rejects_empty_dist_dir() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    printf "DIST_DIR=''\n" > "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        test::capture_failure_output "$TEST_SHURIKEN" --clean
+    )
+
+    test::assert_contains 'DIST_DIR must be set' "$output"
+    test::teardown
+}
+
 test_missing_config_fails_without_legacy_fallbacks() {
     local default_rc
     local home_dir
@@ -5685,6 +5733,10 @@ main() {
     test::run_case '--clean --config succeeds' test_clean_with_config
     test::run_case '--clean --dist overrides config' \
         test_clean_cli_dist_overrides_config
+    test::run_case '--clean rejects dangerous DIST_DIR' \
+        test_clean_rejects_dangerous_dist_dir
+    test::run_case '--clean rejects empty DIST_DIR' \
+        test_clean_rejects_empty_dist_dir
     test::run_case \
         'missing config ignores legacy fallbacks' \
         test_missing_config_fails_without_legacy_fallbacks
