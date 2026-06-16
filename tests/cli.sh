@@ -4433,8 +4433,12 @@ SHURIKEN_FAKE_CONTEXT_FILE="$context_file"
 export SHURIKEN_FAKE_CONTEXT_FILE
 
 serialize_template_render_context() {
-    false
+    # Simulate a serializer that writes some output and then fails. The new
+    # implementation propagates this non-zero status explicitly (it no longer
+    # relies on a "| bash -euo pipefail" subprocess), so source_template_file
+    # must detect the failure, skip the render and clean up the context file.
     printf 'partial_context=yes\n'
+    return 1
 }
 
 # shellcheck disable=SC2034
@@ -4518,8 +4522,12 @@ SHURIKEN_OUTPUT_MODE=quiet
 apply_config_defaults
 
 serialize_template_render_context() {
-    false
+    # Simulate a serializer that writes some output and then fails. The new
+    # implementation propagates this non-zero status explicitly (it no longer
+    # relies on a "| bash -euo pipefail" subprocess), so source_template_file
+    # must detect the failure, skip the render and clean up the context file.
     printf 'partial_context=yes\n'
+    return 1
 }
 
 if template preview out.html \

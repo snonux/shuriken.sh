@@ -329,11 +329,8 @@ source_template_file() {
     # re-raises the original signal so the process still exits with that signal's
     # default disposition.
     #
-    # We deliberately do NOT trap PIPE: the internal "{ ... } | bash" pipeline
-    # below legitimately produces SIGPIPE when the reader closes early, and
-    # trapping it would tear the render down mid-flight. SIGKILL cannot be
-    # trapped either, so a KILL escalation may still leak a file that the OS tmp
-    # reaper later clears; that is the only unavoidable residual case.
+    # SIGKILL cannot be trapped, so a KILL escalation may still leak a file that
+    # the OS tmp reaper later clears; that is the only unavoidable residual case.
     trap 'rm -f "$context_file"; trap - INT TERM HUP RETURN' RETURN
     for sig in INT TERM HUP; do
         # $sig is intentionally expanded now (so each handler re-raises its own
@@ -349,13 +346,23 @@ source_template_file() {
             kill -s $sig \"\$BASHPID\"" "$sig"
     done
 
-    if {
-        declare -p TEMPLATE_RENDER_FIELD_SPECS
-        declare -p "$render_vars_name"
-        declare -f
-        printf 'serialize_template_render_context %q\n' "$render_vars_name"
-        printf "printf 'unset BASH_ENV\\\\n'\n"
-    } | bash -euo pipefail > "$context_file"; then
+    # Build the BASH_ENV context file directly in the current shell. The .tmpl
+    # is run via "env -i bash" with BASH_ENV pointing at this file, so the file
+    # only needs the render_* variable assignments the template references plus a
+    # trailing "unset BASH_ENV" (so the template's own children do not re-source
+    # it). We deliberately avoid the old "declare -f | bash" approach: that
+    # dumped all ~5000 lines of shuriken functions into a fresh bash subprocess
+    # per page just to run serialize_template_render_context. Calling that
+    # serializer in-process and redirecting its %q-quoted output is identical in
+    # result but skips the function dump and subprocess spawn on every page.
+    # Status-test the serializer with "if" so a failure returns normally through
+    # the RETURN trap above (which removes the partial context file) instead of
+    # letting errexit tear the shell down without running the trap. The serializer
+    # returns its own non-zero status explicitly, so this works even when
+    # source_template_file itself runs inside a status-tested ("if template ...")
+    # call chain where bash would otherwise suppress an inner errexit abort.
+    if serialize_template_render_context "$render_vars_name" \
+        > "$context_file"; then
         status=0
     else
         status=$?
@@ -363,6 +370,10 @@ source_template_file() {
     if (( status != 0 )); then
         return "$status"
     fi
+
+    # Appended only after the render vars serialized cleanly so the template's
+    # own child shells do not re-source this BASH_ENV context file.
+    printf 'unset BASH_ENV\n' >> "$context_file"
 
     if env -i PATH="$PATH" BASH_ENV="$context_file" \
         bash -euo pipefail -- "$template_path" >> "$output_path"; then
@@ -409,6 +420,16 @@ serialize_template_render_var() {
     printf '%s=%q\n' "$name" "$value"
 }
 
+# Emit "render_var=value" assignments (one per template field) on stdout, each
+# %q-quoted via serialize_template_render_var so the values survive being
+# re-sourced by "env -i bash". Runs in the current shell (called by
+# source_template_file) reading the caller's render_vars associative array by
+# name and the top-level TEMPLATE_RENDER_FIELD_SPECS constant.
+#
+# Returns the status of the failing write explicitly rather than relying on
+# errexit: source_template_file (and its production callers) may run inside an
+# "if"/status-tested context where bash suppresses a called function's own
+# errexit, so an explicit non-zero return is the only reliable failure signal.
 serialize_template_render_context() {
     local -r render_vars_name="$1"; shift
     # shellcheck disable=SC2178
@@ -419,12 +440,17 @@ serialize_template_render_context() {
     local _required_context_var
     local _required_templates
     local _source_name
+    local -i status=0
 
     for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
         IFS='|' read -r render_var _kind _source_name \
             _required_context_var _required_templates <<< "$field_spec"
         serialize_template_render_var \
             "$render_var" "${render_vars_ref[$render_var]}"
+        status=$?
+        if (( status != 0 )); then
+            return "$status"
+        fi
     done
 }
 
