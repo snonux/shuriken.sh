@@ -85,8 +85,12 @@ SHURIKEN_SOURCE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 declare -r SHURIKEN_SOURCE_DIR
 
 # SHURIKEN_LIB_SOURCES_BEGIN
+# shellcheck source=src/lib/logging.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/logging.source.sh"
 # shellcheck source=src/lib/bootstrap.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/bootstrap.source.sh"
+# shellcheck source=src/lib/paths.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/paths.source.sh"
 # shellcheck source=src/lib/imagemagick.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/imagemagick.source.sh"
 # shellcheck source=src/lib/process.source.sh

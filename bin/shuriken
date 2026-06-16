@@ -86,7 +86,46 @@ declare -r SHURIKEN_SOURCE_DIR
 
 # SHURIKEN_LIB_SOURCES_BEGIN
 
+# Inlined from src/lib/logging.source.sh
+# Output/logging utilities. Split out of bootstrap.source.sh (task jn0) so the
+# "how do we print to the user" concern lives apart from startup wiring and path
+# resolution. These helpers read the SHURIKEN_OUTPUT_MODE global and are called
+# from nearly every other module, so this file is kept early in LIB_SOURCES.
+# All library modules are sourced before any code runs, so definition order does
+# not affect availability.
+
+output_is_quiet() {
+    [ "$SHURIKEN_OUTPUT_MODE" = quiet ]
+}
+
+output_is_verbose() {
+    [ "$SHURIKEN_OUTPUT_MODE" = verbose ]
+}
+
+log_info() {
+    if ! output_is_quiet; then
+        printf '%s\n' "$*"
+    fi
+}
+
+log_verbose() {
+    if output_is_verbose; then
+        printf 'Verbose: %s\n' "$*"
+    fi
+}
+
+log_warning() {
+    printf 'WARNING: %s\n' "$*" >&2
+}
+
 # Inlined from src/lib/bootstrap.source.sh
+# Startup wiring: the CLI usage/help text plus the shared config-array parser.
+# Logging utilities now live in logging.source.sh and path resolution in
+# paths.source.sh (split out by task jn0). resolve_config_array stays here
+# because it is the shared "array or scalar config" parser used by the config
+# modules. All library modules are sourced before any code runs, so definition
+# order does not affect availability.
+
 usage() {
     cat - <<USAGE >&2
     Usage:
@@ -126,30 +165,6 @@ usage() {
     --verbose
     --quiet
 USAGE
-}
-
-output_is_quiet() {
-    [ "$SHURIKEN_OUTPUT_MODE" = quiet ]
-}
-
-output_is_verbose() {
-    [ "$SHURIKEN_OUTPUT_MODE" = verbose ]
-}
-
-log_info() {
-    if ! output_is_quiet; then
-        printf '%s\n' "$*"
-    fi
-}
-
-log_verbose() {
-    if output_is_verbose; then
-        printf 'Verbose: %s\n' "$*"
-    fi
-}
-
-log_warning() {
-    printf 'WARNING: %s\n' "$*" >&2
 }
 
 # Read a configuration value into the named array, accepting both Bash array
@@ -193,6 +208,16 @@ resolve_config_array() {
             ;;
     esac
 }
+
+# Inlined from src/lib/paths.source.sh
+# Path resolution. Split out of bootstrap.source.sh (task jn0) so the install /
+# source-root / default-directory discovery and the rc-file/template-dir
+# defaulting live apart from startup wiring and logging. These helpers resolve
+# where the packaged config, templates and assets live (both when installed and
+# when running from a source checkout) and initialise a fresh shuriken.conf.
+# All library modules are sourced before any code runs, so definition order does
+# not affect availability (e.g. init_config calls log_info from
+# logging.source.sh).
 
 resolve_default_rc_file() {
     local source_root
