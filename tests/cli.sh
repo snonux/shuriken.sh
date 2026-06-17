@@ -4170,6 +4170,80 @@ BASH
     fi
 }
 
+# Open/Closed proof (task gn0): CLI action dispatch is driven by a single
+# registration table, ACTION_SPECS, instead of two hardcoded case statements.
+# We assert (1) every action flag the parser accepts (CLI_OPTION_SPEC entries
+# with kind=action) has exactly one ACTION_SPECS entry; (2) every registry entry
+# resolves its handler and validation_fn (when set) to real functions; and
+# (3) an unknown/empty action has no entry, so run_action falls through to the
+# usage/exit-1 path (action_spec_field returns non-zero for it).
+test_action_dispatch_is_registry_driven() {
+    local output
+
+    output=$(
+        bash -euo pipefail -s "$TEST_REPO_ROOT" "$TEST_SHURIKEN" <<'BASH'
+repo_root="$1"; shift
+shuriken="$1"; shift
+
+# Source every inlined lib function from the generated binary (dropping the
+# trailing dispatcher line) so ACTION_SPECS, action_spec_field, and every
+# registered handler/validation function are defined -- the same trick the
+# render-redirect tests use.
+# shellcheck source=/dev/null
+source <(sed '$d' "$shuriken")
+
+# Re-declare CLI_OPTION_SPEC's action flags exactly as the source lists them by
+# parsing src/shuriken.sh, so the test tracks the real parser, not a copy.
+declare -a action_flags=()
+while IFS= read -r flag; do
+    action_flags+=("$flag")
+done < <(grep -oE "\[--[a-z-]+\]='kind=action'" "$repo_root/src/shuriken.sh" \
+    | sed -E "s/^\[(--[a-z-]+)\].*/\1/")
+
+# (1) Every parser-accepted action flag has a registry entry.
+missing_entry=0
+for flag in "${action_flags[@]}"; do
+    if ! action_spec_field "$flag" 0 > /dev/null; then
+        missing_entry=1
+    fi
+done
+printf 'all_flags_registered=%s\n' \
+    "$([ "$missing_entry" -eq 0 ] && echo yes || echo no)"
+
+# (2) Every registry handler + (non-empty) validation_fn resolves to a function.
+bad_handler=0
+for spec in "${ACTION_SPECS[@]}"; do
+    IFS='|' read -r _ handler _ validation_fn _ <<< "$spec"
+    if ! declare -F "$handler" > /dev/null; then
+        bad_handler=1
+    fi
+    if [ -n "$validation_fn" ] && ! declare -F "$validation_fn" > /dev/null; then
+        bad_handler=1
+    fi
+done
+printf 'all_handlers_resolve=%s\n' \
+    "$([ "$bad_handler" -eq 0 ] && echo yes || echo no)"
+
+# (3) An unknown action and the empty action have no entry -> non-zero lookup,
+# which is exactly what makes run_action take the usage/exit-1 path.
+if action_spec_field "--bogus-action" 0 > /dev/null \
+    || action_spec_field "" 0 > /dev/null; then
+    printf 'unknown_rejected=no\n'
+else
+    printf 'unknown_rejected=yes\n'
+fi
+BASH
+    )
+
+    if [ "$output" != \
+        $'all_flags_registered=yes\nall_handlers_resolve=yes\nunknown_rejected=yes' ]
+    then
+        printf 'FAIL: action dispatch not registry-driven\n' >&2
+        printf 'actual:\n%s\n' "$output" >&2
+        exit 1
+    fi
+}
+
 # The preview_num next/prev handlers compute neighbour page numbers with $(( )).
 # A non-numeric or empty preview_num context value must NOT crash the script with
 # a bash arithmetic syntax error (which, under set -e, would abort the whole run):
@@ -6271,6 +6345,9 @@ main() {
     test::run_case \
         'template render var dispatch is extensible (OCP)' \
         test_template_render_var_dispatch_is_extensible
+    test::run_case \
+        'action dispatch is registry-driven (OCP)' \
+        test_action_dispatch_is_registry_driven
     test::run_case \
         'preview_num render handlers guard non-numeric input' \
         test_template_render_var_preview_num_guards_non_numeric
