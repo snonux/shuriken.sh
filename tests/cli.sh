@@ -5877,6 +5877,84 @@ test_stats_collect_reads_cached_identify_output() {
     test::teardown
 }
 
+# STATS_CATEGORIES is the single source of truth (task en0): proves the reset,
+# the overview body builder, and the bucket ladders all derive from the registry,
+# so a category can no longer be defined in only one place. A regression that
+# added a category to (say) the body builder without registering it -- or
+# registered one without resetting its array, or an 'ordered' kind without its
+# bucket ladder -- would fail one of these assertions.
+test_stats_categories_registry_is_single_source_of_truth() {
+    local spec
+    local array_name
+    local render_kind
+    local heading
+    local -A registry_arrays=()
+    local -A rendered_headings=()
+    local -a fields=()
+    local body
+
+    test::setup
+    test::source_shuriken_lib
+
+    # 1) reset_photo_exif_stats must clear exactly the registry's count arrays
+    #    (no more, no less): a registered category gets a fresh empty array.
+    reset_photo_exif_stats
+    for spec in "${STATS_CATEGORIES[@]}"; do
+        IFS='|' read -r -a fields <<< "$spec"
+        array_name="${fields[0]}"
+        render_kind="${fields[3]}"
+        registry_arrays["$array_name"]=1
+        # The array exists and is an (empty) associative array after reset.
+        if ! declare -p "$array_name" >/dev/null 2>&1; then
+            printf 'FAIL: reset did not declare registry array %s\n' \
+                "$array_name" >&2
+            exit 1
+        fi
+        # Every 'ordered' category must supply a bucket ladder; nothing else may.
+        if [ "$render_kind" = ordered ]; then
+            if [ -z "${STATS_CATEGORY_BUCKETS[$array_name]:-}" ]; then
+                printf 'FAIL: ordered category %s has no bucket ladder\n' \
+                    "$array_name" >&2
+                exit 1
+            fi
+        fi
+    done
+    for array_name in "${!STATS_CATEGORY_BUCKETS[@]}"; do
+        if [ -z "${registry_arrays[$array_name]:-}" ]; then
+            printf 'FAIL: bucket ladder %s is not a registered category\n' \
+                "$array_name" >&2
+            exit 1
+        fi
+    done
+
+    # 2) The overview body builder renders only registry headings: feed one photo
+    #    that lights up several categories, then assert every <h2> heading in the
+    #    body comes from a STATS_CATEGORIES entry (so no out-of-band section).
+    reset_photo_exif_stats
+    accumulate_photo_stats 'a.jpg' <<'EXIF'
+  Geometry: 6000x4000+0+0
+  exif:Make: Canon
+  exif:Model: Canon EOS 5D
+  exif:FNumber: 28/10
+  exif:ISOSpeedRatings: 400
+  exif:DateTimeOriginal: 2021:06:14 10:00:00
+EXIF
+    for spec in "${STATS_CATEGORIES[@]}"; do
+        IFS='|' read -r -a fields <<< "$spec"
+        rendered_headings["${fields[2]}"]=1
+    done
+    body=$(_stats_build_body)
+    while IFS= read -r heading; do
+        if [ -z "${rendered_headings[$heading]:-}" ]; then
+            printf 'FAIL: body rendered heading %q not in STATS_CATEGORIES\n' \
+                "$heading" >&2
+            exit 1
+        fi
+    done < <(grep -oP '(?<=<h2>).*?(?=</h2>)' <<< "$body")
+
+    test::teardown
+}
+
 # Unit-test the shared Make+Model dedup helper (task mn0). The album tooltip and
 # stats leaderboard both rely on this, so cover dedup, plain concatenation and
 # the empty-field edge cases here in one place.
@@ -6253,6 +6331,9 @@ main() {
     test::run_case \
         'stats collect reads cached identify output' \
         test_stats_collect_reads_cached_identify_output
+    test::run_case \
+        'stats categories registry is single source of truth' \
+        test_stats_categories_registry_is_single_source_of_truth
     test::run_case \
         'camera label dedups make and model' \
         test_camera_label_from_make_model

@@ -42,26 +42,110 @@
 # (sparse data) and only render a section when it has entries. STATS_TOTALS
 # gives the denominator for percentages.
 
+# ----------------------------------------------------------------------------
+# Category registry (single source of truth, task en0)
+# ----------------------------------------------------------------------------
+# STATS_CATEGORIES is the one place a stats category is defined. Each entry is a
+# '|'-delimited spec (same encoding as template.source.sh's
+# TEMPLATE_RENDER_FIELD_SPECS) holding everything the generic reset, recording
+# dispatch and render loops need:
+#
+#   count_array|prefix|heading|render_kind
+#
+#   count_array  the STATS_* associative array holding this category's counts;
+#                also the array reset_photo_exif_stats clears each run.
+#   prefix       the namespace passed to _stats_tally / _stats_filter_link (and
+#                the filter-page slug prefix, e.g. "iso" -> iso-400).
+#   heading      the <h2> shown on the overview (and the per-section title).
+#   render_kind  how the overview renders this category's bars:
+#                  camera  - count-desc leaderboard (extra 'stats-leaderboard'
+#                            <ul> class); only the camera category uses it.
+#                  ranked  - count-desc bars (years, lenses, decoded enums).
+#                  ordered - fixed bucket-ladder order from
+#                            STATS_CATEGORY_BUCKETS (apertures wide->narrow, ...).
+#                  month   - calendar Jan..Dec order with English month names.
+#
+# The array order IS the overview/body display order, so it must reproduce the
+# historical _stats_build_body sequence exactly (camera, year, month, the four
+# exposure histograms, the dimension+format histograms, then the enum/lens
+# ranked sections). The per-category record functions stay grouped by EXIF
+# source affinity (one datetime parser fills year+month, one exposure parser
+# fills four histograms) and are dispatched from STATS_RECORD_FUNCTIONS below;
+# they tally into the array named here. Adding a category now means: append one
+# STATS_CATEGORIES entry (+ a STATS_CATEGORY_BUCKETS row for an ordered ladder)
+# and make some record function tally into its array -- no edits to the reset,
+# the body builder, or a per-category render branch.
+# Declared -g so it survives being sourced from inside a function (the test
+# harness sources the lib via test::source_shuriken_lib); a plain `declare -r`
+# would be function-local and vanish on return.
+declare -gra STATS_CATEGORIES=(
+    'STATS_CAMERAS|camera|Camera leaderboard|camera'
+    'STATS_YEARS|year|Photos per year|ranked'
+    'STATS_MONTHS|month|Photos per month|month'
+    'STATS_APERTURE|aperture|Aperture|ordered'
+    'STATS_SHUTTER|shutter|Shutter speed|ordered'
+    'STATS_ISO|iso|ISO|ordered'
+    'STATS_FOCAL|focal|Focal length|ordered'
+    'STATS_MEGAPIXELS|megapixels|Megapixels|ordered'
+    'STATS_ASPECT|aspect|Aspect ratio|ordered'
+    'STATS_ORIENTATION|orientation|Orientation|ordered'
+    'STATS_FORMAT|format|File format|ordered'
+    'STATS_LENSES|lens|Lenses|ranked'
+    'STATS_EXPOSURE_PROGRAM|exposure-program|Exposure program|ranked'
+    'STATS_METERING|metering|Metering mode|ranked'
+    'STATS_WHITE_BALANCE|white-balance|White balance|ranked'
+    'STATS_FLASH|flash|Flash|ranked'
+)
+
+# Bucket ladders for the 'ordered' categories, keyed by their count_array name.
+# Tab-delimited because the bucket labels themselves contain spaces and slashes
+# (but never tabs). These reproduce the photographer-friendly axis order the
+# aggregator's *_bucket helpers emit, so the histogram axes read naturally
+# regardless of how many photos landed in each bucket.
+declare -gA STATS_CATEGORY_BUCKETS=(
+    [STATS_APERTURE]=$'f/1.8 or wider\tf/2\tf/2.8\tf/4\tf/5.6\tf/8\tf/11\tf/16\tf/22 or narrower'
+    [STATS_SHUTTER]=$'1/4000s or faster\t1/2000s\t1/1000s\t1/500s\t1/250s\t1/125s\t1/60s\t1/30s\t1/15s\t1/8s\t1/4s\t1/2s\t1s\tlonger than 1s'
+    [STATS_ISO]=$'50\t100\t200\t400\t800\t1600\t3200\t6400\t12800\t25600\tover 25600'
+    [STATS_FOCAL]=$'under 24mm\t24-35mm\t35-70mm\t70-135mm\t135-200mm\tover 200mm'
+    [STATS_MEGAPIXELS]=$'under 2MP\t2-5MP\t5-10MP\t10-20MP\t20-40MP\t40-80MP\tover 80MP'
+    [STATS_ASPECT]=$'3:2\t4:3\t16:9\t1:1\t5:4\tother'
+    [STATS_ORIENTATION]=$'Landscape\tPortrait\tSquare'
+    [STATS_FORMAT]=$'JPEG\tPNG\tWEBP\tGIF\tother'
+)
+
+# The per-photo record functions, dispatched in order by accumulate_photo_stats.
+# Each is grouped by EXIF source affinity (so one identify parse fills several
+# related categories) and tallies into the STATS_* arrays named in
+# STATS_CATEGORIES. _stats_record_format takes only the photo path (no EXIF
+# values), so accumulate_photo_stats special-cases it; the rest take the parsed
+# values array plus the photo path.
+# -g so the dispatch list survives a function-scoped source (see STATS_CATEGORIES).
+declare -gra STATS_RECORD_FUNCTIONS=(
+    _stats_record_camera
+    _stats_record_datetime
+    _stats_record_exposure
+    _stats_record_enums
+    _stats_record_dimensions
+)
+
+# Print the count_array name for each registry entry, in display order. Used by
+# the generic reset and any consumer that needs to walk every category's array.
+_stats_category_arrays() {
+    local spec
+    for spec in "${STATS_CATEGORIES[@]}"; do
+        printf '%s\n' "${spec%%|*}"
+    done
+}
+
 # Reset every stats global to an empty associative array. Called at the start of
 # collect_photo_exif_stats so repeated invocations (e.g. tests, --refresh) do
-# not accumulate stale counts.
+# not accumulate stale counts. The per-category count arrays are cleared by
+# iterating STATS_CATEGORIES so a new category needs no edit here.
 reset_photo_exif_stats() {
-    declare -gA STATS_CAMERAS=()
-    declare -gA STATS_LENSES=()
-    declare -gA STATS_YEARS=()
-    declare -gA STATS_MONTHS=()
-    declare -gA STATS_APERTURE=()
-    declare -gA STATS_SHUTTER=()
-    declare -gA STATS_ISO=()
-    declare -gA STATS_FOCAL=()
-    declare -gA STATS_MEGAPIXELS=()
-    declare -gA STATS_ASPECT=()
-    declare -gA STATS_ORIENTATION=()
-    declare -gA STATS_FORMAT=()
-    declare -gA STATS_EXPOSURE_PROGRAM=()
-    declare -gA STATS_METERING=()
-    declare -gA STATS_WHITE_BALANCE=()
-    declare -gA STATS_FLASH=()
+    local array_name
+    while IFS= read -r array_name; do
+        declare -gA "$array_name=()"
+    done < <(_stats_category_arrays)
     declare -gA STATS_TOTALS=()
     STATS_TOTALS[photos]=0
     # Every tallied bucket (across all categories) becomes a clickable filter
@@ -560,14 +644,18 @@ accumulate_photo_stats() {
     # exif_values is filled and read through the nameref helpers below.
     # shellcheck disable=SC2034
     local -A exif_values=()
+    local record_fn
 
     _stats_parse_identify_stream exif_values
     STATS_TOTALS[photos]=$(( STATS_TOTALS[photos] + 1 ))
-    _stats_record_camera exif_values "$photo"
-    _stats_record_datetime exif_values "$photo"
-    _stats_record_exposure exif_values "$photo"
-    _stats_record_enums exif_values "$photo"
-    _stats_record_dimensions exif_values "$photo"
+    # Dispatch the EXIF-driven recorders from the registry list so categories are
+    # not hardcoded here. Each takes the parsed values array plus the photo path.
+    for record_fn in "${STATS_RECORD_FUNCTIONS[@]}"; do
+        "$record_fn" exif_values "$photo"
+    done
+    # _stats_record_format keys off the file extension only (no EXIF parse), so
+    # it runs separately with just the photo path -- kept last to preserve the
+    # historical tally order.
     _stats_record_format "$photo"
 }
 

@@ -116,27 +116,6 @@ _stats_filter_link() {
     fi
 }
 
-# Render the camera leaderboard: one bar per camera, sorted by count descending,
-# each label linking to its camera mini-album. Camera labels come from EXIF, so
-# the text is HTML-escaped. Skipped entirely when no camera data was collected.
-_stats_render_camera_section() {
-    local -ri total="$1"; shift
-    local label
-    local row_html
-    local -i max
-
-    if (( ${#STATS_CAMERAS[@]} == 0 )); then
-        return
-    fi
-    max=$(_stats_max_count STATS_CAMERAS)
-    _stats_section_open 'Camera leaderboard' 'stats-leaderboard'
-    while IFS= read -r label; do
-        row_html=$(_stats_filter_link camera "$label" "$(_html_escape "$label")")
-        _stats_bar_row "$row_html" "${STATS_CAMERAS[$label]}" "$total" "$max"
-    done < <(_stats_keys_by_count_desc STATS_CAMERAS)
-    _stats_section_close
-}
-
 # Print an array's keys ordered by descending count (ties broken by key) so the
 # busiest bucket leads. Used for the leaderboard and other count-ranked sections.
 # LC_ALL=C pins the tie-break collation so the generated page is byte-identical
@@ -151,9 +130,11 @@ _stats_keys_by_count_desc() {
 }
 
 # Render a histogram section using an explicit bucket order (e.g. apertures from
-# wide to narrow) rather than count ranking, so the axis reads naturally. Only
-# buckets that actually occurred are emitted, and the whole section is skipped
-# when none did. Bucket labels are internal/trusted but still escaped for safety.
+# wide to narrow) rather than count ranking, so the axis reads naturally. The
+# bucket ladder is read from STATS_CATEGORY_BUCKETS[array_name] (tab-delimited).
+# Only buckets that actually occurred are emitted, and the whole section is
+# skipped when none did. Bucket labels are internal/trusted but still escaped for
+# safety.
 _stats_render_ordered_section() {
     local -r heading="$1"; shift
     local -r array_name="$1"; shift
@@ -162,14 +143,16 @@ _stats_render_ordered_section() {
     local -n counts_ref="$array_name"
     local bucket
     local row_html
+    local -a buckets=()
     local -i max
 
     if (( ${#counts_ref[@]} == 0 )); then
         return
     fi
+    IFS=$'\t' read -r -a buckets <<< "${STATS_CATEGORY_BUCKETS[$array_name]}"
     max=$(_stats_max_count "$array_name")
     _stats_section_open "$heading"
-    for bucket in "$@"; do
+    for bucket in "${buckets[@]}"; do
         if [ -z "${counts_ref[$bucket]:-}" ]; then
             continue
         fi
@@ -179,13 +162,16 @@ _stats_render_ordered_section() {
     _stats_section_close
 }
 
-# Render a section ranked by count (cameras aside). Used where there is no
-# natural axis order: years, lenses, and the decoded enum categories.
+# Render a section ranked by count. Used where there is no natural axis order:
+# the camera leaderboard, years, lenses, and the decoded enum categories. An
+# optional list_class adds an extra CSS class to the <ul> (the camera leaderboard
+# passes 'stats-leaderboard' to space out its long, wrapping camera names).
 _stats_render_ranked_section() {
     local -r heading="$1"; shift
     local -r array_name="$1"; shift
     local -r prefix="$1"; shift
     local -ri total="$1"; shift
+    local -r list_class="${1:-}"
     local -n counts_ref="$array_name"
     local key
     local row_html
@@ -195,7 +181,7 @@ _stats_render_ranked_section() {
         return
     fi
     max=$(_stats_max_count "$array_name")
-    _stats_section_open "$heading"
+    _stats_section_open "$heading" "$list_class"
     while IFS= read -r key; do
         row_html=$(_stats_filter_link "$prefix" "$key" "$(_html_escape "$key")")
         _stats_bar_row "$row_html" "${counts_ref[$key]}" "$total" "$max"
@@ -203,20 +189,17 @@ _stats_render_ranked_section() {
     _stats_section_close
 }
 
-# Render the temporal sections. Years rank by count; months walk Jan..Dec in
-# calendar order using human month names for the labels.
-_stats_render_temporal_sections() {
-    local -ri total="$1"; shift
-
-    _stats_render_ranked_section 'Photos per year' STATS_YEARS year "$total"
-    _stats_render_month_section "$total"
-}
-
 # Render the per-month histogram in calendar order. The aggregator keys months
 # by zero-padded number (01..12); this maps each to its English name so the axis
 # is readable, and reuses the ordered-section omit-when-empty behaviour inline.
+# Signature matches the other render kinds (heading array_name prefix total) so
+# the registry dispatcher can call it uniformly.
 _stats_render_month_section() {
+    local -r heading="$1"; shift
+    local -r array_name="$1"; shift
+    local -r prefix="$1"; shift
     local -ri total="$1"; shift
+    local -n counts_ref="$array_name"
     local -ra month_names=(
         '' January February March April May June July August
         September October November December )
@@ -224,82 +207,76 @@ _stats_render_month_section() {
     local key
     local -i max
 
-    if (( ${#STATS_MONTHS[@]} == 0 )); then
+    if (( ${#counts_ref[@]} == 0 )); then
         return
     fi
-    max=$(_stats_max_count STATS_MONTHS)
-    _stats_section_open 'Photos per month'
+    max=$(_stats_max_count "$array_name")
+    _stats_section_open "$heading"
     for (( month = 1; month <= 12; month++ )); do
         key=$(printf '%02d' "$month")
-        if [ -z "${STATS_MONTHS[$key]:-}" ]; then
+        if [ -z "${counts_ref[$key]:-}" ]; then
             continue
         fi
         _stats_bar_row \
-            "$(_stats_filter_link month "$key" "${month_names[$month]}")" \
-            "${STATS_MONTHS[$key]}" "$total" "$max"
+            "$(_stats_filter_link "$prefix" "$key" "${month_names[$month]}")" \
+            "${counts_ref[$key]}" "$total" "$max"
     done
     _stats_section_close
 }
 
-# Render the exposure histograms in photographer-friendly axis order (the same
-# bucket ladders the aggregator's *_bucket helpers produce).
-_stats_render_exposure_sections() {
+# Render one category from its registry spec. Dispatches on the spec's
+# render_kind to the matching section renderer, all of which self-skip when their
+# array is empty. This is the single per-category render path: a new category
+# just needs a STATS_CATEGORIES entry (no new render branch here unless it needs
+# a brand-new kind).
+_stats_render_category() {
+    local -r spec="$1"; shift
     local -ri total="$1"; shift
+    local -a fields=()
 
-    _stats_render_ordered_section 'Aperture' STATS_APERTURE aperture "$total" \
-        'f/1.8 or wider' 'f/2' 'f/2.8' 'f/4' 'f/5.6' 'f/8' 'f/11' 'f/16' \
-        'f/22 or narrower'
-    _stats_render_ordered_section 'Shutter speed' STATS_SHUTTER shutter "$total" \
-        '1/4000s or faster' '1/2000s' '1/1000s' '1/500s' '1/250s' '1/125s' \
-        '1/60s' '1/30s' '1/15s' '1/8s' '1/4s' '1/2s' '1s' 'longer than 1s'
-    _stats_render_ordered_section 'ISO' STATS_ISO iso "$total" \
-        '50' '100' '200' '400' '800' '1600' '3200' '6400' '12800' '25600' \
-        'over 25600'
-    _stats_render_ordered_section 'Focal length' STATS_FOCAL focal "$total" \
-        'under 24mm' '24-35mm' '35-70mm' '70-135mm' '135-200mm' 'over 200mm'
+    IFS='|' read -r -a fields <<< "$spec"
+    local -r array_name="${fields[0]}"
+    local -r prefix="${fields[1]}"
+    local -r heading="${fields[2]}"
+    local -r render_kind="${fields[3]}"
+
+    case "$render_kind" in
+        camera)
+            _stats_render_ranked_section "$heading" "$array_name" "$prefix" \
+                "$total" stats-leaderboard
+            ;;
+        ranked)
+            _stats_render_ranked_section "$heading" "$array_name" "$prefix" \
+                "$total"
+            ;;
+        ordered)
+            _stats_render_ordered_section "$heading" "$array_name" "$prefix" \
+                "$total"
+            ;;
+        month)
+            _stats_render_month_section "$heading" "$array_name" "$prefix" \
+                "$total"
+            ;;
+        *)
+            printf 'ERROR: unknown stats render kind %q for %s\n' \
+                "$render_kind" "$array_name" >&2
+            return 1
+            ;;
+    esac
 }
 
-# Render the dimension histograms (megapixels, aspect ratio, orientation) and
-# the file-format breakdown, each in its natural axis order.
-_stats_render_dimension_sections() {
-    local -ri total="$1"; shift
-
-    _stats_render_ordered_section 'Megapixels' STATS_MEGAPIXELS megapixels \
-        "$total" \
-        'under 2MP' '2-5MP' '5-10MP' '10-20MP' '20-40MP' '40-80MP' 'over 80MP'
-    _stats_render_ordered_section 'Aspect ratio' STATS_ASPECT aspect "$total" \
-        '3:2' '4:3' '16:9' '1:1' '5:4' 'other'
-    _stats_render_ordered_section 'Orientation' STATS_ORIENTATION orientation \
-        "$total" 'Landscape' 'Portrait' 'Square'
-    _stats_render_ordered_section 'File format' STATS_FORMAT format "$total" \
-        'JPEG' 'PNG' 'WEBP' 'GIF' 'other'
-}
-
-# Render the decoded enum sections and the (sparse) lens leaderboard. All rank by
-# count and self-skip when empty, so absent tags simply omit their section.
-_stats_render_enum_sections() {
-    local -ri total="$1"; shift
-
-    _stats_render_ranked_section 'Lenses' STATS_LENSES lens "$total"
-    _stats_render_ranked_section 'Exposure program' \
-        STATS_EXPOSURE_PROGRAM exposure-program "$total"
-    _stats_render_ranked_section 'Metering mode' STATS_METERING metering "$total"
-    _stats_render_ranked_section 'White balance' STATS_WHITE_BALANCE \
-        white-balance "$total"
-    _stats_render_ranked_section 'Flash' STATS_FLASH flash "$total"
-}
-
-# Assemble the full stats body from every section in display order. Returns the
-# HTML on stdout; render_stats_page captures it into the stats_body context var.
+# Assemble the full stats body by iterating STATS_CATEGORIES in registry order
+# (which IS the display order). Returns the HTML on stdout; render_stats_page
+# captures it into the stats_body context var. Adding a category appends one
+# registry entry -- no edit here.
 _stats_build_body() {
     local -ri total="${STATS_TOTALS[photos]:-0}"
+    local spec
 
     printf '<p class="stats-total">%d photos analysed.</p>\n' "$total"
-    _stats_render_camera_section "$total"
-    _stats_render_temporal_sections "$total"
-    _stats_render_exposure_sections "$total"
-    _stats_render_dimension_sections "$total"
-    _stats_render_enum_sections "$total"
+    for spec in "${STATS_CATEGORIES[@]}"; do
+        _stats_render_category "$spec" "$total"
+    done
 }
 
 # Public render entry point (handoff for task rm0). Builds the body from the
