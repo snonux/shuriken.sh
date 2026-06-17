@@ -64,7 +64,9 @@ shuriken --version
 * `--print-config` loads the config and overrides, validates basic config values,
   and prints the effective configuration without writing output, running
   ImageMagick, running tar, cleaning, or initializing.
-* `--clean` removes the configured output directory.
+* `--clean` removes the configured output directory and any leftover
+  `.shuriken.*.staging`/`.backup` directories the generation pipeline created as
+  siblings of `DIST_DIR` (e.g. from an interrupted run).
 * `--version` prints the program version.
 * `--config PATH` selects the config file for `--generate`,
   `--refresh-splash`, `--dry-run`, `--print-config`, or `--clean`.
@@ -128,8 +130,9 @@ output (it is never written into `DIST_DIR`, so `--sync` does not deploy it), an
 persists across runs even if `DIST_DIR` is removed or rebuilt. Because reading
 EXIF from full-size originals is the slowest part of generation, keeping this
 cache makes regenerating an album dramatically faster: an unchanged photo skips
-`identify` entirely. `--clean` removes `DIST_DIR` but leaves `cache/` in place;
-delete `cache/` by hand to force a full EXIF rebuild on the next run.
+`identify` entirely. `--clean` removes `DIST_DIR` (and any leftover staging
+directories) but leaves `cache/` in place; delete `cache/` by hand to force a
+full EXIF rebuild on the next run.
 
 Pass `--force` with `--generate` to rebuild all generated image artifacts and
 re-read every photo's EXIF from scratch (it clears `cache/` once up front, then

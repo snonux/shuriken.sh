@@ -98,6 +98,44 @@ log_configured_action() {
     log_verbose "Effective force generation setting: $SHURIKEN_FORCE_GENERATE"
 }
 
+# Remove leftover generation staging/backup directories for DIST_DIR (ln0).
+#
+# The generation pipeline (config.staging.source.sh) stages output in sibling
+# directories of DIST_DIR named via mktemp templates
+# ".shuriken.<basename>.staging.XXXXXX" and ".shuriken.<basename>.backup.XXXXXX"
+# in DIST_DIR's parent. A crash or kill can leave these behind, so --clean
+# removes them too -- otherwise "clean" would not actually clean all generation
+# output (Principle of Least Astonishment).
+#
+# Safety: callers MUST run validate_clean_dist_dir first so a dangerous DIST_DIR
+# aborts before any deletion. We only match shuriken's own, basename-specific
+# staging/backup prefixes (never a loose ".shuriken.*" or arbitrary dotfiles),
+# derive the parent exactly as the staging code does (dirname "$DIST_DIR"), and
+# use nullglob so a missing match never expands to a literal pattern to rm.
+clean_generation_staging_artifacts() {
+    local final_base final_parent artifact
+    local -a artifacts=()
+
+    final_base=$(basename "$DIST_DIR")
+    final_parent=$(dirname "$DIST_DIR")
+
+    # nullglob: a non-matching glob expands to nothing rather than to the
+    # literal pattern, so we never accidentally rm a path called "*".
+    shopt -s nullglob
+    artifacts=(
+        "$final_parent/.shuriken.$final_base.staging."*
+        "$final_parent/.shuriken.$final_base.backup."*
+    )
+    shopt -u nullglob
+
+    for artifact in "${artifacts[@]}"; do
+        if [ -d "$artifact" ]; then
+            log_info "Cleaning leftover staging directory $artifact"
+            rm -rf "$artifact"
+        fi
+    done
+}
+
 run_configured_action() {
     local rc_file
     local -i status=0
@@ -135,6 +173,12 @@ run_configured_action() {
             else
                 log_verbose "Output directory does not exist: $DIST_DIR"
             fi
+
+            # Also remove any leftover staging/backup directories that the
+            # generation pipeline created as siblings of DIST_DIR. This stays
+            # behind the validate_clean_dist_dir guard above (so a dangerous
+            # DIST_DIR aborts before any deletion).
+            clean_generation_staging_artifacts
             ;;
         --generate)
             validate_generation_config

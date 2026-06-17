@@ -253,21 +253,36 @@ test_just_install_and_deinstall_with_destdir() {
     test::teardown
 }
 
+# --clean removes DIST_DIR and any leftover staging/backup directories that the
+# generation pipeline created as siblings of DIST_DIR (ln0). Unrelated dotfiles
+# and other entries in the parent must survive: we only target shuriken's own
+# basename-specific ".shuriken.<basename>.staging.*"/".backup.*" prefixes.
 test_clean() {
     local staging_dir
+    local backup_dir
+    local unrelated_dir
+    local unrelated_file
 
     test::setup
     printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR" \
         > "$TEST_TMPDIR/shuriken.conf"
     mkdir -p "$TEST_TMPDIR/dist"
     staging_dir="$TEST_TMPDIR/.shuriken.dist.staging.manual"
-    mkdir -p "$staging_dir"
+    backup_dir="$TEST_TMPDIR/.shuriken.dist.backup.manual"
+    unrelated_dir="$TEST_TMPDIR/.shuriken.other.staging.keep"
+    unrelated_file="$TEST_TMPDIR/.keep-me"
+    mkdir -p "$staging_dir" "$backup_dir" "$unrelated_dir"
+    touch "$unrelated_file"
 
     (
         cd "$TEST_TMPDIR"
         "$TEST_SHURIKEN" --clean
         test::assert_path_absent "$TEST_TMPDIR/dist"
-        test::assert_dir_exists "$staging_dir"
+        test::assert_path_absent "$staging_dir"
+        test::assert_path_absent "$backup_dir"
+        # Unrelated entries (different basename / non-shuriken) must survive.
+        test::assert_dir_exists "$unrelated_dir"
+        test::assert_file_exists "$unrelated_file"
     )
     test::teardown
 }

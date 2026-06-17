@@ -14,6 +14,7 @@ usage() {
     $0 --dry-run [--config PATH] [OPTIONS]
     $0 --print-config [--config PATH] [OPTIONS]
     $0 --clean [--config PATH] [OPTIONS]
+        (removes DIST_DIR and any leftover .shuriken.*.staging/backup dirs)
     $0 --version
     $0 --init
 
