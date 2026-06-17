@@ -660,7 +660,8 @@ accumulate_photo_stats() {
 }
 
 # Iterate the album's incoming photos, read each one's cached identify output via
-# album.source.sh's cache helper, and aggregate it into the STATS_* globals.
+# the shared metadata-cache.source.sh primitive (task pn0), and aggregate it into
+# the STATS_* globals.
 # This is the entry point the render tasks call before reading the counters.
 collect_photo_exif_stats() {
     local photo

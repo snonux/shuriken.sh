@@ -2,9 +2,11 @@
 # so this concern is separate from the EXIF aggregation (stats-aggregate.source.sh)
 # and the stats overview page (stats-render.source.sh). Every tallied bucket
 # becomes a clickable mini album under dist/stats/<pagebase>/. This module reads
-# the STATS_FILTER_* globals filled by collect_photo_exif_stats plus the
-# album-side ALBUM_VIEW_PAGE_BY_PHOTO map at runtime; all libs are sourced before
-# run so cross-module references resolve.
+# the STATS_FILTER_* globals filled by collect_photo_exif_stats and resolves each
+# photo's album view page through the album_view_page_for_photo accessor (task
+# pn0) instead of indexing the album's private ALBUM_VIEW_PAGE_BY_PHOTO global,
+# so stats stays decoupled from album-internal page naming/caching. All libs are
+# sourced before run so cross-module references resolve.
 
 # ----------------------------------------------------------------------------
 # Filter mini-album pages
@@ -16,7 +18,8 @@
 # within that filter. The "--<index>" suffix cannot collide with another gallery
 # name because a pagebase never contains "--". All pages reuse the album's shared
 # photos/thumbs/blurs assets (only the HTML differs); view pages link "Details"
-# to the album's own details page via ALBUM_VIEW_PAGE_BY_PHOTO. Pages render in
+# to the album's own details page via the album_view_page_for_photo accessor.
+# Pages render in
 # parallel through the shared job pool, throttled to IMAGE_JOBS. The galleries
 # reuse camera.tmpl and the view pages reuse cameraview.tmpl.
 
@@ -154,7 +157,7 @@ _stats_build_filterview_body() {
     if [ -n "$tooltip" ]; then
         tooltip_attr=" title=\"$(_html_escape "$tooltip")\""
     fi
-    view_page="${ALBUM_VIEW_PAGE_BY_PHOTO[$photo]:-}"
+    view_page=$(album_view_page_for_photo "$photo")
     if [ -n "$view_page" ]; then
         details_link=$(printf ' <a href="%s/%s-details.html">Details</a> |' \
             "$backhref_html" "$view_page")

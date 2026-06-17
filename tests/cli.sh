@@ -6104,6 +6104,61 @@ test_stats_collect_reads_cached_identify_output() {
     test::teardown
 }
 
+# Boundary test for the album/stats decoupling (task pn0). Proves two things:
+# 1) the album_view_page_for_photo accessor returns exactly what the private
+#    ALBUM_VIEW_PAGE_BY_PHOTO backing store holds (and "" for unknown photos), so
+#    stats can rely on it instead of indexing the global; and
+# 2) the assembled bin/shuriken keeps the cache primitive in the shared
+#    metadata-cache module and the stats filter mini-album code no longer indexes
+#    ALBUM_VIEW_PAGE_BY_PHOTO directly. A regression that re-coupled the modules
+#    (moving the cache helper back into album, or re-indexing the global from
+#    stats) would fail this.
+test_album_stats_decoupling_boundary() {
+    local generated
+    local cache_section
+    local stats_filter_section
+
+    test::setup
+    test::source_shuriken_lib
+
+    # 1) The accessor reflects the private backing store and is the public API.
+    #    Seed the album's global directly here (shellcheck cannot see that the
+    #    accessor reads it back), then assert the accessor returns it.
+    ALBUM_VIEW_PAGE_BY_PHOTO=()
+    # shellcheck disable=SC2034
+    ALBUM_VIEW_PAGE_BY_PHOTO['shot.jpg']='2-3'
+    test "$(album_view_page_for_photo 'shot.jpg')" = '2-3'
+    test "$(album_view_page_for_photo 'missing.jpg')" = ''
+
+    # 2) Structural assertions on the assembled script.
+    generated=$(<"$TEST_SHURIKEN")
+
+    # The cache primitive must live in the shared metadata-cache module.
+    cache_section=$(awk '
+        /^# Inlined from src\/lib\/metadata-cache.source.sh/ { keep=1; next }
+        /^# Inlined from / { keep=0 }
+        keep { print }
+    ' <<< "$generated")
+    test::assert_contains 'cached_photo_identify_output()' "$cache_section"
+
+    # The stats filter mini-album code must reach the album only through the
+    # accessor, never by indexing the album's private global directly.
+    stats_filter_section=$(awk '
+        /^# Inlined from src\/lib\/stats-filter-album.source.sh/ { keep=1; next }
+        /^# Inlined from / { keep=0 }
+        keep { print }
+    ' <<< "$generated")
+    # Literal needle: we look for the accessor call verbatim in the assembled
+    # script, so the "$photo" must stay unexpanded.
+    # shellcheck disable=SC2016
+    test::assert_contains 'album_view_page_for_photo "$photo"' \
+        "$stats_filter_section"
+    test::assert_not_contains 'ALBUM_VIEW_PAGE_BY_PHOTO[' \
+        "$stats_filter_section"
+
+    test::teardown
+}
+
 # STATS_CATEGORIES is the single source of truth (task en0): proves the reset,
 # the overview body builder, and the bucket ladders all derive from the registry,
 # so a category can no longer be defined in only one place. A regression that
@@ -6567,6 +6622,9 @@ main() {
     test::run_case \
         'stats collect reads cached identify output' \
         test_stats_collect_reads_cached_identify_output
+    test::run_case \
+        'album/stats decoupling boundary (pn0)' \
+        test_album_stats_decoupling_boundary
     test::run_case \
         'stats categories registry is single source of truth' \
         test_stats_categories_registry_is_single_source_of_truth

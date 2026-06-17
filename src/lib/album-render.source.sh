@@ -1,9 +1,23 @@
 # Maps each album photo filename to its view-page basename ("<page>-<preview>")
-# as assigned during render_album_pages. The stats filter mini-albums read this
-# so each view page can link "Details" to the album's own details page for the
-# photo. Declared globally so it always exists for callers even when no album
-# was rendered.
+# as assigned during render_album_pages. Declared globally so it always exists
+# for the accessor even when no album was rendered.
+#
+# This is the album module's PRIVATE backing store (task pn0). Outside callers
+# must NOT index it directly: use the album_view_page_for_photo accessor below.
+# Keeping the map private behind a documented function decouples consumers (the
+# stats filter mini-albums) from how the album internally names or caches view
+# pages, so a change to the page-naming scheme stays contained in this module.
 declare -gA ALBUM_VIEW_PAGE_BY_PHOTO=()
+
+# Public album API (task pn0): return the view-page basename for a photo, or the
+# empty string when the photo was not rendered into the album. The stats filter
+# mini-albums call this to link each photo's "Details" to the album's own
+# details page, instead of reaching into ALBUM_VIEW_PAGE_BY_PHOTO directly.
+album_view_page_for_photo() {
+    local -r photo="$1"; shift
+
+    printf '%s' "${ALBUM_VIEW_PAGE_BY_PHOTO[$photo]:-}"
+}
 
 album_photo_files() {
     local -r photos_dir="$1"; shift
@@ -616,8 +630,9 @@ _album_record_view_photo() {
         "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
     record_rendered_view_page "$view_pages_name" "$last_views_name" \
         "$page_num" "$preview_num"
-    # Read later by the stats filter mini-albums (render_filter_pages) for
-    # their Details links; shellcheck cannot see that cross-function use.
+    # Read later through the album_view_page_for_photo accessor (e.g. by the
+    # stats filter mini-albums for their Details links); shellcheck cannot see
+    # that cross-function use.
     # shellcheck disable=SC2034
     ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$page_num-$preview_num"
 }
