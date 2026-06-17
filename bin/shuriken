@@ -1077,7 +1077,12 @@ prepare_template_render_var__preview_num_next_html() {
     local context_value
 
     template_context_value_to context_value "$context_name" "$source_name"
-    if [ -n "$context_value" ]; then
+    # Guard the arithmetic: only a non-negative integer is safe to feed to
+    # $(( )). An empty or non-numeric context value (e.g. a stray string) would
+    # otherwise throw a bash arithmetic syntax error and, under set -e, abort the
+    # whole script. Treat any invalid/missing preview_num as "no neighbour" and
+    # emit an empty render value, matching the missing-value behaviour.
+    if [[ "$context_value" =~ ^[0-9]+$ ]]; then
         html_escape_to out_ref "$(( context_value + 1 ))"
     else
         out_ref=''
@@ -1093,7 +1098,12 @@ prepare_template_render_var__preview_num_prev_html() {
     local context_value
 
     template_context_value_to context_value "$context_name" "$source_name"
-    if [ -n "$context_value" ]; then
+    # Guard the arithmetic: only a non-negative integer is safe to feed to
+    # $(( )). An empty or non-numeric context value would otherwise throw a bash
+    # arithmetic syntax error and, under set -e, abort the whole script. Treat
+    # any invalid/missing preview_num as "no neighbour" and emit an empty render
+    # value, mirroring the next-html handler.
+    if [[ "$context_value" =~ ^[0-9]+$ ]]; then
         html_escape_to out_ref "$(( context_value - 1 ))"
     else
         out_ref=''

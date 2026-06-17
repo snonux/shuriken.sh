@@ -4137,6 +4137,57 @@ BASH
     fi
 }
 
+# The preview_num next/prev handlers compute neighbour page numbers with $(( )).
+# A non-numeric or empty preview_num context value must NOT crash the script with
+# a bash arithmetic syntax error (which, under set -e, would abort the whole run):
+# such values default to an empty render value. A valid numeric value must still
+# produce the exact +1 / -1 neighbour. We drive the handlers directly under
+# `bash -euo pipefail` so a regressed (unguarded) arithmetic would abort here.
+test_template_render_var_preview_num_guards_non_numeric() {
+    local output
+
+    output=$(
+        bash -euo pipefail -s "$TEST_REPO_ROOT" <<'BASH'
+repo_root="$1"; shift
+
+# shellcheck source=src/lib/config.validate.source.sh
+source "$repo_root/src/lib/config.validate.source.sh"
+# shellcheck source=src/lib/template.source.sh
+source "$repo_root/src/lib/template.source.sh"
+
+declare -A ctx
+out=''
+
+# Non-numeric preview_num must not crash; both handlers default to empty.
+ctx[preview_num]='not-a-number'
+prepare_template_render_var__preview_num_next_html out ctx preview_num
+printf 'bad_next=[%s]\n' "$out"
+prepare_template_render_var__preview_num_prev_html out ctx preview_num
+printf 'bad_prev=[%s]\n' "$out"
+
+# Empty preview_num also defaults to empty (missing-neighbour behaviour).
+ctx[preview_num]=''
+prepare_template_render_var__preview_num_next_html out ctx preview_num
+printf 'empty_next=[%s]\n' "$out"
+
+# A valid numeric preview_num still yields the exact +1 / -1 neighbour.
+ctx[preview_num]='5'
+prepare_template_render_var__preview_num_next_html out ctx preview_num
+printf 'good_next=[%s]\n' "$out"
+prepare_template_render_var__preview_num_prev_html out ctx preview_num
+printf 'good_prev=[%s]\n' "$out"
+BASH
+    )
+
+    if [ "$output" != \
+        $'bad_next=[]\nbad_prev=[]\nempty_next=[]\ngood_next=[6]\ngood_prev=[4]' ]
+    then
+        printf 'FAIL: preview_num handlers mishandle non-numeric input\n' >&2
+        printf 'actual:\n%s\n' "$output" >&2
+        exit 1
+    fi
+}
+
 test_render_stats_page_renders_sections_and_escapes() {
     local html
     local output_file
@@ -5992,6 +6043,9 @@ main() {
     test::run_case \
         'template render var dispatch is extensible (OCP)' \
         test_template_render_var_dispatch_is_extensible
+    test::run_case \
+        'preview_num render handlers guard non-numeric input' \
+        test_template_render_var_preview_num_guards_non_numeric
     test::run_case \
         'render_stats_page renders sections and escapes EXIF labels' \
         test_render_stats_page_renders_sections_and_escapes
