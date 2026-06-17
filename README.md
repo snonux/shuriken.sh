@@ -204,6 +204,11 @@ SYNC_DESTINATIONS=(
 )
 ```
 
+`SYNC_DESTINATIONS` must be a Bash array, even for a single destination (for
+example `SYNC_DESTINATIONS=( '/path/with spaces/' )`). A scalar string is
+rejected with an error, since word-splitting would break destinations that
+contain spaces.
+
 `--sync` runs `rsync -av --delete "$DIST_DIR/" "$destination"` for each
 destination by default. The trailing slash on `DIST_DIR/` means the generated
 contents are copied into the target directory. Set `SYNC_DELETE=no` or pass

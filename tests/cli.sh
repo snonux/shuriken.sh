@@ -5494,6 +5494,84 @@ test_sync_rejects_missing_dist() {
     test::teardown
 }
 
+test_sync_rejects_scalar_destinations() {
+    # Regression for an0: a scalar SYNC_DESTINATIONS with spaces used to be
+    # word-split into multiple broken rsync destinations. We now reject scalar
+    # declarations outright so the only spelling is an array, where embedded
+    # spaces are preserved naturally.
+    local config_file
+    local dist_dir
+    local fake_bin
+    local output
+    local rsync_log
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    rsync_log="$TEST_TMPDIR/rsync.log"
+
+    test::install_rsync_spy "$fake_bin"
+    mkdir -p "$dist_dir"
+    printf 'generated\n' > "$dist_dir/index.html"
+    {
+        printf 'DIST_DIR=%q\n' "$dist_dir"
+        printf 'SYNC_DESTINATIONS=%q\n' '/path/with spaces/'
+    } > "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
+            test::capture_failure_output "$TEST_SHURIKEN" --sync
+    )
+
+    test::assert_contains \
+        'ERROR: SYNC_DESTINATIONS must be an array' \
+        "$output"
+    # rsync must never run: the scalar was rejected, not word-split.
+    test::assert_path_absent "$rsync_log"
+    test::teardown
+}
+
+test_sync_array_destination_preserves_spaces() {
+    # A single array destination containing spaces must reach rsync intact as
+    # one argument, proving the array path is unaffected by the an0 fix.
+    local config_file
+    local dist_dir
+    local fake_bin
+    local rsync_log
+    local rsync_output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    rsync_log="$TEST_TMPDIR/rsync.log"
+
+    test::install_rsync_spy "$fake_bin"
+    mkdir -p "$dist_dir"
+    printf 'generated\n' > "$dist_dir/index.html"
+    {
+        printf 'DIST_DIR=%q\n' "$dist_dir"
+        printf 'SYNC_DESTINATIONS=(%q)\n' '/path/with spaces/'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
+            "$TEST_SHURIKEN" --sync
+    )
+
+    rsync_output=$(<"$rsync_log")
+    # argc=4 (-av, --delete, source, single destination): the destination is
+    # NOT split into two arguments despite the embedded space.
+    # The rsync spy logs each argument with %q quoting, so a single argument
+    # with a space appears as one escaped arg3 (not two split args).
+    test::assert_contains 'argc=4' "$rsync_output"
+    test::assert_contains 'arg3=/path/with\ spaces/' "$rsync_output"
+    test::teardown
+}
+
 test_positional_commands_fail_without_deprecation() {
     local output
     local old_command
@@ -6124,6 +6202,12 @@ main() {
     test::run_case \
         '--sync rejects missing dist' \
         test_sync_rejects_missing_dist
+    test::run_case \
+        '--sync rejects scalar destinations' \
+        test_sync_rejects_scalar_destinations
+    test::run_case \
+        '--sync array destination preserves spaces' \
+        test_sync_array_destination_preserves_spaces
     test::run_case \
         'positional commands fail without deprecation output' \
         test_positional_commands_fail_without_deprecation
