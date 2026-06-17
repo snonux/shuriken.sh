@@ -523,6 +523,49 @@ test_generate_cli_overrides_config_values() {
     test::teardown
 }
 
+# SOURCE_URL controls the footer "Site generated ... with <link>". The href uses
+# the configured URL verbatim and the displayed text is that URL without its
+# scheme, so a custom SOURCE_URL replaces the default shuriken.sh credit link.
+test_generate_source_url_override_sets_footer_link() {
+    local config_file
+    local fake_bin
+    local page_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/url-incoming"
+
+    {
+        printf 'TITLE=%q\n' 'URL test'
+        printf 'THUMBHEIGHT=10\n'
+        printf 'HEIGHT=20\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'INCOMING_DIR=%q/url-incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/url-dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$TEST_REPO_ROOT"
+        printf 'SOURCE_URL=https://codeberg.org/snonux/irregular.ninja\n'
+        printf 'TARBALL_INCLUDE=no\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate --config "$config_file"
+    )
+
+    page_html=$(<"$TEST_TMPDIR/url-dist/page-1.html")
+    test::assert_contains \
+        'href="https://codeberg.org/snonux/irregular.ninja"' "$page_html"
+    test::assert_contains 'codeberg.org/snonux/irregular.ninja</a>' "$page_html"
+    # The default credit link must be gone once SOURCE_URL is overridden.
+    test::assert_not_contains 'codeberg.org/snonux/shuriken.sh' "$page_html"
+
+    test::teardown
+}
+
 test_generate_height_bounds_photo_height_without_upscaling() {
     local config_file
     local -a create_command=()
@@ -1364,6 +1407,7 @@ INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 FAVICON=''
+SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
 TITLE=A\\ simple\\ Shuriken
 HEIGHT=1200
 THUMBHEIGHT=300
@@ -1412,6 +1456,7 @@ INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 FAVICON=''
+SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
 TITLE=Minimal\\ defaults
 HEIGHT=''
 THUMBHEIGHT=30
@@ -1553,6 +1598,7 @@ INCOMING_DIR=$TEST_TMPDIR/custom-incoming
 DIST_DIR=$TEST_TMPDIR/custom-dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 FAVICON=''
+SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
 TITLE=Selected\\ config
 HEIGHT=120
 THUMBHEIGHT=30
@@ -1596,6 +1642,7 @@ INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 FAVICON=''
+SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
 TITLE=Current\\ directory\\ config
 HEIGHT=120
 THUMBHEIGHT=30
@@ -1664,6 +1711,7 @@ INCOMING_DIR=$TEST_TMPDIR/cli-incoming
 DIST_DIR=$dist_dir
 TEMPLATE_DIR=$TEST_TMPDIR/cli-template
 FAVICON=''
+SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
 TITLE=CLI\\ title
 HEIGHT=456
 THUMBHEIGHT=45
@@ -4180,6 +4228,7 @@ BASH
         render_height_html \
         render_html_dir_html \
         render_show_header_bar \
+        render_source_url_html \
         render_stats_page_html \
         render_thumbheight_html \
         render_title_html | sort | paste -sd ' ' -)
@@ -6310,6 +6359,9 @@ main() {
     test::run_case \
         '--generate CLI options override config' \
         test_generate_cli_overrides_config_values
+    test::run_case \
+        '--generate SOURCE_URL override sets footer link' \
+        test_generate_source_url_override_sets_footer_link
     test::run_case \
         '--generate HEIGHT bounds photo height without upscaling' \
         test_generate_height_bounds_photo_height_without_upscaling

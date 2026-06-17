@@ -190,6 +190,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_preview_thumbs_html|context_raw|preview_thumbs|preview_thumbs|previewpage'
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
+    'render_source_url_html|config_html|SOURCE_URL||header'
     'render_stats_body_html|context_raw|stats_body|stats_body|stats'
     'render_stats_page_html|config_html|STATS_PAGE||header'
     'render_tarball_include|tarball_include|||footer'
@@ -604,6 +605,10 @@ prepare_template_render_var__config_html() {
             ;;
         ORIGINAL_BASEPATH)
             context_value="$ORIGINAL_BASEPATH"
+            ;;
+        SOURCE_URL)
+            # Always defaulted by apply_config_defaults (footer credit link).
+            context_value="${SOURCE_URL:-}"
             ;;
         STATS_PAGE)
             # Always defaulted by apply_config_defaults; degrade to

@@ -10,7 +10,7 @@ if (( BASH_VERSINFO[0] < 5 \
     exit 1
 fi
 
-declare -r VERSION='0.8.0'
+declare -r VERSION='0.9.0'
 declare -r DEFAULTRC="${SHURIKEN_DEFAULT_RC:-/etc/default/shuriken}"
 declare -r PACKAGED_TEMPLATE_DIR='/usr/share/shuriken/templates/default'
 declare -r PACKAGED_ASSET_DIR='/usr/share/shuriken/assets'
@@ -40,6 +40,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     IMAGE_JOBS
     RANDOM_SEED
     SHUFFLE
+    SOURCE_URL
     SPLASH_PAGE
     STATS_PAGE
     SYNC_DELETE
@@ -48,6 +49,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
 declare -Ar CLI_OPTION_SPEC=(
     [--config]='kind=value target=SHURIKEN_CLI_CONFIG_FILE argument=path'
     [--favicon]='kind=value config=FAVICON argument=path'
+    [--source-url]='kind=value config=SOURCE_URL argument=url'
     [--incoming]='kind=value config=INCOMING_DIR'
     [--dist]='kind=value config=DIST_DIR'
     [--template]='kind=value config=TEMPLATE_DIR'
@@ -686,6 +688,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_preview_thumbs_html|context_raw|preview_thumbs|preview_thumbs|previewpage'
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
+    'render_source_url_html|config_html|SOURCE_URL||header'
     'render_stats_body_html|context_raw|stats_body|stats_body|stats'
     'render_stats_page_html|config_html|STATS_PAGE||header'
     'render_tarball_include|tarball_include|||footer'
@@ -1100,6 +1103,10 @@ prepare_template_render_var__config_html() {
             ;;
         ORIGINAL_BASEPATH)
             context_value="$ORIGINAL_BASEPATH"
+            ;;
+        SOURCE_URL)
+            # Always defaulted by apply_config_defaults (footer credit link).
+            context_value="${SOURCE_URL:-}"
             ;;
         STATS_PAGE)
             # Always defaulted by apply_config_defaults; degrade to
@@ -4702,6 +4709,11 @@ apply_config_defaults() {
     ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
     RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
+    # SOURCE_URL is the project/source link shown in the page footer ("Site
+    # generated ... with <SOURCE_URL>"). Defaults to the shuriken.sh repo;
+    # override it per site (e.g. to the album's own repo) via config or
+    # --source-url. The footer derives the displayed text from the URL itself.
+    SOURCE_URL="${SOURCE_URL:-https://codeberg.org/snonux/shuriken.sh}"
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
     STATS_PAGE="${STATS_PAGE:-yes}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
@@ -4747,6 +4759,7 @@ print_config() {
     print_shell_assignment DIST_DIR "$DIST_DIR"
     print_shell_assignment TEMPLATE_DIR "$TEMPLATE_DIR"
     print_shell_assignment FAVICON "$FAVICON"
+    print_shell_assignment SOURCE_URL "$SOURCE_URL"
     print_shell_assignment TITLE "$TITLE"
     print_shell_assignment HEIGHT "$HEIGHT"
     print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
@@ -5716,6 +5729,7 @@ log_configured_action() {
     log_verbose "Effective output directory: ${DIST_DIR:-}"
     log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
     log_verbose "Effective favicon: ${FAVICON:-(bundled default)}"
+    log_verbose "Effective source URL: $SOURCE_URL"
     log_verbose "Effective image jobs: $IMAGE_JOBS"
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"

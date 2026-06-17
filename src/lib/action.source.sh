@@ -155,6 +155,7 @@ log_configured_action() {
     log_verbose "Effective output directory: ${DIST_DIR:-}"
     log_verbose "Effective template directory: ${TEMPLATE_DIR:-}"
     log_verbose "Effective favicon: ${FAVICON:-(bundled default)}"
+    log_verbose "Effective source URL: $SOURCE_URL"
     log_verbose "Effective image jobs: $IMAGE_JOBS"
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"

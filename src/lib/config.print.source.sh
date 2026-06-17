@@ -28,6 +28,7 @@ print_config() {
     print_shell_assignment DIST_DIR "$DIST_DIR"
     print_shell_assignment TEMPLATE_DIR "$TEMPLATE_DIR"
     print_shell_assignment FAVICON "$FAVICON"
+    print_shell_assignment SOURCE_URL "$SOURCE_URL"
     print_shell_assignment TITLE "$TITLE"
     print_shell_assignment HEIGHT "$HEIGHT"
     print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"

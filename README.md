@@ -76,10 +76,10 @@ When `--config PATH` is not provided, `--generate`, `--dry-run`,
 If the file is missing, run `shuriken --init` first.
 
 The config file is a Bash file with assignments such as `INCOMING_DIR`,
-`DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`,
-`MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`,
-`SPLASH_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`, `TAR_TIMEOUT`, `SYNC_DELETE`, and
-`SYNC_DESTINATIONS`.
+`DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`, `SOURCE_URL`, `TITLE`, `HEIGHT`,
+`THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`,
+`SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`, `TAR_TIMEOUT`,
+`SYNC_DELETE`, and `SYNC_DESTINATIONS`.
 
 Before generating, `shuriken` validates the loaded config and command-line
 overrides. It checks required values, positive integer settings, `yes`/`no`
@@ -97,8 +97,8 @@ values that generation would use after applying command-line overrides. Its
 tarball filename uses `<timestamp>` as a placeholder so the output is stable.
 
 `--print-config` writes stable shell-style assignments to stdout in this order:
-`CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`, `TITLE`,
-`HEIGHT`,
+`CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`,
+`SOURCE_URL`, `TITLE`, `HEIGHT`,
 `THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`,
 `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`,
 `TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, `SYNC_DELETE`,
@@ -116,6 +116,11 @@ Generation also writes `favicon.ico` into the output directory and the default
 templates link to it. By default this is the bundled shuriken favicon; set
 `FAVICON` in the config or pass `--favicon PATH` to publish your own favicon
 file instead (it is copied in as `favicon.ico`).
+
+The page footer links to the project source ("Site generated ... with
+&lt;URL&gt;"). This defaults to the shuriken.sh repository; set `SOURCE_URL` in
+the config or pass `--source-url URL` to point it at your own album's repository
+instead. The displayed link text is the URL with its scheme removed.
 
 Normal generation preserves reusable generated artifacts from the previous
 `DIST_DIR` while still rerendering HTML, random splash/background choices,
@@ -146,6 +151,7 @@ The following long options override config values:
 | `--dist PATH` | `DIST_DIR` |
 | `--template PATH` | `TEMPLATE_DIR` |
 | `--favicon PATH` | `FAVICON` |
+| `--source-url URL` | `SOURCE_URL` |
 | `--title TEXT` | `TITLE` |
 | `--height VALUE` | `HEIGHT` |
 | `--thumbheight VALUE` | `THUMBHEIGHT` |

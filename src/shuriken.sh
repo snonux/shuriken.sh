@@ -40,6 +40,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     IMAGE_JOBS
     RANDOM_SEED
     SHUFFLE
+    SOURCE_URL
     SPLASH_PAGE
     STATS_PAGE
     SYNC_DELETE
@@ -48,6 +49,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
 declare -Ar CLI_OPTION_SPEC=(
     [--config]='kind=value target=SHURIKEN_CLI_CONFIG_FILE argument=path'
     [--favicon]='kind=value config=FAVICON argument=path'
+    [--source-url]='kind=value config=SOURCE_URL argument=url'
     [--incoming]='kind=value config=INCOMING_DIR'
     [--dist]='kind=value config=DIST_DIR'
     [--template]='kind=value config=TEMPLATE_DIR'
