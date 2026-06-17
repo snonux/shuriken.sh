@@ -141,6 +141,28 @@ current_date_text_to() {
     output_ref="$SHURIKEN_CURRENT_DATE_TEXT"
 }
 
+# Each entry: render_var|kind|source_name|context_var|required_templates
+#
+#   render_var         name of the render_* variable handed to the .tmpl
+#   kind               handler suffix (prepare_template_render_var__<kind>)
+#   source_name        config var / context key the handler reads (kind-specific)
+#   context_var        context key validated by template_required_context_vars
+#                      (empty for fields not sourced from the render context, e.g.
+#                      config_html / derived kinds)
+#   required_templates which templates actually reference this render_var in their
+#                      .tmpl: '*' = every template, '' = no template (always
+#                      serialized regardless, see prepare_template_render_vars),
+#                      else a space-separated template list.
+#
+# IMPORTANT: required_templates is the authoritative per-template render-var set
+# and MUST match what each .tmpl references (verified by
+# test_template_render_var_subsetting_matches_templates). It drives both
+# prepare_template_render_vars (which computes only the needed subset) and
+# serialize_template_render_context (which emits only that subset into BASH_ENV).
+# It is independent of context_var: context_var still drives
+# template_required_context_vars (input-context validation), which is why
+# correcting the required_templates field of context_var-less specs does not
+# change that function's output.
 declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_animation_class_html|context_html|animation_class|animation_class|preview details view'
     'render_backhref_css|context_css|backhref|backhref|header splash'
@@ -150,16 +172,16 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_camera_name_html|context_html|camera_name|camera_name|camera'
     'render_cameraview_body_html|context_raw|cameraview_body|cameraview_body|cameraview'
     'render_camera_thumbs_html|context_raw|camera_thumbs|camera_thumbs|camera'
-    'render_current_date_text|current_date_html|||'
+    'render_current_date_text|current_date_html|||header'
     'render_enter_page_html|context_html|enter_page|enter_page|splash'
     'render_exif_details_html|context_raw|exif_details|exif_details|details'
     'render_exif_tooltip_html|context_html|exif_tooltip|exif_tooltip|details view'
-    'render_height_html|config_html|HEIGHT||'
+    'render_height_html|config_html|HEIGHT||header'
     'render_html_dir_html|context_html|html_dir|html_dir|*'
-    'render_maxpreviews_html|config_html|MAXPREVIEWS||'
+    'render_maxpreviews_html|config_html|MAXPREVIEWS||next prev'
     'render_next_html|context_html|next|next|next'
-    'render_original_basepath_is_set|original_basepath_is_set|||'
-    'render_original_basepath_html|config_html|ORIGINAL_BASEPATH||'
+    'render_original_basepath_is_set|original_basepath_is_set|||view'
+    'render_original_basepath_html|config_html|ORIGINAL_BASEPATH||view'
     'render_page_num_html|context_html|page_num|page_num|preview details view'
     'render_photo_html|context_html|photo|photo|preview splash details view'
     'render_photos_dir_html|context_html|photos_dir|photos_dir|splash details view'
@@ -169,14 +191,14 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_redirect_page_html|context_html|redirect_page|redirect_page|redirect'
     'render_show_header_bar|context_raw|show_header_bar|show_header_bar|header'
     'render_stats_body_html|context_raw|stats_body|stats_body|stats'
-    'render_stats_page_html|config_html|STATS_PAGE||'
-    'render_tarball_include|tarball_include|||'
+    'render_stats_page_html|config_html|STATS_PAGE||header'
+    'render_tarball_include|tarball_include|||footer'
     'render_tarball_name_html|context_html|tarball_name|tarball_name|footer'
-    'render_thumbheight_html|config_html|THUMBHEIGHT||'
+    'render_thumbheight_html|config_html|THUMBHEIGHT||header'
     'render_thumbs_dir_html|context_html|thumbs_dir|thumbs_dir|preview'
-    'render_title_html|config_html|TITLE||'
-    'render_view_next_html|preview_num_next_html|preview_num||'
-    'render_view_prev_html|preview_num_prev_html|preview_num||'
+    'render_title_html|config_html|TITLE||camera header splash stats'
+    'render_view_next_html|preview_num_next_html|preview_num||details view'
+    'render_view_prev_html|preview_num_prev_html|preview_num||details view'
 )
 
 current_timestamp_slug() {
@@ -242,6 +264,41 @@ template_render_field_is_required_for() {
             [[ " $required_template_names " == *" $template_name "* ]]
             ;;
     esac
+}
+
+# Build the set of render_* variables a template actually needs, driven by the
+# required_templates (5th) field of each spec. There are NO render-var ->
+# render-var dependencies (every handler reads from the input context array or a
+# config global, never from another already-computed render_var), so this direct
+# per-template set IS the full closure -- no transitive expansion is required.
+# Fields with an empty required_templates ('') are intentionally treated as
+# "needed by no template" here; the only such remaining spec is the special
+# render_html_dir_html ('*', always-needed) case which is covered by the '*' arm
+# of template_render_field_is_required_for.
+template_needed_render_vars_to() {
+    # shellcheck disable=SC2178
+    # shellcheck disable=SC2178
+    local -n needed_vars_ref="$1"; shift
+    local -r template_name="$1"; shift
+    local field_spec
+    local render_var
+    local _kind
+    local _source_name
+    local _required_context_var
+    local required_template_names
+
+    needed_vars_ref=()
+
+    for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
+        IFS='|' read -r render_var _kind _source_name \
+            _required_context_var required_template_names <<< "$field_spec"
+
+        if template_render_field_is_required_for \
+            "$template_name" "$required_template_names"; then
+            # shellcheck disable=SC2034  # written through the output nameref
+            needed_vars_ref["$render_var"]=yes
+        fi
+    done
 }
 
 template_required_context_vars_to() {
@@ -421,11 +478,17 @@ serialize_template_render_var() {
     printf '%s=%q\n' "$name" "$value"
 }
 
-# Emit "render_var=value" assignments (one per template field) on stdout, each
-# %q-quoted via serialize_template_render_var so the values survive being
-# re-sourced by "env -i bash". Runs in the current shell (called by
-# source_template_file) reading the caller's render_vars associative array by
-# name and the top-level TEMPLATE_RENDER_FIELD_SPECS constant.
+# Emit "render_var=value" assignments on stdout, each %q-quoted via
+# serialize_template_render_var so the values survive being re-sourced by
+# "env -i bash". Runs in the current shell (called by source_template_file)
+# reading the caller's render_vars associative array by name and the top-level
+# TEMPLATE_RENDER_FIELD_SPECS constant.
+#
+# Only the render_vars that prepare_template_render_vars actually computed (i.e.
+# the subset the target template needs) are present in render_vars_ref, so we
+# iterate the spec order but emit only the keys present. This keeps a stable,
+# spec-driven emission order while serializing exactly the per-template subset --
+# no spec entry for an absent (non-needed) field is written into BASH_ENV.
 #
 # Returns the status of the failing write explicitly rather than relying on
 # errexit: source_template_file (and its production callers) may run inside an
@@ -446,6 +509,9 @@ serialize_template_render_context() {
     for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
         IFS='|' read -r render_var _kind _source_name \
             _required_context_var _required_templates <<< "$field_spec"
+        if [ -z "${render_vars_ref[$render_var]+x}" ]; then
+            continue
+        fi
         serialize_template_render_var \
             "$render_var" "${render_vars_ref[$render_var]}"
         status=$?
@@ -628,9 +694,21 @@ prepare_template_render_var__tarball_include() {
 # defining a new handler function, never touching this loop. An unknown kind --
 # one with no matching handler function -- is a config error, preserving the old
 # "unknown template render field kind" behavior.
+#
+# Subsetting (task kn0): only the render_vars the target template_name actually
+# references are computed; the rest are skipped entirely. The needed set is built
+# from the required_templates (5th) spec field via template_needed_render_vars_to
+# and is the FULL dependency closure -- handlers read from the input context
+# array or config globals, never from another computed render_var, so there are
+# no render-var -> render-var deps to expand transitively. Every handler is a
+# pure value computation with no externally-relied-upon side effect (no RANDOM /
+# seed consumption; current_date_html only primes the deterministic
+# SHURIKEN_CURRENT_DATE_TEXT cache, which any later header render re-primes), so
+# skipping non-needed fields cannot change any other field's value or the output.
 prepare_template_render_vars() {
     local -r render_vars_name="$1"; shift
     local -r context_name="$1"; shift
+    local -r template_name="$1"; shift
     # shellcheck disable=SC2178
     local -n render_vars_ref="$render_vars_name"
     local field_spec
@@ -642,12 +720,22 @@ prepare_template_render_vars() {
     local _required_templates
     local source_name
     local -i status=0
+    local -A needed_render_vars=()
+
+    template_needed_render_vars_to needed_render_vars "$template_name"
 
     render_vars_ref=()
 
     for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
         IFS='|' read -r render_var kind source_name \
             _required_context_var _required_templates <<< "$field_spec"
+
+        # Skip fields this template does not reference -- not computed, not
+        # serialized into BASH_ENV (serialize_template_render_context emits only
+        # the keys present here).
+        if [ -z "${needed_render_vars[$render_var]+x}" ]; then
+            continue
+        fi
 
         handler="prepare_template_render_var__$kind"
         if ! declare -F "$handler" > /dev/null; then
@@ -708,7 +796,7 @@ render_template() {
         return "$status"
     fi
 
-    prepare_template_render_vars render_vars "$context_name"
+    prepare_template_render_vars render_vars "$context_name" "$template_name"
     status=$?
     if (( status != 0 )); then
         return "$status"

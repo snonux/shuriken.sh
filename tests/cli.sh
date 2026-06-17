@@ -4112,6 +4112,159 @@ BASH
     fi
 }
 
+# Subsetting proof (task kn0): prepare_template_render_vars computes ONLY the
+# render_vars the target template references, not all 30+ fields. We render the
+# minimal "header" template's vars and assert: (1) the header-needed render_vars
+# are present; (2) unrelated heavy fields (stats/camera/cameraview bodies) are
+# absent; (3) it succeeds even when config globals only OTHER templates need
+# (ORIGINAL_BASEPATH, used by the view-only render_original_basepath_* specs) are
+# completely unset -- proving those non-needed handlers were never invoked.
+test_template_render_vars_subset_is_minimal_for_header() {
+    local output
+
+    output=$(
+        bash -euo pipefail -s "$TEST_REPO_ROOT" <<'BASH'
+repo_root="$1"; shift
+
+# shellcheck source=src/lib/config.validate.source.sh
+source "$repo_root/src/lib/config.validate.source.sh"
+# shellcheck source=src/lib/random.source.sh
+source "$repo_root/src/lib/random.source.sh"
+# shellcheck source=src/lib/template.source.sh
+source "$repo_root/src/lib/template.source.sh"
+
+# Config globals the header template DOES need.
+RANDOM_SEED=''
+TITLE='T'
+HEIGHT='120'
+THUMBHEIGHT='30'
+STATS_PAGE='no'
+SHURIKEN_CURRENT_DATE_TEXT=''
+# Deliberately leave ORIGINAL_BASEPATH / MAXPREVIEWS / TARBALL_INCLUDE UNSET:
+# only non-header templates need them, so a correct subset never reads them.
+# Under set -u, computing those fields would abort -- success proves they were
+# skipped.
+
+declare -A ctx=(
+    [html_dir]='.'
+    [backhref]='#'
+    [background_image]='bg.jpg'
+    [blurs_dir]='blurs'
+    [show_header_bar]='yes'
+)
+declare -A vars=()
+prepare_template_render_vars vars ctx header
+
+# Present keys, sorted.
+present=$(printf '%s\n' "${!vars[@]}" | sort | paste -sd ' ' -)
+printf 'present=%s\n' "$present"
+
+# Heavy / unrelated fields must NOT have been computed.
+for absent in render_stats_body_html render_camera_thumbs_html \
+    render_cameraview_body_html render_exif_details_html render_next_html \
+    render_original_basepath_html render_maxpreviews_html; do
+    if [ -n "${vars[$absent]+x}" ]; then
+        printf 'unexpected_present=%s\n' "$absent"
+    fi
+done
+BASH
+    )
+
+    local expected_present
+    expected_present=$(printf '%s\n' \
+        render_background_image_css \
+        render_backhref_css \
+        render_backhref_html \
+        render_blurs_dir_css \
+        render_current_date_text \
+        render_height_html \
+        render_html_dir_html \
+        render_show_header_bar \
+        render_stats_page_html \
+        render_thumbheight_html \
+        render_title_html | sort | paste -sd ' ' -)
+
+    if [ "$output" != "present=$expected_present" ]; then
+        printf 'FAIL: header render-var subset is not minimal\n' >&2
+        printf 'expected: present=%s\n' "$expected_present" >&2
+        printf 'actual:\n%s\n' "$output" >&2
+        exit 1
+    fi
+}
+
+# Subsetting authority proof (task kn0): the per-template needed render-var set
+# (driven by the required_templates spec field) MUST match exactly the render_*
+# vars each .tmpl actually references. If a template gains/loses a render_* var
+# without the spec being updated, this test fails -- guarding the byte-identical
+# guarantee the subsetting relies on.
+test_template_render_var_subsetting_matches_templates() {
+    local template_path
+    local template_name
+    local needed
+    local referenced
+    local -i failed=0
+
+    for template_path in "$TEST_REPO_ROOT"/share/templates/default/*.tmpl; do
+        template_name=$(basename "$template_path" .tmpl)
+
+        # Needed set from the specs (skip the always-on render_html_dir_html,
+        # which no .tmpl references but is intentionally always serialized).
+        needed=$(
+            bash -euo pipefail -s "$TEST_REPO_ROOT" "$template_name" <<'BASH'
+repo_root="$1"; shift
+template_name="$1"; shift
+# shellcheck source=src/lib/template.source.sh
+source "$repo_root/src/lib/template.source.sh"
+declare -A needed=()
+template_needed_render_vars_to needed "$template_name"
+unset 'needed[render_html_dir_html]'
+if (( ${#needed[@]} > 0 )); then
+    printf '%s\n' "${!needed[@]}" | sort
+fi
+BASH
+        )
+
+        # render_* vars actually referenced by the .tmpl, restricted to spec
+        # vars (the template-local render_exif_tooltip_attr and comment-only
+        # names like render_camera_pages are not specs and are filtered out).
+        referenced=$(
+            bash -euo pipefail -s \
+                "$TEST_REPO_ROOT" "$template_path" <<'BASH'
+repo_root="$1"; shift
+template_path="$1"; shift
+# shellcheck source=src/lib/template.source.sh
+source "$repo_root/src/lib/template.source.sh"
+declare -A spec_vars=()
+for field_spec in "${TEMPLATE_RENDER_FIELD_SPECS[@]}"; do
+    IFS='|' read -r render_var _ _ _ _ <<< "$field_spec"
+    spec_vars["$render_var"]=yes
+done
+declare -A seen=()
+while IFS= read -r ref; do
+    if [ -n "${spec_vars[$ref]+x}" ]; then
+        seen["$ref"]=yes
+    fi
+done < <(grep -o 'render_[a-z_]*' "$template_path")
+if (( ${#seen[@]} > 0 )); then
+    printf '%s\n' "${!seen[@]}" | sort
+fi
+BASH
+        )
+
+        if [ "$needed" != "$referenced" ]; then
+            printf 'FAIL: %s spec needed-set != .tmpl references\n' \
+                "$template_name" >&2
+            printf 'spec-needed:\n%s\n' "$needed" >&2
+            printf 'tmpl-referenced:\n%s\n' "$referenced" >&2
+            failed=1
+        fi
+    done
+
+    if (( failed != 0 )); then
+        exit 1
+    fi
+}
+
 # Open/Closed proof: render field kinds are dispatched by resolving a
 # prepare_template_render_var__<kind> handler by name. Adding a kind therefore
 # means only defining a new handler function -- the core loop never changes. We
@@ -6342,6 +6495,12 @@ main() {
     test::run_case \
         'template required context vars come from render specs' \
         test_template_required_context_vars_come_from_render_specs
+    test::run_case \
+        'header render-var subset is minimal (kn0)' \
+        test_template_render_vars_subset_is_minimal_for_header
+    test::run_case \
+        'render-var subset matches template references (kn0)' \
+        test_template_render_var_subsetting_matches_templates
     test::run_case \
         'template render var dispatch is extensible (OCP)' \
         test_template_render_var_dispatch_is_extensible
