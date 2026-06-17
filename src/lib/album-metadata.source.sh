@@ -169,21 +169,9 @@ _photo_exif_tooltip_text_from_values() {
 
     make="${values_ref[Make]:-}"
     model="${values_ref[Model]:-}"
-    camera="$make"
-    if [ -n "$model" ]; then
-        if [ -n "$make" ]; then
-            case "$model" in
-                "$make"|"$make "*)
-                    camera="$model"
-                    ;;
-                *)
-                    camera="$make $model"
-                    ;;
-            esac
-        else
-            camera="$model"
-        fi
-    fi
+    # Dedup the manufacturer prefix via the shared helper (task mn0) so this
+    # tooltip and the stats leaderboard derive identical camera labels.
+    camera=$(camera_label_from_make_model "$make" "$model")
 
     _first_exif_value_to aperture "$exif_name" FNumber ApertureValue
     _first_exif_value_to iso "$exif_name" \

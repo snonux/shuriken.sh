@@ -1666,6 +1666,39 @@ maybe_shuffle() {
     fi
 }
 
+# Inlined from src/lib/metadata-label.source.sh
+# Shared EXIF metadata label helpers. Extracted (task mn0) so the rule for
+# turning a camera's Make + Model into one human-readable label lives in a
+# single place instead of being duplicated in album-metadata.source.sh's
+# tooltip builder and stats-aggregate.source.sh's leaderboard tally. This file
+# is sourced before both callers (see LIB_SOURCES in the Justfile). All library
+# modules are sourced before any code runs, so definition order only documents
+# the dependency, it does not affect availability.
+
+# Join a camera's EXIF Make + Model into one label, avoiding a duplicated
+# manufacturer prefix. Many cameras already repeat the make inside the model
+# (e.g. Make="Canon", Model="Canon EOS 5D"), so when the model equals the make
+# or starts with "<make> " we keep the model alone ("Canon EOS 5D" rather than
+# "Canon Canon EOS 5D"). Either field may be empty: an empty model yields the
+# make, an empty make yields the model, and both empty yields an empty string.
+camera_label_from_make_model() {
+    local -r make="$1"; shift
+    local -r model="$1"; shift
+
+    if [ -z "$model" ]; then
+        printf '%s' "$make"
+        return
+    fi
+    if [ -z "$make" ]; then
+        printf '%s' "$model"
+        return
+    fi
+    case "$model" in
+        "$make"|"$make "*) printf '%s' "$model" ;;
+        *) printf '%s %s' "$make" "$model" ;;
+    esac
+}
+
 # Inlined from src/lib/image-pipeline.source.sh
 create_photo_derivatives() {
     local -r photos_dir="$1"; shift
@@ -1924,21 +1957,9 @@ _photo_exif_tooltip_text_from_values() {
 
     make="${values_ref[Make]:-}"
     model="${values_ref[Model]:-}"
-    camera="$make"
-    if [ -n "$model" ]; then
-        if [ -n "$make" ]; then
-            case "$model" in
-                "$make"|"$make "*)
-                    camera="$model"
-                    ;;
-                *)
-                    camera="$make $model"
-                    ;;
-            esac
-        else
-            camera="$model"
-        fi
-    fi
+    # Dedup the manufacturer prefix via the shared helper (task mn0) so this
+    # tooltip and the stats leaderboard derive identical camera labels.
+    camera=$(camera_label_from_make_model "$make" "$model")
 
     _first_exif_value_to aperture "$exif_name" FNumber ApertureValue
     _first_exif_value_to iso "$exif_name" \
@@ -3490,34 +3511,17 @@ _stats_slug() {
     printf '%s' "$slug"
 }
 
-# Join Make + Model into a single camera label, reusing the same dedup logic as
-# album.source.sh's tooltip builder (handles "Model already includes Make").
-_stats_camera_label() {
-    local -r make="$1"; shift
-    local -r model="$1"; shift
-
-    if [ -z "$model" ]; then
-        printf '%s' "$make"
-        return
-    fi
-    if [ -z "$make" ]; then
-        printf '%s' "$model"
-        return
-    fi
-    case "$model" in
-        "$make"|"$make "*) printf '%s' "$model" ;;
-        *) printf '%s %s' "$make" "$model" ;;
-    esac
-}
-
 # Tally a photo's camera (Make+Model) and, when present, its lens into their
 # leaderboard counts and filter mini-albums. Skips photos with no Make/Model.
+# The Make+Model dedup now lives in camera_label_from_make_model
+# (metadata-label.source.sh, task mn0), shared with the album tooltip builder.
 _stats_record_camera() {
     local -n values_ref="$1"; shift
     local -r photo="$1"; shift
     local label
 
-    label=$(_stats_camera_label "${values_ref[Make]:-}" "${values_ref[Model]:-}")
+    label=$(camera_label_from_make_model \
+        "${values_ref[Make]:-}" "${values_ref[Model]:-}")
     _stats_tally STATS_CAMERAS camera "$label" "$label" "$photo"
     if [ -n "${values_ref[LensModel]:-}" ]; then
         _stats_tally STATS_LENSES lens \

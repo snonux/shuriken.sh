@@ -5862,6 +5862,45 @@ test_stats_collect_reads_cached_identify_output() {
     test::teardown
 }
 
+# Unit-test the shared Make+Model dedup helper (task mn0). The album tooltip and
+# stats leaderboard both rely on this, so cover dedup, plain concatenation and
+# the empty-field edge cases here in one place.
+test_camera_label_from_make_model() {
+    local actual
+
+    # shellcheck source=src/lib/metadata-label.source.sh
+    source "$TEST_REPO_ROOT/src/lib/metadata-label.source.sh"
+
+    _assert_camera_label() {
+        local -r expected="$1"; shift
+        local -r make="$1"; shift
+        local -r model="$1"; shift
+
+        actual=$(camera_label_from_make_model "$make" "$model")
+        if [ "$actual" != "$expected" ]; then
+            printf 'FAIL: camera_label_from_make_model %q %q => %q, want %q\n' \
+                "$make" "$model" "$actual" "$expected" >&2
+            exit 1
+        fi
+    }
+
+    # Model repeats the make as a prefix: dedup to the model alone.
+    _assert_camera_label 'Canon EOS 5D' 'Canon' 'Canon EOS 5D'
+    # Model equals the make exactly: still just the model.
+    _assert_camera_label 'Canon' 'Canon' 'Canon'
+    # No duplication: make and model are concatenated.
+    _assert_camera_label 'NIKON CORPORATION Z 6' 'NIKON CORPORATION' 'Z 6'
+    # A make that is a substring but not a prefix is not deduped.
+    _assert_camera_label 'Canon PowerShot Canon' 'Canon' 'PowerShot Canon'
+    # Empty model yields the make; empty make yields the model.
+    _assert_camera_label 'Apple' 'Apple' ''
+    _assert_camera_label 'iPhone 12' '' 'iPhone 12'
+    # Both empty yields an empty label.
+    _assert_camera_label '' '' ''
+    # The prefix match is case-sensitive: differing case is not deduped.
+    _assert_camera_label 'canon Canon EOS 5D' 'canon' 'Canon EOS 5D'
+}
+
 main() {
     trap test::teardown EXIT
 
@@ -6199,6 +6238,9 @@ main() {
     test::run_case \
         'stats collect reads cached identify output' \
         test_stats_collect_reads_cached_identify_output
+    test::run_case \
+        'camera label dedups make and model' \
+        test_camera_label_from_make_model
     test::run_case \
         '--generate metadata escapes JSON and custom tarball suffix' \
         test_generate_metadata_escapes_json_and_custom_tarball_suffix

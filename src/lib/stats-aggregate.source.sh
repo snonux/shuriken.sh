@@ -300,34 +300,17 @@ _stats_slug() {
     printf '%s' "$slug"
 }
 
-# Join Make + Model into a single camera label, reusing the same dedup logic as
-# album.source.sh's tooltip builder (handles "Model already includes Make").
-_stats_camera_label() {
-    local -r make="$1"; shift
-    local -r model="$1"; shift
-
-    if [ -z "$model" ]; then
-        printf '%s' "$make"
-        return
-    fi
-    if [ -z "$make" ]; then
-        printf '%s' "$model"
-        return
-    fi
-    case "$model" in
-        "$make"|"$make "*) printf '%s' "$model" ;;
-        *) printf '%s %s' "$make" "$model" ;;
-    esac
-}
-
 # Tally a photo's camera (Make+Model) and, when present, its lens into their
 # leaderboard counts and filter mini-albums. Skips photos with no Make/Model.
+# The Make+Model dedup now lives in camera_label_from_make_model
+# (metadata-label.source.sh, task mn0), shared with the album tooltip builder.
 _stats_record_camera() {
     local -n values_ref="$1"; shift
     local -r photo="$1"; shift
     local label
 
-    label=$(_stats_camera_label "${values_ref[Make]:-}" "${values_ref[Model]:-}")
+    label=$(camera_label_from_make_model \
+        "${values_ref[Make]:-}" "${values_ref[Model]:-}")
     _stats_tally STATS_CAMERAS camera "$label" "$label" "$photo"
     if [ -n "${values_ref[LensModel]:-}" ]; then
         _stats_tally STATS_LENSES lens \
