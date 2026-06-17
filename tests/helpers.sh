@@ -39,6 +39,23 @@ test::run_case() {
     rm -f "$output_file"
 }
 
+# Runs a shuriken action body in an isolated subshell and returns its status.
+#
+# Production runs action bodies in-process (see run_configured_action_body in
+# src/lib/action.source.sh). A few action bodies (notably generate_staged) flip
+# errexit back on internally and "return" a non-zero status while errexit is
+# active, which aborts the *caller's* shell on failure. In production that is
+# correct: main runs under "set -euo pipefail" and a generation failure should
+# end the process. A handful of tests, however, need to capture that failure
+# status and keep asserting afterwards. They used to get isolation for free from
+# the old serialized-subprocess runner; now that production runs in-process, this
+# test-only shim provides the minimal "run it where an abort can't kill me"
+# wrapper. The subshell catches any errexit/trap-driven abort, so the caller can
+# read the status with "$?".
+test::run_action_isolated() {
+    ( "$@" )
+}
+
 test::assert_failure() {
     local -r description="$1"; shift
     local output_file

@@ -2428,7 +2428,10 @@ SHURIKEN_CLI_OVERRIDES=()
 SHURIKEN_CLI_SYNC_DESTINATIONS=()
 SHURIKEN_FORCE_GENERATE=no
 
-set +e
+# Production runs the action in-process under "set -euo pipefail" (main calls
+# run_action with errexit active), so an internal failure inside the action body
+# aborts immediately. Leave errexit ON here (no "set +e") to exercise that real
+# path: dry_run's "false" must abort before the "dry_run continued" write.
 run_configured_action
 BASH
     )
@@ -2479,8 +2482,12 @@ export continued_file success_file
 # shellcheck source=/dev/null
 source <(sed '$d' "$shuriken")
 
+# The action runs in-process; a failing action must return a non-zero status so
+# a status-tested caller (the "if" below) takes the failure branch. "return 1"
+# fails honestly regardless of the caller's errexit state, and the write after
+# it must never run.
 dry_run() {
-    false
+    return 1
     printf 'dry_run continued\n' > "$continued_file"
 }
 
@@ -2544,8 +2551,12 @@ export continued_file success_file
 # shellcheck source=/dev/null
 source <(sed '$d' "$shuriken")
 
+# The action runs in-process; a failing action must return a non-zero status so
+# a status-tested caller (the "if" below) takes the failure branch. "return 1"
+# fails honestly regardless of the caller's errexit state, and the write after
+# it must never run.
 dry_run() {
-    false
+    return 1
     printf 'dry_run continued\n' > "$continued_file"
 }
 
@@ -2601,15 +2612,19 @@ test_generate_real_failure_returns_with_errexit_disabled() {
             "$config_file" \
             "$fake_bin" \
             "$status_file" \
+            "$TEST_REPO_ROOT/tests/helpers.sh" \
             2>&1 \
             <<'BASH'
 shuriken="$1"; shift
 config_file="$1"; shift
 fake_bin="$1"; shift
 status_file="$1"; shift
+helpers="$1"; shift
 
 # shellcheck source=/dev/null
 source <(sed '$d' "$shuriken")
+# shellcheck source=/dev/null
+source "$helpers"
 
 PATH="$fake_bin:$PATH"
 SHURIKEN_CLI_ACTION=--generate
@@ -2619,8 +2634,11 @@ SHURIKEN_CLI_OVERRIDES=()
 SHURIKEN_CLI_SYNC_DESTINATIONS=()
 SHURIKEN_FORCE_GENERATE=no
 
+# A real generation failure aborts the shell in production (main runs under
+# errexit, by design). To capture the failure status and keep asserting, run the
+# action in the test-only isolation shim. The status it returns must be nonzero.
 set +e
-run_configured_action
+test::run_action_isolated run_configured_action
 generate_status=$?
 printf '%s\n' "$generate_status" > "$status_file"
 exit 0
