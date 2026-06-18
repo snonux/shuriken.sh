@@ -1417,7 +1417,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
-STATS_PAGE=yes
+STATS_PAGE=no
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1466,7 +1466,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
-STATS_PAGE=yes
+STATS_PAGE=no
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1608,7 +1608,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=yes
 SPLASH_PAGE=yes
-STATS_PAGE=yes
+STATS_PAGE=no
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1652,7 +1652,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
-STATS_PAGE=yes
+STATS_PAGE=no
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1721,7 +1721,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=cli-seed
 SHUFFLE=yes
 SPLASH_PAGE=no
-STATS_PAGE=yes
+STATS_PAGE=no
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
@@ -1936,6 +1936,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
                 --random-seed dry-seed \
                 --shuffle \
                 --no-splash \
+                --stats \
                 --tarball
     )
 
@@ -3320,7 +3321,7 @@ test_generate_stats_pages_created_and_nav_linked() {
         cd "$TEST_TMPDIR"
         PATH="$fake_bin:$PATH" \
             TEST_IMAGEMAGICK_IDENTIFY_OUTPUT="$(test::stats_identify_output)" \
-            "$TEST_SHURIKEN" --generate --random-seed stats-seed
+            "$TEST_SHURIKEN" --generate --stats --random-seed stats-seed
     )
 
     # Only the main album is in the dist root; all stats content is under stats/.
@@ -4528,6 +4529,9 @@ THUMBHEIGHT=120
 MAXPREVIEWS=40
 ORIGINAL_BASEPATH=''
 TARBALL_INCLUDE=no
+# Stats are off by default; this test renders the stats page, so enable them so
+# the header bar includes the Stats nav link.
+STATS_PAGE=yes
 SHURIKEN_OUTPUT_MODE=quiet
 apply_config_defaults
 

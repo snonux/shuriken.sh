@@ -45,7 +45,7 @@ apply_config_defaults() {
     # --source-url. The footer derives the displayed text from the URL itself.
     SOURCE_URL="${SOURCE_URL:-https://codeberg.org/snonux/shuriken.sh}"
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
-    STATS_PAGE="${STATS_PAGE:-yes}"
+    STATS_PAGE="${STATS_PAGE:-no}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"

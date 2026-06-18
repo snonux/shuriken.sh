@@ -176,13 +176,13 @@ By default, the generated root `index.html` is a no-JavaScript splash page using
 a randomly selected album photo. Set `SPLASH_PAGE=no` or pass `--no-splash` to
 restore the top-level redirect to `page-1.html`.
 
-By default, `shuriken` also generates a no-JavaScript stats site with
-EXIF-derived insights (camera leaderboard, shooting dates, exposure, dimension,
-format, and decoded-enum breakdowns), reachable from the `Stats` link in the page
-header bar. Every row on the stats overview is clickable: each bucket (each
-camera, ISO, year, aperture, orientation, …) is its own filter "mini-album" — a
-gallery of just the matching photos with view pages whose previous/next cycle
-within that filter.
+`shuriken` can also generate a no-JavaScript stats site with EXIF-derived
+insights (camera leaderboard, shooting dates, exposure, dimension, format, and
+decoded-enum breakdowns), reachable from the `Stats` link in the page header bar.
+This is off by default; set `STATS_PAGE=yes` or pass `--stats` to enable it. Every
+row on the stats overview is clickable: each bucket (each camera, ISO, year,
+aperture, orientation, …) is its own filter "mini-album" — a gallery of just the
+matching photos with view pages whose previous/next cycle within that filter.
 
 To keep the album root uncluttered, all of this lives under a `stats/`
 subdirectory: the overview is `stats/index.html` and each mini-album is its own
@@ -190,7 +190,7 @@ directory `stats/<filter>/` (gallery `index.html` plus numbered view pages). Onl
 the main album sits in `DIST_DIR` itself. The mini-album pages reuse the album's
 shared `photos/`, `thumbs/`, and `blurs/` assets (only the HTML is per-filter)
 and are rendered in parallel honouring `IMAGE_JOBS`. Set `STATS_PAGE=no` or pass
-`--no-stats` to skip the whole `stats/` tree and hide the link.
+`--no-stats` (the default) to skip the whole `stats/` tree and hide the link.
 
 To quickly pick a new random splash photo for an already generated album, run
 `shuriken --refresh-splash`. This rewrites only `DIST_DIR/index.html` using
