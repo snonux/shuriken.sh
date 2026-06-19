@@ -6,6 +6,15 @@ shuriken is a Bash script for Unix-like operating systems (such as Linux) that
 generates static web photo albums. The resulting album is pure HTML+CSS — no
 JavaScript.
 
+## Example site
+
+[irregular.ninja](https://irregular.ninja) is a live photo album built with
+shuriken. Its source — including the `shuriken.conf`, templates, and publish
+setup — lives at
+[codeberg.org/snonux/irregular.ninja](https://codeberg.org/snonux/irregular.ninja)
+and works as a ready-to-read sample configuration for all of shuriken's
+features.
+
 ## Quick start
 
 ```sh
