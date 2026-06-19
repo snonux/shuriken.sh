@@ -4709,10 +4709,10 @@ apply_config_defaults() {
     ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
     RANDOM_SEED="${RANDOM_SEED:-}"
     SHUFFLE="${SHUFFLE:-no}"
-    # SOURCE_URL is the project/source link shown in the page footer ("Site
+    # SOURCE_URL is the project/source link shown in the page header bar ("Site
     # generated ... with <SOURCE_URL>"). Defaults to the shuriken.sh repo;
     # override it per site (e.g. to the album's own repo) via config or
-    # --source-url. The footer derives the displayed text from the URL itself.
+    # --source-url. The header bar derives the displayed text from the URL itself.
     SOURCE_URL="${SOURCE_URL:-https://codeberg.org/snonux/shuriken.sh}"
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
     STATS_PAGE="${STATS_PAGE:-no}"

@@ -2,261 +2,73 @@
 
 <img src="assets/docs/shuriken-logo.svg" alt="Shuriken logo" width="160">
 
-shuriken is a Bash script for Unix like operating systems (such as Linux) to generate static web photo albums.
-The resulting static photo album is pure HTML+CSS (without any JavaScript!).
+shuriken is a Bash script for Unix-like operating systems (such as Linux) that
+generates static web photo albums. The resulting album is pure HTML+CSS — no
+JavaScript.
 
-## Installation
+## Quick start
 
-Build and install the command, templates, and default config from a source
-checkout with:
-
-```
-just build
-sudo just install
-```
-
-`bin/shuriken` is a committed generated artifact for compatibility with
-existing checkouts and packaging. Its source of truth is `src/shuriken.sh`
-rendered through the `VERSION` value in `Justfile`. Run `just build` after
-changing either file, and use `just check-generated` to verify that the tracked
-script has not drifted. `just test` and `just install` run that drift check
-before rebuilding so stale committed output is not hidden.
-
-`just install` installs `shuriken` to `/usr/bin`, templates and static assets
-to `/usr/share/shuriken`, and the default config to `/etc/default/shuriken`.
-Override paths with `DESTDIR`, `PREFIX`, `BINDIR`, `DATADIR`, or `SYSCONFDIR`
-when packaging or staging an install:
-
-```
-DESTDIR="$PWD/pkg" PREFIX=/usr just install
-DESTDIR="$PWD/pkg" PREFIX=/usr just deinstall
+```sh
+just build            # build ./bin/shuriken from src/
+sudo just install     # install to /usr/bin, /usr/share/shuriken, /etc/default
+shuriken --init       # creates ./shuriken.conf in the current directory
 ```
 
-`just uninstall` is an alias for `just deinstall`.
+Edit `shuriken.conf` and point `INCOMING_DIR` at a directory of photos, then:
 
-ImageMagick must also be installed. The script prefers the
-modern `magick` command and falls back to `convert` when needed.
-
-## Usage
-
-```
-shuriken --init
-shuriken --generate [--config PATH] [OPTIONS]
-shuriken --refresh-splash [--config PATH] [OPTIONS]
-shuriken --sync [--config PATH] [OPTIONS]
-shuriken --dry-run [--config PATH] [OPTIONS]
-shuriken --print-config [--config PATH] [OPTIONS]
-shuriken --clean [--config PATH] [OPTIONS]
-shuriken --version
+```sh
+shuriken --dry-run    # preview the planned generation without writing anything
+shuriken --generate   # build the album into DIST_DIR (./dist by default)
+shuriken --sync       # rsync DIST_DIR/ to each configured SYNC_DESTINATIONS
+shuriken --clean      # remove DIST_DIR and leftover staging dirs
 ```
 
-* `--init` creates `./shuriken.conf` in the current working directory from the
-  default config. It refuses to overwrite an existing file.
-* `--generate` builds the static album.
-* `--force` with `--generate` rebuilds from scratch instead of reusing cached
-  scaled photos, thumbnails, blurs, or EXIF data from the existing output.
-* `--refresh-splash` rewrites only the generated root splash page.
-* `--sync` publishes the generated output directory to configured rsync
-  destinations.
-* `--dry-run` loads the config and overrides, validates the planned generation,
-  and prints the effective paths, image count, tarball plan, and generated file
-  plan without writing output or running ImageMagick or tar.
-* `--print-config` loads the config and overrides, validates basic config values,
-  and prints the effective configuration without writing output, running
-  ImageMagick, running tar, cleaning, or initializing.
-* `--clean` removes the configured output directory and any leftover
-  `.shuriken.*.staging`/`.backup` directories the generation pipeline created as
-  siblings of `DIST_DIR` (e.g. from an interrupted run).
-* `--version` prints the program version.
-* `--config PATH` selects the config file for `--generate`,
-  `--refresh-splash`, `--dry-run`, `--print-config`, or `--clean`.
+ImageMagick (`magick` or `convert`) and Bash 5.1 or newer are required.
 
-When `--config PATH` is not provided, `--generate`, `--dry-run`,
-`--print-config`, `--refresh-splash`, and `--clean` read `./shuriken.conf`.
-If the file is missing, run `shuriken --init` first.
+## Main flags
 
-The config file is a Bash file with assignments such as `INCOMING_DIR`,
-`DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`, `SOURCE_URL`, `TITLE`, `HEIGHT`,
-`THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`,
-`SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`, `TAR_TIMEOUT`,
-`SYNC_DELETE`, and `SYNC_DESTINATIONS`.
-
-Before generating, `shuriken` validates the loaded config and command-line
-overrides. It checks required values, positive integer settings, `yes`/`no`
-settings, readable input and template directories, a writable output location,
-and ImageMagick availability. Generation stops before writing album output when
-validation fails.
-
-Only regular files in `INCOMING_DIR` with supported image extensions are
-processed as album images. Supported extensions are `jpg`, `jpeg`, `png`, `webp`,
-and `gif`, matched case-insensitively. Other files, such as `.txt` or `.md`
-notes, are ignored with a warning so generation can continue.
-
-`--dry-run` reports the same `INCOMING_DIR`, `DIST_DIR`, and `TEMPLATE_DIR`
-values that generation would use after applying command-line overrides. Its
-tarball filename uses `<timestamp>` as a placeholder so the output is stable.
-
-`--print-config` writes stable shell-style assignments to stdout in this order:
-`CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`,
-`SOURCE_URL`, `TITLE`, `HEIGHT`,
-`THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`, `IMAGEMAGICK_TIMEOUT`,
-`RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`,
-`TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, `SYNC_DELETE`,
-`SYNC_DESTINATIONS`, and `ORIGINAL_BASEPATH`. Scalar values use Bash `%q`
-quoting and `TAR_OPTS` and `SYNC_DESTINATIONS` are normalized to Bash array
-assignments, so the output can be parsed by shell tooling. `--quiet` does not
-suppress this output, and `--verbose` does not add human-readable diagnostics to
-it.
-
-Successful generation writes `shuriken.json` into the output directory. This
-metadata records the generator version and timestamp, config source, template
-directory, supported source image and generated file counts, tarball status, and
-effective settings useful for debugging a published album.
-Generation also writes `favicon.ico` into the output directory and the default
-templates link to it. By default this is the bundled shuriken favicon; set
-`FAVICON` in the config or pass `--favicon PATH` to publish your own favicon
-file instead (it is copied in as `favicon.ico`).
-
-The page footer links to the project source ("Site generated ... with
-&lt;URL&gt;"). This defaults to the shuriken.sh repository; set `SOURCE_URL` in
-the config or pass `--source-url URL` to point it at your own album's repository
-instead. The displayed link text is the URL with its scheme removed.
-
-Normal generation preserves reusable generated artifacts from the previous
-`DIST_DIR` while still rerendering HTML, random splash/background choices,
-animation classes, timestamps, and shuffled preview order. Existing scaled
-photos, thumbnails, and blurs are reused from the previous output when the source
-image is unchanged.
-
-The per-photo EXIF `identify` output is cached in a separate `cache/` directory
-created next to `DIST_DIR` (i.e. parallel to `dist/` in the working directory).
-This cache is volatile and safe to delete, is **not** part of the published
-output (it is never written into `DIST_DIR`, so `--sync` does not deploy it), and
-persists across runs even if `DIST_DIR` is removed or rebuilt. Because reading
-EXIF from full-size originals is the slowest part of generation, keeping this
-cache makes regenerating an album dramatically faster: an unchanged photo skips
-`identify` entirely. `--clean` removes `DIST_DIR` (and any leftover staging
-directories) but leaves `cache/` in place; delete `cache/` by hand to force a
-full EXIF rebuild on the next run.
-
-Pass `--force` with `--generate` to rebuild all generated image artifacts and
-re-read every photo's EXIF from scratch (it clears `cache/` once up front, then
-repopulates it during the run).
-
-The following long options override config values:
-
-| Option | Config value |
+| Flag | Purpose |
 | --- | --- |
-| `--incoming PATH` | `INCOMING_DIR` |
-| `--dist PATH` | `DIST_DIR` |
-| `--template PATH` | `TEMPLATE_DIR` |
-| `--favicon PATH` | `FAVICON` |
-| `--source-url URL` | `SOURCE_URL` |
-| `--title TEXT` | `TITLE` |
-| `--height VALUE` | `HEIGHT` |
-| `--thumbheight VALUE` | `THUMBHEIGHT` |
-| `--maxpreviews N` | `MAXPREVIEWS` |
-| `--image-jobs N` | `IMAGE_JOBS` |
-| `--random-seed VALUE` | `RANDOM_SEED` |
-| `--shuffle` | `SHUFFLE=yes` |
-| `--no-shuffle` | `SHUFFLE=no` |
-| `--splash` | `SPLASH_PAGE=yes` |
-| `--no-splash` | `SPLASH_PAGE=no` |
-| `--stats` | `STATS_PAGE=yes` |
-| `--no-stats` | `STATS_PAGE=no` |
-| `--tarball` | `TARBALL_INCLUDE=yes` |
-| `--no-tarball` | `TARBALL_INCLUDE=no` |
-| `--sync-delete` | `SYNC_DELETE=yes` |
-| `--no-sync-delete` | `SYNC_DELETE=no` |
+| `--init` | Create `./shuriken.conf` from the default config (refuses to overwrite). |
+| `--generate` | Build the static album. |
+| `--force` | With `--generate`: rebuild all image artifacts and re-read every EXIF tag from scratch. |
+| `--dry-run` | Load config + overrides, validate, and print the plan without writing output or running ImageMagick/tar. |
+| `--print-config` | Print the effective configuration as shell assignments. |
+| `--refresh-splash` | Rewrite only the root splash page of an already generated album. |
+| `--sync` | Publish `DIST_DIR/` to configured rsync destinations. |
+| `--clean` | Remove `DIST_DIR` and leftover `.shuriken.*.staging`/`.backup` dirs. |
+| `--version` | Print the program version. |
+| `--config PATH` | Select the config file for any config-backed action (default: `./shuriken.conf`). |
 
-Pass `--sync-destination DEST` one or more times with `--sync` to override the
-configured sync destinations for that run.
+Common per-run overrides (see the full reference table in [docs/usage.md](docs/usage.md)):
 
-By default, the generated root `index.html` is a no-JavaScript splash page using
-a randomly selected album photo. Set `SPLASH_PAGE=no` or pass `--no-splash` to
-restore the top-level redirect to `page-1.html`.
+`--incoming`, `--dist`, `--template`, `--title`, `--height`, `--thumbheight`,
+`--maxpreviews`, `--image-jobs`, `--random-seed`, `--shuffle`/`--no-shuffle`,
+`--splash`/`--no-splash`, `--stats`/`--no-stats`, `--tarball`/`--no-tarball`,
+`--favicon`, `--source-url`, `--sync-destination`, `--sync-delete`/`--no-sync-delete`,
+`--quiet`, `--verbose`.
 
-`shuriken` can also generate a no-JavaScript stats site with EXIF-derived
-insights (camera leaderboard, shooting dates, exposure, dimension, format, and
-decoded-enum breakdowns), reachable from the `Stats` link in the page header bar.
-This is off by default; set `STATS_PAGE=yes` or pass `--stats` to enable it. Every
-row on the stats overview is clickable: each bucket (each camera, ISO, year,
-aperture, orientation, …) is its own filter "mini-album" — a gallery of just the
-matching photos with view pages whose previous/next cycle within that filter.
+Feature toggles at a glance:
 
-To keep the album root uncluttered, all of this lives under a `stats/`
-subdirectory: the overview is `stats/index.html` and each mini-album is its own
-directory `stats/<filter>/` (gallery `index.html` plus numbered view pages). Only
-the main album sits in `DIST_DIR` itself. The mini-album pages reuse the album's
-shared `photos/`, `thumbs/`, and `blurs/` assets (only the HTML is per-filter)
-and are rendered in parallel honouring `IMAGE_JOBS`. Set `STATS_PAGE=no` or pass
-`--no-stats` (the default) to skip the whole `stats/` tree and hide the link.
+* **Splash page** (`SPLASH_PAGE=yes`, the default): the root `index.html` is a
+  no-JavaScript splash page using a random album photo. `--no-splash` restores a
+  top-level redirect to `page-1.html`.
+* **Stats site** (`STATS_PAGE=no`, the default): set `--stats` to generate a
+  no-JavaScript EXIF stats site under `stats/` (camera leaderboard, shooting
+  dates, exposure/dimension/format breakdowns), with each bucket as its own
+  clickable filter mini-album.
+* **Reproducible builds**: set `RANDOM_SEED` (or `--random-seed VALUE`) to make
+  splash/background picks, animation classes, timestamps, and shuffle order
+  repeatable.
 
-To quickly pick a new random splash photo for an already generated album, run
-`shuriken --refresh-splash`. This rewrites only `DIST_DIR/index.html` using
-the existing `photos` and `blurs` output, so it avoids reprocessing images and
-rerendering album pages. It requires `SPLASH_PAGE=yes`; pass
-`--random-seed VALUE` when you need a repeatable pick.
+## Documentation
 
-By default, splash and background photos, animation classes, generated
-timestamps, and `--shuffle` preview order remain non-deterministic. Set
-`RANDOM_SEED` in the config, or pass `--random-seed VALUE`, to make those
-choices repeatable for stable tests or reproducible album builds. Use the same
-seed and inputs to produce the same HTML.
+The quick start above is all you need for a first album. Detailed reference:
 
-To publish generated output, configure destinations and run `shuriken --sync`:
-
-```
-SYNC_DESTINATIONS=(
-    admin@fishfinger.buetow.org:/var/www/htdocs/example.org/
-    admin@blowfish.buetow.org:/var/www/htdocs/example.org/
-)
-```
-
-`SYNC_DESTINATIONS` must be a Bash array, even for a single destination (for
-example `SYNC_DESTINATIONS=( '/path/with spaces/' )`). A scalar string is
-rejected with an error, since word-splitting would break destinations that
-contain spaces.
-
-`--sync` runs `rsync -av --delete "$DIST_DIR/" "$destination"` for each
-destination by default. The trailing slash on `DIST_DIR/` means the generated
-contents are copied into the target directory. Set `SYNC_DELETE=no` or pass
-`--no-sync-delete` to omit `--delete`.
-
-`--dry-run`, `--print-config`, and `--refresh-splash` accept the same override
-options as `--generate`. `--clean` accepts the same override options, but only
-`--dist` changes what it removes.
-
-Output is human-readable by default and reports routine generation progress.
-Use `--quiet` to suppress routine progress while still writing errors to stderr.
-Use `--verbose` for extra diagnostics, including the selected config file,
-effective paths, skipped existing files, staging output directory, and tarball
-decisions. If `--quiet` and `--verbose` are repeated or combined, the last output
-flag wins.
-
-ImageMagick photo processing and per-photo HTML template rendering run in
-parallel. The default is `IMAGE_JOBS=3`. Set `IMAGE_JOBS` in the config, or pass
-`--image-jobs N`, to tune the number of concurrent image and template jobs.
-
-Each ImageMagick command is bounded by `IMAGEMAGICK_TIMEOUT=60` seconds, and
-tarball creation is bounded by `TAR_TIMEOUT=120` seconds. Set either config
-value to a positive integer to adjust the limit for large images or archives.
-
-## Example usage
-
-1. Run `shuriken --init`.
-2. Edit `shuriken.conf`. Set `INCOMING_DIR` to the directory containing the
-   pictures and adjust `DIST_DIR`, `TITLE`, or template settings as needed.
-3. Run `shuriken --dry-run` to inspect the planned generation.
-4. Run `shuriken --generate` to generate the album.
-5. Run `shuriken --sync` to publish `./dist`, or distribute it manually.
-6. Run `shuriken --clean` to remove the generated output.
-
-## HTML templates
-
-Templates live under `share/templates/default` in the source tree and under the
-installed template directory after installation. The stock default resolves to
-the installed template directory when it exists, and otherwise falls back to the
-source tree's `share/templates/default` when running from a checkout. Copy and
-edit templates, then point `TEMPLATE_DIR` or `--template PATH` at the customized
-directory.
+* [docs/installation.md](docs/installation.md) — build, install, paths, packaging overrides, requirements.
+* [docs/usage.md](docs/usage.md) — full CLI reference: every action, `--config`, the override-option table, output flags.
+* [docs/configuration.md](docs/configuration.md) — the config file format, every variable, defaults, and validation rules.
+* [docs/generation.md](docs/generation.md) — how generation works: artifact reuse, the EXIF cache, `--force`, splash/stats pages, `--refresh-splash`, reproducibility, parallelism/timeouts, `shuriken.json`, favicon, source URL.
+* [docs/publishing.md](docs/publishing.md) — publishing with `--sync`, `SYNC_DESTINATIONS`, `SYNC_DELETE`, and the rsync command.
+* [docs/templates.md](docs/templates.md) — HTML template layout and customization.
+* [docs/stats-exif-audit.md](docs/stats-exif-audit.md) — EXIF field coverage audit behind the stats site (historical design record).

@@ -1,5 +1,13 @@
 # Stats Page EXIF Field Coverage Audit
 
+> **Status note (added after implementation):** This is a historical design
+> record from task `nm0`. The stats site it scopes has since been implemented
+> (`src/lib/stats-aggregate.source.sh`, `src/lib/stats-render.source.sh`,
+> `src/lib/stats-filter-album.source.sh`), including the "native-field parser
+> extension" described below as required work — `Geometry`/`Format` lines are
+> now read alongside the `exif:` lines. The verdicts and decode maps below
+> remain accurate as a description of what the EXIF data can and cannot support.
+
 Task `nm0` for the stats site feature (see
 `/home/paul/.pi/plans/shuriken-stats-site.md`). This document decides which of
 the planned stats categories are actually buildable from the EXIF/identify data
@@ -13,8 +21,10 @@ library (there is none to point at):
 
 * `src/lib/imagemagick.source.sh` runs `magick identify -verbose <file>` (or
   `convert <file> -verbose info:` when only the legacy `convert` is present).
-* `src/lib/album.source.sh` caches that raw output per photo under a volatile
-  `./cache/exif/<photo>.txt` (parallel to `./dist`) and parses it.
+* The shared EXIF cache in `src/lib/metadata-cache.source.sh` (promoted out of
+  the album module after this audit was written) caches that raw output per
+  photo under a volatile `./cache/exif/<photo>.txt` (parallel to `./dist`);
+  `src/lib/album-metadata.source.sh` parses it.
 
 The parser detail that drives every decision below: shuriken only reads EXIF
 through this regex (`photo_exif_details_html`, `_photo_exif_values_to`):
