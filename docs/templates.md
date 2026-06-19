@@ -28,7 +28,7 @@ used when `STATS_PAGE=yes`.
 ## Header bar and footer
 
 * The page **header bar** (`header.tmpl`) renders the "Site generated … with
-  &lt;SOURCE_URL&gt;" link and, when `STATS_PAGE=yes`, the `Stats` navigation
+  `<SOURCE_URL>`" link and, when `STATS_PAGE=yes`, the `Stats` navigation
   link.
 * The page **footer** (`footer.tmpl`) renders the "Download all photos in
   original size" tarball link, shown only when `TARBALL_INCLUDE=yes`.

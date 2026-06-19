@@ -110,6 +110,6 @@ file instead (it is copied in as `favicon.ico`).
 ## Source URL
 
 The page header bar links to the project source ("Site generated … with
-&lt;URL&gt;"). This defaults to the shuriken.sh repository; set `SOURCE_URL` in
+`<URL>`"). This defaults to the shuriken.sh repository; set `SOURCE_URL` in
 the config or pass `--source-url URL` to point it at your own album's repository
 instead. The displayed link text is the URL with its scheme removed.

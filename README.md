@@ -10,17 +10,17 @@ JavaScript.
 
 ```sh
 just build            # build ./bin/shuriken from src/
-sudo just install     # install to /usr/bin, /usr/share/shuriken, /etc/default
+sudo just install     # install command, templates, and default config
 shuriken --init       # creates ./shuriken.conf in the current directory
 ```
 
 Edit `shuriken.conf` and point `INCOMING_DIR` at a directory of photos, then:
 
 ```sh
-shuriken --dry-run    # preview the planned generation without writing anything
-shuriken --generate   # build the album into DIST_DIR (./dist by default)
-shuriken --sync       # rsync DIST_DIR/ to each configured SYNC_DESTINATIONS
-shuriken --clean      # remove DIST_DIR and leftover staging dirs
+shuriken --dry-run    # preview the planned generation (writes nothing)
+shuriken --generate   # build the album into ./dist (DIST_DIR)
+shuriken --sync       # publish ./dist to the configured remote hosts
+shuriken --clean      # remove ./dist and leftover staging dirs
 ```
 
 ImageMagick (`magick` or `convert`) and Bash 5.1 or newer are required.
@@ -38,7 +38,7 @@ ImageMagick (`magick` or `convert`) and Bash 5.1 or newer are required.
 | `--sync` | Publish `DIST_DIR/` to configured rsync destinations. |
 | `--clean` | Remove `DIST_DIR` and leftover `.shuriken.*.staging`/`.backup` dirs. |
 | `--version` | Print the program version. |
-| `--config PATH` | Select the config file for any config-backed action (default: `./shuriken.conf`). |
+| `--config PATH` | Select the config file to use (default: `./shuriken.conf`). |
 
 Common per-run overrides (see the full reference table in [docs/usage.md](docs/usage.md)):
 

@@ -38,10 +38,11 @@ values for the current run.
 
 ## Supported source images
 
-Only regular files in `INCOMING_DIR` (top level, `maxdepth 1`) with supported
-image extensions are processed as album images. Supported extensions are `jpg`,
-`jpeg`, `png`, `webp`, and `gif`, matched case-insensitively. Other files, such
-as `.txt` or `.md` notes, are ignored with a warning so generation can continue.
+Only regular files found directly in `INCOMING_DIR` (not in subdirectories) with
+supported image extensions are processed as album images. Supported extensions
+are `jpg`, `jpeg`, `png`, `webp`, and `gif`, matched case-insensitively. Other
+files, such as `.txt` or `.md` notes, are ignored with a warning so generation
+can continue.
 
 ## Validation
 
