@@ -56,3 +56,34 @@ You can run `./bin/shuriken` directly from a source checkout. The stock default
 template directory resolves to the installed location when it exists, and
 otherwise falls back to the source tree's `share/templates/default`. Likewise
 the bundled favicon falls back to `assets/site/favicon.ico`.
+
+## Docker image
+
+Build the Alpine-based image from the source checkout:
+
+```sh
+docker build -t shuriken .
+```
+
+Run it with an album project mounted as `/work`. The default container command
+is `shuriken --generate`, so a directory containing `shuriken.conf`,
+`INCOMING_DIR`, and `DIST_DIR` can be generated with:
+
+```sh
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" \
+  shuriken
+```
+
+Pass the normal shuriken CLI arguments after the image name:
+
+```sh
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" \
+  shuriken --generate --incoming ./photos --dist ./dist
+```
+
+Use `--user` when bind-mounting a host directory so generated files are owned by
+the calling user instead of root.
