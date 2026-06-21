@@ -187,9 +187,9 @@ queue_preview_page_render_job() {
 }
 
 # Append one thumbnail's markup to a page's accumulating thumbnail-grid buffer.
-# Produces exactly the bytes the old per-thumbnail preview.tmpl emitted (the
-# <a name=... href=...><img class='thumb <anim>' .../></a> block), so batching
-# all thumbnails into one previewpage render stays byte-identical. Every
+# Produces the per-thumbnail preview.tmpl block (the
+# <a id=... href=...><img class='thumb <anim>' alt=... src=...></a> block), so
+# batching all thumbnails into one previewpage render stays consistent. Every
 # interpolated value is HTML-escaped like the template's context_html fields; the
 # seeded "slow" animation class is preserved exactly. Blocks are separated by a
 # newline; the previewpage template adds the single trailing newline, matching
@@ -234,10 +234,10 @@ build_preview_thumbnail() {
     anim_html=$(_html_escape "$animation_class")
     backhref_html=$(_html_escape "$backhref")
     thumbs_dir_html=$(_html_escape "$thumbs_dir")
-    printf '<a name=%s href=%s>\n' \
+    printf '<a id=%s href=%s>\n' \
         "'$photo_html'" "'$page_num-$preview_num.html'"
-    printf "  <img class='thumb %s' src='%s/%s/%s' />\n</a>" \
-        "$anim_html" "$backhref_html" "$thumbs_dir_html" "$photo_html"
+    printf "  <img class='thumb %s' alt='%s' src='%s/%s/%s'>\n</a>" \
+        "$anim_html" "$photo_html" "$backhref_html" "$thumbs_dir_html" "$photo_html"
 }
 
 render_view_page() {

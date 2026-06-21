@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# shuriken (c) 2011 - 2014, 2022 by Paul Buetow
+# shuriken (c) 2011 - 2014, 2022, 2025, 2026 by Paul Buetow
 # https://codeberg.org/snonux/shuriken.sh
 
 if (( BASH_VERSINFO[0] < 5 \
@@ -10,7 +10,7 @@ if (( BASH_VERSINFO[0] < 5 \
     exit 1
 fi
 
-declare -r VERSION='0.10.0'
+declare -r VERSION='0.10.1'
 declare -r DEFAULTRC="${SHURIKEN_DEFAULT_RC:-/etc/default/shuriken}"
 declare -r PACKAGED_TEMPLATE_DIR='/usr/share/shuriken/templates/default'
 declare -r PACKAGED_ASSET_DIR='/usr/share/shuriken/assets'
@@ -2608,9 +2608,9 @@ queue_preview_page_render_job() {
 }
 
 # Append one thumbnail's markup to a page's accumulating thumbnail-grid buffer.
-# Produces exactly the bytes the old per-thumbnail preview.tmpl emitted (the
-# <a name=... href=...><img class='thumb <anim>' .../></a> block), so batching
-# all thumbnails into one previewpage render stays byte-identical. Every
+# Produces the per-thumbnail preview.tmpl block (the
+# <a id=... href=...><img class='thumb <anim>' alt=... src=...></a> block), so
+# batching all thumbnails into one previewpage render stays consistent. Every
 # interpolated value is HTML-escaped like the template's context_html fields; the
 # seeded "slow" animation class is preserved exactly. Blocks are separated by a
 # newline; the previewpage template adds the single trailing newline, matching
@@ -2655,10 +2655,10 @@ build_preview_thumbnail() {
     anim_html=$(_html_escape "$animation_class")
     backhref_html=$(_html_escape "$backhref")
     thumbs_dir_html=$(_html_escape "$thumbs_dir")
-    printf '<a name=%s href=%s>\n' \
+    printf '<a id=%s href=%s>\n' \
         "'$photo_html'" "'$page_num-$preview_num.html'"
-    printf "  <img class='thumb %s' src='%s/%s/%s' />\n</a>" \
-        "$anim_html" "$backhref_html" "$thumbs_dir_html" "$photo_html"
+    printf "  <img class='thumb %s' alt='%s' src='%s/%s/%s'>\n</a>" \
+        "$anim_html" "$photo_html" "$backhref_html" "$thumbs_dir_html" "$photo_html"
 }
 
 render_view_page() {
@@ -4453,9 +4453,9 @@ _stats_filter_thumbnail() {
     animation_class=$(random_animation_css_class slow "$photo")
     # The view page sits in the same directory as this gallery, so link to it by
     # bare index; the thumbnail image lives at the album root via backhref.
-    printf '        <a name="%s" href="%d.html">' "$photo_html" "$index"
-    printf '<img class="thumb %s" src="%s/%s/%s" /></a>\n' \
-        "$animation_class" "$backhref_html" "$STATS_THUMBS_DIR" "$photo_html"
+    printf '        <a id="%s" href="%d.html">' "$photo_html" "$index"
+    printf '<img class="thumb %s" alt="%s" src="%s/%s/%s"></a>\n' \
+        "$animation_class" "$photo_html" "$backhref_html" "$STATS_THUMBS_DIR" "$photo_html"
 }
 
 # Build the full thumbnail grid for one filter from its newline-separated photo

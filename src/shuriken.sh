@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# shuriken (c) 2011 - 2014, 2022 by Paul Buetow
+# shuriken (c) 2011 - 2014, 2022, 2025, 2026 by Paul Buetow
 # https://codeberg.org/snonux/shuriken.sh
 
 if (( BASH_VERSINFO[0] < 5 \

@@ -693,8 +693,8 @@ test_generate_no_shuffle_override_uses_sorted_order() {
 
     page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
     test::assert_contains_before \
-        "name='01-landscape.jpg'" \
-        "name='06-extra.jpg'" \
+        "id='01-landscape.jpg'" \
+        "id='06-extra.jpg'" \
         "$page_html"
     test::assert_path_absent "$sort_log"
     test::teardown
@@ -2975,7 +2975,7 @@ test_integration_generates_album_outputs_and_cleans() {
     page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
     details_html=$(<"$TEST_TMPDIR/dist/1-1-details.html")
     top_index_html=$(<"$TEST_TMPDIR/dist/index.html")
-    test::assert_contains "name='04 filename with spaces.jpg'" \
+    test::assert_contains "id='04 filename with spaces.jpg'" \
         "$(<"$TEST_TMPDIR/dist/page-2.html")"
     test::assert_contains 'Next 2 pictures' "$page_html"
     test::assert_contains \
@@ -3009,7 +3009,7 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_contains 'Enter album' "$top_index_html"
     test::assert_contains 'href="page-1.html"' "$top_index_html"
     test::assert_contains \
-        '<img class="splash-photo" src="./photos/' \
+        '<img class="splash-photo" alt="Integration album" src="./photos/' \
         "$top_index_html"
     test::assert_not_contains '<script' "$top_index_html"
     test::assert_not_contains 'javascript:' "$top_index_html"
@@ -3467,7 +3467,7 @@ test_refresh_splash_rewrites_only_index_from_existing_assets() {
     after_metadata=$(<"$TEST_TMPDIR/dist/shuriken.json")
 
     test::assert_contains 'Refreshed splash page' "$output"
-    test::assert_contains '<img class="splash-photo" src="./photos/' \
+    test::assert_contains '<img class="splash-photo" alt="Refresh splash album" src="./photos/' \
         "$after_index"
     if [ "$before_index" = "$after_index" ]; then
         echo 'FAIL: expected --refresh-splash to choose a new splash image' >&2
@@ -4690,7 +4690,7 @@ BASH
     html=$(cat "$s/camera-canon-eos-5d/index.html")
     test::assert_contains 'href="1.html"' "$html"
     test::assert_contains 'class="thumb ' "$html"
-    test::assert_contains 'src="../../thumbs/a.jpg" />' "$html"
+    test::assert_contains 'src="../../thumbs/a.jpg"></a>' "$html"
     test::assert_contains 'href="2.html"' "$html"
     # Heading shows the (trusted) camera label and a back-to-stats link.
     test::assert_contains 'Canon EOS 5D' "$html"
@@ -5387,12 +5387,12 @@ test_generate_escapes_html_values() {
         "$page_html"
     test::assert_contains "url(\"./blurs/$css_photo\")" "$top_index_html"
     test::assert_contains "src=\"./photos/$photo_html\"" "$top_index_html"
-    test::assert_contains "name='$photo_html'" "$page_html"
+    test::assert_contains "id='$photo_html'" "$page_html"
     test::assert_contains "src='./thumbs/$photo_html'" "$page_html"
     test::assert_contains '&amp;&quot;&#39;.tar' "$page_html"
     test::assert_contains "href=\"page-1.html#$photo_html\"" "$view_html"
     test::assert_contains 'href="1-1-details.html">Details</a>' "$view_html"
-    test::assert_contains "href ='./photos/$photo_html'" "$view_html"
+    test::assert_contains "href='./photos/$photo_html'" "$view_html"
     test::assert_contains \
         "href=\"$original_basepath_html/$photo_html\"" \
         "$view_html"

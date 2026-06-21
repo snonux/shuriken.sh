@@ -9,13 +9,13 @@ fi
 cat <<END
 <div class='view'>
     <a href="${render_page_num_html}-${render_view_next_html}.html">
-        <img class='view ${render_animation_class_html}' border='0' src='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}'${render_exif_tooltip_attr} />
+        <img class='view ${render_animation_class_html}' alt='${render_photo_html}' src='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}'${render_exif_tooltip_attr}>
     </a>
     <div class="navigator">
         <a href="${render_page_num_html}-${render_view_prev_html}.html" class="arrow">&lArr;</a>
         <a href="page-${render_page_num_html}.html#${render_photo_html}">Thumbnails</a> |
         <a href="${render_page_num_html}-${render_preview_num_html}-details.html">Details</a> |
-        <a href ='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}'>Direct link</a>
+        <a href='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}'>Direct link</a>
         <a href="${render_page_num_html}-${render_view_next_html}.html" class="arrow">&rArr;</a>
     </div>
 </div>

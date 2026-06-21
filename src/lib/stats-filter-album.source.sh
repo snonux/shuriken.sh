@@ -53,9 +53,9 @@ _stats_filter_thumbnail() {
     animation_class=$(random_animation_css_class slow "$photo")
     # The view page sits in the same directory as this gallery, so link to it by
     # bare index; the thumbnail image lives at the album root via backhref.
-    printf '        <a name="%s" href="%d.html">' "$photo_html" "$index"
-    printf '<img class="thumb %s" src="%s/%s/%s" /></a>\n' \
-        "$animation_class" "$backhref_html" "$STATS_THUMBS_DIR" "$photo_html"
+    printf '        <a id="%s" href="%d.html">' "$photo_html" "$index"
+    printf '<img class="thumb %s" alt="%s" src="%s/%s/%s"></a>\n' \
+        "$animation_class" "$photo_html" "$backhref_html" "$STATS_THUMBS_DIR" "$photo_html"
 }
 
 # Build the full thumbnail grid for one filter from its newline-separated photo
