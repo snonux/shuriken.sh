@@ -29,6 +29,7 @@ usage() {
     --thumbheight VALUE
     --maxpreviews N
     --subdivide PERCENT
+    --feature PERCENT
     --image-jobs N
     --random-seed VALUE
     --splash

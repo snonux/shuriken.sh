@@ -69,6 +69,7 @@ config variable documented in [configuration.md](configuration.md).
 | `--thumbheight VALUE` | `THUMBHEIGHT` |
 | `--maxpreviews N` | `MAXPREVIEWS` |
 | `--subdivide PERCENT` | `THUMB_SUBDIVIDE_PERCENT` |
+| `--feature PERCENT` | `THUMB_FEATURE_PERCENT` |
 | `--image-jobs N` | `IMAGE_JOBS` |
 | `--random-seed VALUE` | `RANDOM_SEED` |
 | `--shuffle` | `SHUFFLE=yes` |

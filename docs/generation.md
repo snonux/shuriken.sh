@@ -97,8 +97,8 @@ metadata records:
 * generated photo, thumbnail, and HTML file counts;
 * tarball status (included + file);
 * effective settings (title, height, thumbheight, maxpreviews, subdivide
-  percent, image jobs, random seed, shuffle, splash page, stats page, original
-  basepath) useful for debugging a published album.
+  percent, feature percent, image jobs, random seed, shuffle, splash page, stats
+  page, original basepath) useful for debugging a published album.
 
 ## Favicon
 

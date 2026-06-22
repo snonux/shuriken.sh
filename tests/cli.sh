@@ -140,6 +140,7 @@ assert metadata["settings"]["height"] == "120"
 assert metadata["settings"]["thumbheight"] == "30"
 assert metadata["settings"]["maxpreviews"] == maxpreviews
 assert metadata["settings"]["subdivide_percent"] == "30"
+assert metadata["settings"]["feature_percent"] == "10"
 assert metadata["settings"]["image_jobs"] == "3"
 assert metadata["settings"]["shuffle"] is False
 assert isinstance(metadata["settings"]["splash_page"], bool)
@@ -1414,6 +1415,7 @@ HEIGHT=1200
 THUMBHEIGHT=300
 MAXPREVIEWS=40
 THUMB_SUBDIVIDE_PERCENT=30
+THUMB_FEATURE_PERCENT=10
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
@@ -1464,6 +1466,7 @@ HEIGHT=''
 THUMBHEIGHT=30
 MAXPREVIEWS=40
 THUMB_SUBDIVIDE_PERCENT=30
+THUMB_FEATURE_PERCENT=10
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
@@ -1607,6 +1610,7 @@ HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=7
 THUMB_SUBDIVIDE_PERCENT=30
+THUMB_FEATURE_PERCENT=10
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
@@ -1652,6 +1656,7 @@ HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=8
 THUMB_SUBDIVIDE_PERCENT=30
+THUMB_FEATURE_PERCENT=10
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
@@ -1705,6 +1710,7 @@ test_print_config_applies_cli_overrides_without_writes() {
                 --thumbheight 45 \
                 --maxpreviews 9 \
                 --subdivide 55 \
+                --feature 35 \
                 --image-jobs 2 \
                 --random-seed cli-seed \
                 --shuffle \
@@ -1723,6 +1729,7 @@ HEIGHT=456
 THUMBHEIGHT=45
 MAXPREVIEWS=9
 THUMB_SUBDIVIDE_PERCENT=55
+THUMB_FEATURE_PERCENT=35
 IMAGE_JOBS=2
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=cli-seed
@@ -1940,6 +1947,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
                 --thumbheight 45 \
                 --maxpreviews 2 \
                 --subdivide 25 \
+                --feature 15 \
                 --image-jobs 2 \
                 --random-seed dry-seed \
                 --shuffle \
@@ -1960,6 +1968,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains 'Thumb height: 45' "$output"
     test::assert_contains 'Max previews per page: 2' "$output"
     test::assert_contains 'Subdivide percent: 25' "$output"
+    test::assert_contains 'Feature percent: 15' "$output"
     test::assert_contains 'Image jobs: 2' "$output"
     test::assert_contains 'Random seed: dry-seed' "$output"
     test::assert_contains 'Shuffle: yes' "$output"

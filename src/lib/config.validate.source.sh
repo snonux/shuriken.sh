@@ -287,6 +287,7 @@ validate_common_config() {
     validate_positive_integer_config_var THUMBHEIGHT || return
     validate_positive_integer_config_var MAXPREVIEWS || return
     validate_percentage_config_var THUMB_SUBDIVIDE_PERCENT || return
+    validate_percentage_config_var THUMB_FEATURE_PERCENT || return
     validate_positive_integer_config_var IMAGE_JOBS || return
     validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
     validate_positive_integer_config_var TAR_TIMEOUT || return

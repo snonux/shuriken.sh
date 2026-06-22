@@ -189,21 +189,51 @@ cat <<END
             vertical-align: top;
         }
 
-        /* A subdivided thumbnail tile: same outer footprint as one square thumb
-           (including the 5px image padding), but a 2x2 grid packing several
-           smaller thumbnails. Anchor order + the "wide" class (a full-width
-           strip spanning both columns) produce the quad / two-wide / squares+
-           wide layouts via grid auto-placement. */
+        /* The album overview is a CSS grid of fixed THUMBHEIGHT cells. A normal
+           thumbnail fills one cell, a subdivided tile packs several smaller
+           thumbnails into one cell, and a "feature" tile spans a 2x2 block (a
+           large hero image). grid-auto-flow: dense lets the smaller tiles
+           backfill the holes a 2x2 feature would otherwise leave, keeping the
+           grid tightly packed. Spacing comes from the grid gap, so images carry
+           no padding inside the grid. */
+        div.thumbs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, ${render_thumbheight_html}px);
+            grid-auto-rows: ${render_thumbheight_html}px;
+            grid-auto-flow: dense;
+            gap: 10px;
+            justify-content: center;
+            margin: 0 auto;
+        }
+
+        div.thumbs-grid img {
+            padding: 0;
+        }
+
+        /* A feature tile: one photo blown up to span a 2x2 block of the grid. It
+           reuses the normal img.thumb class (and its hover) but stretches the
+           image to fill the larger 2x2 area. */
+        div.thumbs-grid a.feature {
+            grid-column: span 2;
+            grid-row: span 2;
+        }
+
+        div.thumbs-grid a.feature img.thumb {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* A subdivided thumbnail tile fills one grid cell with its own 2x2 inner
+           grid packing several smaller thumbnails. Anchor order + the "wide"
+           class (a full-width strip spanning both columns) produce the quad /
+           two-wide / squares+wide layouts via grid auto-placement. */
         div.tile {
-            display: inline-grid;
+            display: grid;
             grid-template-columns: 1fr 1fr;
             grid-template-rows: 1fr 1fr;
             gap: 4px;
-            width: ${render_thumbheight_html}px;
-            height: ${render_thumbheight_html}px;
-            padding: 5px;
-            box-sizing: content-box;
-            vertical-align: top;
+            width: 100%;
+            height: 100%;
         }
 
         div.tile a {
@@ -216,12 +246,12 @@ cat <<END
             grid-column: span 2;
         }
 
-        /* Raise the hovered sub-thumbnail above its neighbours so its
-           scaled/rotated "pop" effect (the shared img.thumb/img.subthumb:hover
-           rule below) is painted on top of the adjacent grid cells, not under
-           them. The sub-images fit their cells exactly, so there is no overflow
-           to clip until a hover scales one up. */
-        div.tile a:hover {
+        /* Raise whichever grid item is hovered (a normal/feature anchor, a whole
+           subdivided tile, or a single popping sub-thumbnail) above its
+           neighbours, so its scaled/rotated hover effect is painted on top of
+           the adjacent cells instead of under them. */
+        div.thumbs-grid a:hover,
+        div.thumbs-grid div.tile:hover {
             position: relative;
             z-index: 2;
         }
@@ -240,10 +270,9 @@ cat <<END
             margin-top: 12px;
         }
 
-        /* Sub-thumbnails get the same dramatic hover as the full square thumbs
-           (mirror flip, scale-up, rotate, contrast/saturate boost, and a switch
-           to object-fit:contain) so a subdivided tile feels as lively as a
-           normal one. */
+        /* Sub-thumbnails and feature tiles get the same dramatic hover as the
+           full square thumbs (mirror flip, scale-up, rotate, contrast/saturate
+           boost, and a switch to object-fit:contain) so every tile feels lively. */
         img.thumb:hover,
         img.subthumb:hover {
             outline: 4px solid #ffffff;

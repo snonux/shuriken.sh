@@ -38,6 +38,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     THUMBHEIGHT
     MAXPREVIEWS
     THUMB_SUBDIVIDE_PERCENT
+    THUMB_FEATURE_PERCENT
     IMAGE_JOBS
     RANDOM_SEED
     SHUFFLE
@@ -59,6 +60,7 @@ declare -Ar CLI_OPTION_SPEC=(
     [--thumbheight]='kind=value config=THUMBHEIGHT'
     [--maxpreviews]='kind=value config=MAXPREVIEWS'
     [--subdivide]='kind=value config=THUMB_SUBDIVIDE_PERCENT'
+    [--feature]='kind=value config=THUMB_FEATURE_PERCENT'
     [--image-jobs]='kind=value config=IMAGE_JOBS'
     [--random-seed]='kind=value config=RANDOM_SEED'
     [--shuffle]='kind=flag value=yes config=SHUFFLE'

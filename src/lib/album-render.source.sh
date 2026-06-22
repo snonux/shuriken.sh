@@ -220,17 +220,27 @@ append_preview_grid() {
     done
 }
 
-# Decide the layout for the next tile, printing "<layout> <photo-count>". A tile
-# is subdivided with THUMB_SUBDIVIDE_PERCENT probability, but only into a layout
-# that fits the photos still remaining on the page; otherwise it is a single
-# square thumbnail. Randomness reuses the seeded random_index, so builds are
-# reproducible when RANDOM_SEED is set (and varied otherwise).
+# Decide the layout for the next tile, printing "<layout> <photo-count>". Each
+# tile rolls first for a "feature" (one photo blown up to a 2x2 hero tile) with
+# THUMB_FEATURE_PERCENT probability, then for a subdivision with
+# THUMB_SUBDIVIDE_PERCENT probability (only into a layout that fits the photos
+# still remaining on the page); otherwise it is a single square thumbnail. The
+# feature and subdivide rolls use independent seeded random_index namespaces, so
+# builds stay reproducible when RANDOM_SEED is set (and varied otherwise).
 tile_layout_for() {
     local -ri remaining="$1"; shift
     local -r context="$1"; shift
     local -a names=(two_wide)
     local -a counts=(2)
     local -i roll choice
+
+    # A feature tile always fits (it consumes a single photo), so roll for it
+    # first. THUMB_FEATURE_PERCENT == 0 disables it (the roll can never be < 0).
+    roll=$(random_index "feature:$context" 100)
+    if (( roll < THUMB_FEATURE_PERCENT )); then
+        printf 'feature 1\n'
+        return
+    fi
 
     # A single tile when subdivision is disabled, too few photos remain to fill
     # even the smallest subdivided layout (two_wide needs 2), or the roll misses.
@@ -259,9 +269,11 @@ tile_layout_for() {
 }
 
 # Render one tile's markup (no trailing newline). A "single" tile is the plain
-# square thumbnail, byte-identical to the previous per-thumbnail output; any
-# other layout is a subdivided tile. The tile's photos are the trailing args and
-# their preview numbers run from start_preview upward.
+# square thumbnail, byte-identical to the previous per-thumbnail output. A
+# "feature" tile is the same single thumbnail but with the 'feature' anchor class
+# that makes CSS span it across a 2x2 block. Any other layout is a subdivided
+# tile. The tile's photos are the trailing args and their preview numbers run
+# from start_preview upward.
 build_tile_block() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
@@ -271,13 +283,21 @@ build_tile_block() {
     local -a photos=("$@")
     local animation_class
 
-    if [ "$layout" = single ]; then
-        animation_class=$(random_animation_css_class slow "${photos[0]}")
-        build_preview_thumbnail \
-            "$thumbs_dir" "$backhref" "$page_num" "$start_preview" \
-            "${photos[0]}" "$animation_class"
-        return
-    fi
+    case "$layout" in
+        single|feature)
+            animation_class=$(random_animation_css_class slow "${photos[0]}")
+            # 'single' -> no anchor class (legacy output); 'feature' -> the
+            # 'feature' anchor class CSS spans across a 2x2 grid block.
+            local anchor_class=''
+            if [ "$layout" = feature ]; then
+                anchor_class='feature'
+            fi
+            build_preview_thumbnail \
+                "$thumbs_dir" "$backhref" "$page_num" "$start_preview" \
+                "${photos[0]}" "$animation_class" thumb "$anchor_class"
+            return
+            ;;
+    esac
     build_subdivided_tile \
         "$thumbs_dir" "$backhref" "$page_num" "$layout" "$start_preview" \
         "${photos[@]}"

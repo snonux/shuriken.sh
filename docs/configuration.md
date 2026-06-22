@@ -14,6 +14,7 @@ values for the current run.
 | `THUMBHEIGHT` | `300` | Thumbnail height in pixels. Positive integer. |
 | `MAXPREVIEWS` | `40` | Maximum previews per page. Positive integer. |
 | `THUMB_SUBDIVIDE_PERCENT` | `30` | Percent chance (0-100) that a preview tile is subdivided into smaller thumbnails (2x2 quad, two stacked wide strips, or two squares plus one wide strip on top/bottom). Each sub-thumbnail is its own clickable photo. `0` disables it. |
+| `THUMB_FEATURE_PERCENT` | `10` | Percent chance (0-100) that a preview tile is a large "feature" tile: a single photo spanning a 2x2 block of the overview grid. Rolled before the subdivision chance. `0` disables it. |
 | `IMAGE_JOBS` | `3` | Parallel jobs for image processing and HTML template rendering. Positive integer. |
 | `IMAGEMAGICK_TIMEOUT` | `60` | Per-ImageMagick-command timeout in seconds. Positive integer. |
 | `TAR_TIMEOUT` | `120` | Tarball creation timeout in seconds. Positive integer. |
@@ -54,7 +55,8 @@ The checks (details in `src/lib/config.validate.source.sh`):
   `IMAGE_JOBS`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`.
 * **Positive integers**: `THUMBHEIGHT`, `MAXPREVIEWS`, `IMAGE_JOBS`,
   `IMAGEMAGICK_TIMEOUT`, `TAR_TIMEOUT`; `HEIGHT` is an optional positive integer.
-* **Percentage (0-100 integer)**: `THUMB_SUBDIVIDE_PERCENT`.
+* **Percentage (0-100 integer)**: `THUMB_SUBDIVIDE_PERCENT`,
+  `THUMB_FEATURE_PERCENT`.
 * **`yes`/`no` settings**: `SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`,
   `TARBALL_INCLUDE`, `SYNC_DELETE` (where applicable).
 * **Readable input**: `INCOMING_DIR` must be a readable directory; `TEMPLATE_DIR`
@@ -77,7 +79,7 @@ Generation stops before writing album output when validation fails.
 
 `CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`,
 `SOURCE_URL`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
-`THUMB_SUBDIVIDE_PERCENT`, `IMAGE_JOBS`,
+`THUMB_SUBDIVIDE_PERCENT`, `THUMB_FEATURE_PERCENT`, `IMAGE_JOBS`,
 `IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`,
 `TARBALL_INCLUDE`, `TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, `SYNC_DELETE`,
 `SYNC_DESTINATIONS`, `ORIGINAL_BASEPATH`.

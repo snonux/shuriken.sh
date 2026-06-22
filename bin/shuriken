@@ -38,6 +38,7 @@ declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
     THUMBHEIGHT
     MAXPREVIEWS
     THUMB_SUBDIVIDE_PERCENT
+    THUMB_FEATURE_PERCENT
     IMAGE_JOBS
     RANDOM_SEED
     SHUFFLE
@@ -59,6 +60,7 @@ declare -Ar CLI_OPTION_SPEC=(
     [--thumbheight]='kind=value config=THUMBHEIGHT'
     [--maxpreviews]='kind=value config=MAXPREVIEWS'
     [--subdivide]='kind=value config=THUMB_SUBDIVIDE_PERCENT'
+    [--feature]='kind=value config=THUMB_FEATURE_PERCENT'
     [--image-jobs]='kind=value config=IMAGE_JOBS'
     [--random-seed]='kind=value config=RANDOM_SEED'
     [--shuffle]='kind=flag value=yes config=SHUFFLE'
@@ -154,6 +156,7 @@ usage() {
     --thumbheight VALUE
     --maxpreviews N
     --subdivide PERCENT
+    --feature PERCENT
     --image-jobs N
     --random-seed VALUE
     --splash
@@ -2203,6 +2206,7 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_thumbheight"]="$THUMBHEIGHT"
     _GENERATION_METADATA["settings_maxpreviews"]="$MAXPREVIEWS"
     _GENERATION_METADATA["settings_subdivide_percent"]="$THUMB_SUBDIVIDE_PERCENT"
+    _GENERATION_METADATA["settings_feature_percent"]="$THUMB_FEATURE_PERCENT"
     _GENERATION_METADATA["settings_image_jobs"]="$IMAGE_JOBS"
     _GENERATION_METADATA["settings_random_seed"]="$RANDOM_SEED"
     _GENERATION_METADATA["settings_shuffle"]="$SHUFFLE"
@@ -2260,6 +2264,8 @@ _generation_metadata_json() {
         "$(_json_string "${_GENERATION_METADATA["settings_maxpreviews"]}")"
     printf '    "subdivide_percent": %s,\n' \
         "$(_json_string "${_GENERATION_METADATA["settings_subdivide_percent"]}")"
+    printf '    "feature_percent": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_feature_percent"]}")"
     printf '    "image_jobs": %s,\n' \
         "$(_json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
     printf '    "random_seed": %s,\n' \
@@ -2342,6 +2348,7 @@ collect_dry_run_plan() {
     plan_ref["thumbheight"]="$THUMBHEIGHT"
     plan_ref["maxpreviews"]="$MAXPREVIEWS"
     plan_ref["subdivide_percent"]="$THUMB_SUBDIVIDE_PERCENT"
+    plan_ref["feature_percent"]="$THUMB_FEATURE_PERCENT"
     plan_ref["image_jobs"]="$IMAGE_JOBS"
     plan_ref["random_seed"]="$RANDOM_SEED"
     plan_ref["shuffle"]="$SHUFFLE"
@@ -2373,6 +2380,7 @@ print_dry_run_plan() {
     printf 'Thumb height: %s\n' "${plan_ref["thumbheight"]}"
     printf 'Max previews per page: %s\n' "${plan_ref["maxpreviews"]}"
     printf 'Subdivide percent: %s\n' "${plan_ref["subdivide_percent"]}"
+    printf 'Feature percent: %s\n' "${plan_ref["feature_percent"]}"
     printf 'Image jobs: %s\n' "${plan_ref["image_jobs"]}"
     printf 'Random seed: %s\n' "${plan_ref["random_seed"]}"
     printf 'Shuffle: %s\n' "${plan_ref["shuffle"]}"
@@ -2649,17 +2657,27 @@ append_preview_grid() {
     done
 }
 
-# Decide the layout for the next tile, printing "<layout> <photo-count>". A tile
-# is subdivided with THUMB_SUBDIVIDE_PERCENT probability, but only into a layout
-# that fits the photos still remaining on the page; otherwise it is a single
-# square thumbnail. Randomness reuses the seeded random_index, so builds are
-# reproducible when RANDOM_SEED is set (and varied otherwise).
+# Decide the layout for the next tile, printing "<layout> <photo-count>". Each
+# tile rolls first for a "feature" (one photo blown up to a 2x2 hero tile) with
+# THUMB_FEATURE_PERCENT probability, then for a subdivision with
+# THUMB_SUBDIVIDE_PERCENT probability (only into a layout that fits the photos
+# still remaining on the page); otherwise it is a single square thumbnail. The
+# feature and subdivide rolls use independent seeded random_index namespaces, so
+# builds stay reproducible when RANDOM_SEED is set (and varied otherwise).
 tile_layout_for() {
     local -ri remaining="$1"; shift
     local -r context="$1"; shift
     local -a names=(two_wide)
     local -a counts=(2)
     local -i roll choice
+
+    # A feature tile always fits (it consumes a single photo), so roll for it
+    # first. THUMB_FEATURE_PERCENT == 0 disables it (the roll can never be < 0).
+    roll=$(random_index "feature:$context" 100)
+    if (( roll < THUMB_FEATURE_PERCENT )); then
+        printf 'feature 1\n'
+        return
+    fi
 
     # A single tile when subdivision is disabled, too few photos remain to fill
     # even the smallest subdivided layout (two_wide needs 2), or the roll misses.
@@ -2688,9 +2706,11 @@ tile_layout_for() {
 }
 
 # Render one tile's markup (no trailing newline). A "single" tile is the plain
-# square thumbnail, byte-identical to the previous per-thumbnail output; any
-# other layout is a subdivided tile. The tile's photos are the trailing args and
-# their preview numbers run from start_preview upward.
+# square thumbnail, byte-identical to the previous per-thumbnail output. A
+# "feature" tile is the same single thumbnail but with the 'feature' anchor class
+# that makes CSS span it across a 2x2 block. Any other layout is a subdivided
+# tile. The tile's photos are the trailing args and their preview numbers run
+# from start_preview upward.
 build_tile_block() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
@@ -2700,13 +2720,21 @@ build_tile_block() {
     local -a photos=("$@")
     local animation_class
 
-    if [ "$layout" = single ]; then
-        animation_class=$(random_animation_css_class slow "${photos[0]}")
-        build_preview_thumbnail \
-            "$thumbs_dir" "$backhref" "$page_num" "$start_preview" \
-            "${photos[0]}" "$animation_class"
-        return
-    fi
+    case "$layout" in
+        single|feature)
+            animation_class=$(random_animation_css_class slow "${photos[0]}")
+            # 'single' -> no anchor class (legacy output); 'feature' -> the
+            # 'feature' anchor class CSS spans across a 2x2 grid block.
+            local anchor_class=''
+            if [ "$layout" = feature ]; then
+                anchor_class='feature'
+            fi
+            build_preview_thumbnail \
+                "$thumbs_dir" "$backhref" "$page_num" "$start_preview" \
+                "${photos[0]}" "$animation_class" thumb "$anchor_class"
+            return
+            ;;
+    esac
     build_subdivided_tile \
         "$thumbs_dir" "$backhref" "$page_num" "$layout" "$start_preview" \
         "${photos[@]}"
@@ -4846,8 +4874,10 @@ apply_config_defaults() {
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
     STATS_PAGE="${STATS_PAGE:-no}"
     # Optional with a default (unlike the required THUMBHEIGHT): the percent
-    # chance a preview tile is subdivided into smaller thumbnails. 0 disables it.
+    # chance a preview tile is subdivided into smaller thumbnails, and the
+    # percent chance it becomes a large 2x2 "feature" tile. 0 disables either.
     THUMB_SUBDIVIDE_PERCENT="${THUMB_SUBDIVIDE_PERCENT:-30}"
+    THUMB_FEATURE_PERCENT="${THUMB_FEATURE_PERCENT:-10}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
@@ -4897,6 +4927,7 @@ print_config() {
     print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
     print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
     print_shell_assignment THUMB_SUBDIVIDE_PERCENT "$THUMB_SUBDIVIDE_PERCENT"
+    print_shell_assignment THUMB_FEATURE_PERCENT "$THUMB_FEATURE_PERCENT"
     print_shell_assignment IMAGE_JOBS "$IMAGE_JOBS"
     print_shell_assignment IMAGEMAGICK_TIMEOUT "$IMAGEMAGICK_TIMEOUT"
     print_shell_assignment RANDOM_SEED "$RANDOM_SEED"
@@ -5486,6 +5517,7 @@ validate_common_config() {
     validate_positive_integer_config_var THUMBHEIGHT || return
     validate_positive_integer_config_var MAXPREVIEWS || return
     validate_percentage_config_var THUMB_SUBDIVIDE_PERCENT || return
+    validate_percentage_config_var THUMB_FEATURE_PERCENT || return
     validate_positive_integer_config_var IMAGE_JOBS || return
     validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
     validate_positive_integer_config_var TAR_TIMEOUT || return
