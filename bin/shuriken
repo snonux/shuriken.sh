@@ -2643,13 +2643,23 @@ append_preview_grid() {
     local -i count
     local layout
     local block
+    # Cap the big 2x2 feature tiles at this many per page; once reached, later
+    # tiles are no longer offered the "feature" layout (they fall back to
+    # subdivided/single), so a page never gets crowded with hero tiles.
+    local -ri max_features=2
+    local -i features_used=0
 
     while (( i < ${#photos[@]} )); do
         # Decide this tile's layout from the photos still available; the first
         # photo's name is the seeded-random context so the choice is stable.
+        # Features are only offered until the per-page cap is reached.
         read -r layout count < <(
-            tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}"
+            tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}" \
+                "$(( features_used < max_features ? 1 : 0 ))"
         )
+        if [ "$layout" = feature ]; then
+            (( ++features_used ))
+        fi
         block=$(build_tile_block \
             "$thumbs_dir" "$backhref" "$href_prefix" "$layout" "$(( i + 1 ))" \
             "${photos[@]:i:count}")
@@ -2662,26 +2672,32 @@ append_preview_grid() {
     done
 }
 
-# Decide the layout for the next tile, printing "<layout> <photo-count>". Each
-# tile rolls first for a "feature" (one photo blown up to a 2x2 hero tile) with
-# THUMB_FEATURE_PERCENT probability, then for a subdivision with
+# Decide the layout for the next tile, printing "<layout> <photo-count>". When
+# feature_allowed is non-zero each tile rolls first for a "feature" (one photo
+# blown up to a 2x2 hero tile) with THUMB_FEATURE_PERCENT probability; the caller
+# clears feature_allowed once a page has reached its per-page feature-tile cap
+# (see append_preview_grid). Otherwise the tile rolls for a subdivision with
 # THUMB_SUBDIVIDE_PERCENT probability (only into a layout that fits the photos
-# still remaining on the page); otherwise it is a single square thumbnail. The
+# still remaining on the page); failing both it is a single square thumbnail. The
 # feature and subdivide rolls use independent seeded random_index namespaces, so
-# builds stay reproducible when RANDOM_SEED is set (and varied otherwise).
+# builds stay reproducible when RANDOM_SEED is set.
 tile_layout_for() {
     local -ri remaining="$1"; shift
     local -r context="$1"; shift
+    local -ri feature_allowed="$1"; shift
     local -a names=(two_wide)
     local -a counts=(2)
     local -i roll choice
 
     # A feature tile always fits (it consumes a single photo), so roll for it
-    # first. THUMB_FEATURE_PERCENT == 0 disables it (the roll can never be < 0).
-    roll=$(random_index "feature:$context" 100)
-    if (( roll < THUMB_FEATURE_PERCENT )); then
-        printf 'feature 1\n'
-        return
+    # first -- but only while the page has not used its one allowed feature.
+    # THUMB_FEATURE_PERCENT == 0 disables it (the roll can never be < 0).
+    if (( feature_allowed )); then
+        roll=$(random_index "feature:$context" 100)
+        if (( roll < THUMB_FEATURE_PERCENT )); then
+            printf 'feature 1\n'
+            return
+        fi
     fi
 
     # A single tile when subdivision is disabled, too few photos remain to fill
