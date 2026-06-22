@@ -115,8 +115,10 @@ render_full_preview_page() {
     # also groups the page's photos into tiles (some subdivided into smaller
     # thumbnails), so the per-page ordering and preview numbering stay here.
     local preview_thumbs=''
+    # The main album's view pages are "<page_num>-<preview_num>.html", so the
+    # shared grid builder gets "<page_num>-" as the href prefix.
     append_preview_grid preview_thumbs \
-        "$thumbs_dir" "$backhref" "$page_num" "$@"
+        "$thumbs_dir" "$backhref" "$page_num-" "$@"
     template previewpage "$page_name.html" \
         html_dir "$html_dir" \
         preview_thumbs "$preview_thumbs"
@@ -183,19 +185,22 @@ queue_preview_page_render_job() {
     render_job_labels_ref["$!"]="template render job for preview $page_name"
 }
 
-# Build a page's whole thumbnail-grid buffer by walking its photos and grouping
+# Build a whole thumbnail-grid buffer by walking a list of photos and grouping
 # them into tiles. Most tiles are a single square thumbnail, but (controlled by
-# THUMB_SUBDIVIDE_PERCENT) some are subdivided into several smaller thumbnails
-# packed into the same square footprint. Each photo keeps its 1-based page
-# position as its preview number (subdivision only groups CONSECUTIVE photos
-# visually, never reorders them), so the view-page links stay correct. Tile
-# blocks are separated by a single newline; the previewpage template adds the
-# trailing newline, matching the old per-thumbnail rendering.
+# THUMB_FEATURE_PERCENT / THUMB_SUBDIVIDE_PERCENT) some become a 2x2 feature tile
+# or are subdivided into several smaller thumbnails. Each photo keeps its 1-based
+# position as its preview number (tiling only groups CONSECUTIVE photos visually,
+# never reorders them), so the view-page links stay correct. The view-page link
+# is "${href_prefix}${preview_num}.html": the main album passes "<page_num>-"; the
+# stats mini-albums pass "" (their view pages are bare "<index>.html"). This is
+# the single shared grid builder for both the main preview pages and the stats
+# mini-album galleries. Tile blocks are separated by a single newline; the
+# template adds the trailing newline.
 append_preview_grid() {
     local -n buffer_ref="$1"; shift
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
-    local -r page_num="$1"; shift
+    local -r href_prefix="$1"; shift
     local -a photos=("$@")
     local -i i=0
     local -i count
@@ -209,7 +214,7 @@ append_preview_grid() {
             tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}"
         )
         block=$(build_tile_block \
-            "$thumbs_dir" "$backhref" "$page_num" "$layout" "$(( i + 1 ))" \
+            "$thumbs_dir" "$backhref" "$href_prefix" "$layout" "$(( i + 1 ))" \
             "${photos[@]:i:count}")
         if [ -z "$buffer_ref" ]; then
             buffer_ref="$block"
@@ -277,7 +282,7 @@ tile_layout_for() {
 build_tile_block() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
-    local -r page_num="$1"; shift
+    local -r href_prefix="$1"; shift
     local -r layout="$1"; shift
     local -ri start_preview="$1"; shift
     local -a photos=("$@")
@@ -293,13 +298,13 @@ build_tile_block() {
                 anchor_class='feature'
             fi
             build_preview_thumbnail \
-                "$thumbs_dir" "$backhref" "$page_num" "$start_preview" \
+                "$thumbs_dir" "$backhref" "$href_prefix" "$start_preview" \
                 "${photos[0]}" "$animation_class" thumb "$anchor_class"
             return
             ;;
     esac
     build_subdivided_tile \
-        "$thumbs_dir" "$backhref" "$page_num" "$layout" "$start_preview" \
+        "$thumbs_dir" "$backhref" "$href_prefix" "$layout" "$start_preview" \
         "${photos[@]}"
 }
 
@@ -315,7 +320,7 @@ build_tile_block() {
 build_subdivided_tile() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
-    local -r page_num="$1"; shift
+    local -r href_prefix="$1"; shift
     local -r layout="$1"; shift
     local -ri start_preview="$1"; shift
     local -a photos=("$@")
@@ -334,7 +339,7 @@ build_subdivided_tile() {
     for (( k = 0; k < ${#photos[@]}; k++ )); do
         animation_class=$(random_animation_css_class slow "${photos[k]}")
         build_preview_thumbnail \
-            "$thumbs_dir" "$backhref" "$page_num" "$(( start_preview + k ))" \
+            "$thumbs_dir" "$backhref" "$href_prefix" "$(( start_preview + k ))" \
             "${photos[k]}" "$animation_class" subthumb "${anchor_classes[k]:-}"
         printf '\n'
     done
@@ -343,15 +348,19 @@ build_subdivided_tile() {
 
 # Render the HTML for a single preview thumbnail (HTML-escaping every value the
 # way preview.tmpl's context_html fields did). Returned without a trailing
-# newline so callers control separators. img_class defaults to 'thumb' (the full
-# square); subdivided tiles pass 'subthumb'. anchor_class is an optional extra
-# class on the <a> ('wide' marks the full-width strip inside a subdivided tile);
-# when empty the <a> has no class attribute, keeping the single-tile output
-# byte-identical to before.
+# newline so callers control separators. The view-page link is
+# "${href_prefix}${preview_num}.html", so the main album passes "<page_num>-" and
+# the stats mini-albums (whose view pages are bare "<index>.html") pass "" -- the
+# only thing that differs between the two grids, keeping one shared builder.
+# img_class defaults to 'thumb' (the full square); subdivided tiles pass
+# 'subthumb'. anchor_class is an optional extra class on the <a> ('wide' marks the
+# full-width strip inside a subdivided tile, 'feature' a 2x2 hero tile); when empty
+# the <a> has no class attribute, keeping the single-tile output byte-identical to
+# before.
 build_preview_thumbnail() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
-    local -r page_num="$1"; shift
+    local -r href_prefix="$1"; shift
     local -r preview_num="$1"; shift
     local -r photo_file="$1"; shift
     local -r animation_class="$1"; shift
@@ -371,10 +380,10 @@ build_preview_thumbnail() {
         anchor_class_html=$(_html_escape "$anchor_class")
         printf '<a id=%s class=%s href=%s>\n' \
             "'$photo_html'" "'$anchor_class_html'" \
-            "'$page_num-$preview_num.html'"
+            "'${href_prefix}${preview_num}.html'"
     else
         printf '<a id=%s href=%s>\n' \
-            "'$photo_html'" "'$page_num-$preview_num.html'"
+            "'$photo_html'" "'${href_prefix}${preview_num}.html'"
     fi
     printf "  <img class='%s %s' alt='%s' src='%s/%s/%s'>\n</a>" \
         "$img_class" "$anim_html" "$photo_html" "$backhref_html" \

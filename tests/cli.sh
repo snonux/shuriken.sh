@@ -3400,9 +3400,13 @@ test_generate_stats_pages_created_and_nav_linked() {
 
     # The camera gallery is a mini album: thumbnails link to view pages in the
     # same dir (<index>.html), and the thumb image points at the album root.
+    # The gallery reuses the main album's shared tile grid (append_preview_grid),
+    # so it is wrapped in the same thumbs-grid container and each photo's anchor
+    # links to its view page regardless of how photos group into tiles.
     camera_html=$(<"$TEST_TMPDIR/dist/stats/camera-canon-eos-r5/index.html")
-    test::assert_contains 'src="../../thumbs/' "$camera_html"
-    test::assert_contains 'href="1.html"' "$camera_html"
+    test::assert_contains '<div class="thumbs-grid">' "$camera_html"
+    test::assert_contains "src='../../thumbs/" "$camera_html"
+    test::assert_contains "href='1.html'" "$camera_html"
 
     # Non-camera stats are clickable mini-albums too: the ISO row links to a
     # filter mini-album that exists and is itself a gallery of matching photos.
@@ -3410,7 +3414,7 @@ test_generate_stats_pages_created_and_nav_linked() {
         "$(<"$TEST_TMPDIR/dist/stats/index.html")"
     test::assert_file_exists "$TEST_TMPDIR/dist/stats/iso-400/index.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/stats/iso-400/1.html"
-    test::assert_contains 'href="1.html"' \
+    test::assert_contains "href='1.html'" \
         "$(<"$TEST_TMPDIR/dist/stats/iso-400/index.html")"
 
     # A per-camera view page exists and its navigation stays within the filter:
@@ -4746,12 +4750,15 @@ BASH
 
     # The Canon EOS 5D gallery lists its two photos as thumbnails linking to
     # sibling view pages (<index>.html); the thumb image points at the album
-    # root via ../../ .
+    # root via ../../ . The gallery reuses the main album's shared tile grid
+    # (append_preview_grid), so it is wrapped in the same thumbs-grid container
+    # and the per-photo anchors/hrefs/srcs are present regardless of how the
+    # photos are grouped into tiles (single, feature or subdivided).
     html=$(cat "$s/camera-canon-eos-5d/index.html")
-    test::assert_contains 'href="1.html"' "$html"
-    test::assert_contains 'class="thumb ' "$html"
-    test::assert_contains 'src="../../thumbs/a.jpg"></a>' "$html"
-    test::assert_contains 'href="2.html"' "$html"
+    test::assert_contains '<div class="thumbs-grid">' "$html"
+    test::assert_contains "href='1.html'" "$html"
+    test::assert_contains "src='../../thumbs/a.jpg'>" "$html"
+    test::assert_contains "href='2.html'" "$html"
     # Heading shows the (trusted) camera label and a back-to-stats link.
     test::assert_contains 'Canon EOS 5D' "$html"
     test::assert_contains '<a href="../../stats/index.html">Back to stats</a>' \
@@ -4770,7 +4777,7 @@ BASH
     html=$(cat "$s/camera-nikon-co-z6/index.html")
     test::assert_contains 'Nikon &amp; Co &lt;Z6&gt;' "$html"
     test::assert_not_contains 'Nikon & Co <Z6>' "$html"
-    test::assert_contains 'href="1.html"' "$html"
+    test::assert_contains "href='1.html'" "$html"
 
     # Output is deterministic across runs despite parallel rendering.
     html=$(cat "$dist_dir/run1/stats/camera-canon-eos-5d/index.html")

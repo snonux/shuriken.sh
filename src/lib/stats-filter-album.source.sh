@@ -38,40 +38,35 @@ declare -gr STATS_DIR='stats'
 # the album root (dist/), used for shared assets and album links.
 declare -gr STATS_FILTER_BACKHREF='../..'
 
-# Emit one thumbnail anchor for a filter gallery: a thumb image (from thumbs/)
-# linking to this filter's view page for that photo (<pagebase>--<index>.html).
-# The photo filename is HTML-escaped; the pagebase and index are filename-safe.
-_stats_filter_thumbnail() {
-    local -r backhref_html="$1"; shift
-    local -ri index="$1"; shift
-    local -r photo="$1"; shift
-    local photo_html
-    local animation_class
-
-    photo_html=$(_html_escape "$photo")
-    # Same seeded animation the album thumbnail uses for this photo.
-    animation_class=$(random_animation_css_class slow "$photo")
-    # The view page sits in the same directory as this gallery, so link to it by
-    # bare index; the thumbnail image lives at the album root via backhref.
-    printf '        <a id="%s" href="%d.html">' "$photo_html" "$index"
-    printf '<img class="thumb %s" alt="%s" src="%s/%s/%s"></a>\n' \
-        "$animation_class" "$photo_html" "$backhref_html" "$STATS_THUMBS_DIR" "$photo_html"
-}
-
 # Build the full thumbnail grid for one filter from its newline-separated photo
 # list, preserving aggregation (encounter) order for deterministic output.
+#
+# This reuses the album's shared grid builder (append_preview_grid), so a filter
+# mini-album gallery gets EXACTLY the same tiles as the main overview: 2x2
+# feature tiles, subdivided tiles with sub-thumbnails, the seeded entry
+# animations and the dramatic hover. The only mini-album-specific detail is the
+# link target -- its view pages are bare "<index>.html" in the same directory --
+# so the href prefix is empty (the main album passes "<page_num>-"). The
+# thumbnail images come from the shared thumbs/ dir, reached via the gallery's
+# backhref (../..). The result is wrapped by camera.tmpl in the same
+# <div class="thumbs-grid"> container the main pages use.
 _stats_build_filter_thumbs() {
     local -r backhref_html="$1"; shift
     local -r photos="$1"; shift
+    local -a photo_list=()
     local photo
-    local -i index=0
+    local thumbs=''
 
     while IFS= read -r photo; do
-        if [ -n "$photo" ]; then
-            (( ++index ))
-            _stats_filter_thumbnail "$backhref_html" "$index" "$photo"
-        fi
+        [ -n "$photo" ] && photo_list+=("$photo")
     done <<< "$photos"
+
+    if (( ${#photo_list[@]} == 0 )); then
+        return
+    fi
+    append_preview_grid thumbs \
+        "$STATS_THUMBS_DIR" "$backhref_html" '' "${photo_list[@]}"
+    printf '%s\n' "$thumbs"
 }
 
 # Render a filter gallery page (<pagebase>.html): header + camera.tmpl (heading +
