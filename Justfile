@@ -1,7 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 NAME := "shuriken"
-VERSION := "0.10.1"
+VERSION := "0.11.0"
 DESTDIR := env_var_or_default("DESTDIR", "")
 PREFIX := env_var_or_default("PREFIX", "/usr")
 BINDIR := env_var_or_default("BINDIR", PREFIX + "/bin")
