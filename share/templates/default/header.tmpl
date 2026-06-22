@@ -14,6 +14,10 @@ cat <<END
             background-repeat: no-repeat;
             text-align: center;
             font-family: verdana, sans-serif;
+            /* No default page gutter: gives the thumbnail grid the full window
+               width, and makes the gap above the header / below the footer the
+               same 2px as the gaps between the header, grid and footer. */
+            margin: 0;
         }
 
         a {
@@ -183,44 +187,47 @@ cat <<END
         }
 
         img.thumb {
-            height: ${render_thumbheight_html}px;
-            width: ${render_thumbheight_html}px;
+            width: 100%;
+            height: 100%;
             object-fit: cover;
             vertical-align: top;
         }
 
-        /* The album overview is a CSS grid of fixed THUMBHEIGHT cells. A normal
-           thumbnail fills one cell, a subdivided tile packs several smaller
-           thumbnails into one cell, and a "feature" tile spans a 2x2 block (a
-           large hero image). grid-auto-flow: dense lets the smaller tiles
-           backfill the holes a 2x2 feature would otherwise leave, keeping the
-           grid tightly packed. Spacing comes from the grid gap, so images carry
-           no padding inside the grid. */
+        /* The album overview is a CSS grid. THUMBHEIGHT is the MINIMUM cell
+           width: columns grow (1fr) to fill the row, so the thumbnails use the
+           full window width instead of leaving big margins left and right, and
+           there is no centred leftover. Each 1x1 grid item is kept square with
+           aspect-ratio, so the auto-sized rows are square too; a "feature" tile
+           then spans a 2x2 block (a large hero image) and a subdivided tile packs
+           several smaller thumbnails into one cell. grid-auto-flow: dense lets
+           the smaller tiles backfill the holes a 2x2 feature would otherwise
+           leave. Spacing comes from the grid gap, so images carry no padding. */
         div.thumbs-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, ${render_thumbheight_html}px);
-            grid-auto-rows: ${render_thumbheight_html}px;
+            grid-template-columns:
+                repeat(auto-fill, minmax(${render_thumbheight_html}px, 1fr));
             grid-auto-flow: dense;
             gap: 10px;
-            justify-content: center;
-            margin: 0 auto;
+            margin: 0 4px;
         }
 
         div.thumbs-grid img {
             padding: 0;
         }
 
-        /* A feature tile: one photo blown up to span a 2x2 block of the grid. It
-           reuses the normal img.thumb class (and its hover) but stretches the
-           image to fill the larger 2x2 area. */
+        /* Keep every top-level grid item square: a normal thumbnail and a
+           subdivided tile each occupy one square cell. */
+        div.thumbs-grid > a,
+        div.thumbs-grid > div.tile {
+            aspect-ratio: 1 / 1;
+        }
+
+        /* A feature tile: one photo blown up to span a 2x2 block of the grid
+           (its area is square because the rows are square). It reuses the normal
+           img.thumb class and its hover, the image filling the larger area. */
         div.thumbs-grid a.feature {
             grid-column: span 2;
             grid-row: span 2;
-        }
-
-        div.thumbs-grid a.feature img.thumb {
-            width: 100%;
-            height: 100%;
         }
 
         /* A subdivided thumbnail tile fills one grid cell with its own 2x2 inner
@@ -232,8 +239,6 @@ cat <<END
             grid-template-columns: 1fr 1fr;
             grid-template-rows: 1fr 1fr;
             gap: 4px;
-            width: 100%;
-            height: 100%;
         }
 
         div.tile a {
