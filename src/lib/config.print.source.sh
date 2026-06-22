@@ -33,6 +33,7 @@ print_config() {
     print_shell_assignment HEIGHT "$HEIGHT"
     print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
     print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
+    print_shell_assignment THUMB_SUBDIVIDE_PERCENT "$THUMB_SUBDIVIDE_PERCENT"
     print_shell_assignment IMAGE_JOBS "$IMAGE_JOBS"
     print_shell_assignment IMAGEMAGICK_TIMEOUT "$IMAGEMAGICK_TIMEOUT"
     print_shell_assignment RANDOM_SEED "$RANDOM_SEED"

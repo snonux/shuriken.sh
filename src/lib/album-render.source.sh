@@ -100,8 +100,6 @@ render_full_preview_page() {
     local -r header_bar="$1"; shift
     local -r prev_page="$1"; shift
     local -r next_page="$1"; shift
-    local -i preview_num=0
-    local photo
 
     start_preview_page \
         "$photos_dir" "$html_dir" "$blurs_dir" "$backhref" "$page_name" \
@@ -113,13 +111,12 @@ render_full_preview_page() {
     # Batch all of this page's thumbnails into ONE template call. Building the
     # markup in bash and emitting it via the raw "preview_thumbs" field collapses
     # what used to be N "template preview" renders (one env -i bash per
-    # thumbnail) into a single previewpage render per page.
+    # thumbnail) into a single previewpage render per page. append_preview_grid
+    # also groups the page's photos into tiles (some subdivided into smaller
+    # thumbnails), so the per-page ordering and preview numbering stay here.
     local preview_thumbs=''
-    for photo in "$@"; do
-        (( ++preview_num ))
-        append_preview_thumbnail preview_thumbs \
-            "$thumbs_dir" "$backhref" "$page_num" "$preview_num" "$photo"
-    done
+    append_preview_grid preview_thumbs \
+        "$thumbs_dir" "$backhref" "$page_num" "$@"
     template previewpage "$page_name.html" \
         html_dir "$html_dir" \
         preview_thumbs "$preview_thumbs"
@@ -186,38 +183,151 @@ queue_preview_page_render_job() {
     render_job_labels_ref["$!"]="template render job for preview $page_name"
 }
 
-# Append one thumbnail's markup to a page's accumulating thumbnail-grid buffer.
-# Produces the per-thumbnail preview.tmpl block (the
-# <a id=... href=...><img class='thumb <anim>' alt=... src=...></a> block), so
-# batching all thumbnails into one previewpage render stays consistent. Every
-# interpolated value is HTML-escaped like the template's context_html fields; the
-# seeded "slow" animation class is preserved exactly. Blocks are separated by a
-# newline; the previewpage template adds the single trailing newline, matching
-# the old N sequential renders.
-append_preview_thumbnail() {
+# Build a page's whole thumbnail-grid buffer by walking its photos and grouping
+# them into tiles. Most tiles are a single square thumbnail, but (controlled by
+# THUMB_SUBDIVIDE_PERCENT) some are subdivided into several smaller thumbnails
+# packed into the same square footprint. Each photo keeps its 1-based page
+# position as its preview number (subdivision only groups CONSECUTIVE photos
+# visually, never reorders them), so the view-page links stay correct. Tile
+# blocks are separated by a single newline; the previewpage template adds the
+# trailing newline, matching the old per-thumbnail rendering.
+append_preview_grid() {
     local -n buffer_ref="$1"; shift
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
     local -r page_num="$1"; shift
-    local -r preview_num="$1"; shift
-    local -r photo_file="$1"; shift
-    local animation_class
+    local -a photos=("$@")
+    local -i i=0
+    local -i count
+    local layout
     local block
 
-    animation_class=$(random_animation_css_class slow "$photo_file")
-    block=$(build_preview_thumbnail \
-        "$thumbs_dir" "$backhref" "$page_num" "$preview_num" "$photo_file" \
-        "$animation_class")
-    if [ -z "$buffer_ref" ]; then
-        buffer_ref="$block"
-    else
-        buffer_ref+=$'\n'"$block"
+    while (( i < ${#photos[@]} )); do
+        # Decide this tile's layout from the photos still available; the first
+        # photo's name is the seeded-random context so the choice is stable.
+        read -r layout count < <(
+            tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}"
+        )
+        block=$(build_tile_block \
+            "$thumbs_dir" "$backhref" "$page_num" "$layout" "$(( i + 1 ))" \
+            "${photos[@]:i:count}")
+        if [ -z "$buffer_ref" ]; then
+            buffer_ref="$block"
+        else
+            buffer_ref+=$'\n'"$block"
+        fi
+        (( i += count ))
+    done
+}
+
+# Decide the layout for the next tile, printing "<layout> <photo-count>". A tile
+# is subdivided with THUMB_SUBDIVIDE_PERCENT probability, but only into a layout
+# that fits the photos still remaining on the page; otherwise it is a single
+# square thumbnail. Randomness reuses the seeded random_index, so builds are
+# reproducible when RANDOM_SEED is set (and varied otherwise).
+tile_layout_for() {
+    local -ri remaining="$1"; shift
+    local -r context="$1"; shift
+    local -a names=(two_wide)
+    local -a counts=(2)
+    local -i roll choice
+
+    # A single tile when subdivision is disabled, too few photos remain to fill
+    # even the smallest subdivided layout (two_wide needs 2), or the roll misses.
+    if (( remaining < 2 || THUMB_SUBDIVIDE_PERCENT == 0 )); then
+        printf 'single 1\n'
+        return
     fi
+    roll=$(random_index "subdivide:$context" 100)
+    if (( roll >= THUMB_SUBDIVIDE_PERCENT )); then
+        printf 'single 1\n'
+        return
+    fi
+
+    # Offer only the subdivision layouts that fit the remaining photo count.
+    if (( remaining >= 3 )); then
+        names+=(squares_wide_top squares_wide_bottom)
+        counts+=(3 3)
+    fi
+    if (( remaining >= 4 )); then
+        names+=(quad)
+        counts+=(4)
+    fi
+
+    choice=$(random_index "sublayout:$context" "${#names[@]}")
+    printf '%s %s\n' "${names[choice]}" "${counts[choice]}"
+}
+
+# Render one tile's markup (no trailing newline). A "single" tile is the plain
+# square thumbnail, byte-identical to the previous per-thumbnail output; any
+# other layout is a subdivided tile. The tile's photos are the trailing args and
+# their preview numbers run from start_preview upward.
+build_tile_block() {
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r page_num="$1"; shift
+    local -r layout="$1"; shift
+    local -ri start_preview="$1"; shift
+    local -a photos=("$@")
+    local animation_class
+
+    if [ "$layout" = single ]; then
+        animation_class=$(random_animation_css_class slow "${photos[0]}")
+        build_preview_thumbnail \
+            "$thumbs_dir" "$backhref" "$page_num" "$start_preview" \
+            "${photos[0]}" "$animation_class"
+        return
+    fi
+    build_subdivided_tile \
+        "$thumbs_dir" "$backhref" "$page_num" "$layout" "$start_preview" \
+        "${photos[@]}"
+}
+
+# Emit a subdivided tile: a <div class='tile'> wrapping the smaller
+# sub-thumbnails (class 'subthumb'). Each sub-thumbnail is still its own
+# clickable photo/view page; only its size and (for the full-width strip) an
+# extra 'wide' anchor class differ from a normal square thumbnail. The anchor
+# ORDER encodes the layout for the CSS grid's auto-placement:
+#   two_wide            -> two full-width strips (both 'wide'), stacked
+#   squares_wide_top    -> strip first (top row), then two squares (bottom row)
+#   squares_wide_bottom -> two squares first (top row), then strip (bottom row)
+#   quad                -> four squares (2x2)
+build_subdivided_tile() {
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r page_num="$1"; shift
+    local -r layout="$1"; shift
+    local -ri start_preview="$1"; shift
+    local -a photos=("$@")
+    local -a anchor_classes
+    local -i k
+    local animation_class
+
+    case "$layout" in
+        two_wide)            anchor_classes=(wide wide) ;;
+        squares_wide_top)    anchor_classes=(wide '' '') ;;
+        squares_wide_bottom) anchor_classes=('' '' wide) ;;
+        quad)                anchor_classes=('' '' '' '') ;;
+    esac
+
+    printf "<div class='tile'>\n"
+    for (( k = 0; k < ${#photos[@]}; k++ )); do
+        animation_class=$(random_animation_css_class slow "${photos[k]}")
+        build_preview_thumbnail \
+            "$thumbs_dir" "$backhref" "$page_num" "$(( start_preview + k ))" \
+            "${photos[k]}" "$animation_class" subthumb "${anchor_classes[k]:-}"
+        printf '\n'
+    done
+    printf '</div>'
 }
 
 # Render the HTML for a single preview thumbnail (HTML-escaping every value the
 # way preview.tmpl's context_html fields did). Returned without a trailing
-# newline so callers control separators.
+# newline so callers control separators. img_class defaults to 'thumb' (the full
+# square); subdivided tiles pass 'subthumb'. anchor_class is an optional extra
+# class on the <a> ('wide' marks the full-width strip inside a subdivided tile);
+# when empty the <a> has no class attribute, keeping the single-tile output
+# byte-identical to before.
 build_preview_thumbnail() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
@@ -225,19 +335,30 @@ build_preview_thumbnail() {
     local -r preview_num="$1"; shift
     local -r photo_file="$1"; shift
     local -r animation_class="$1"; shift
+    local -r img_class="${1:-thumb}"
+    local -r anchor_class="${2:-}"
     local photo_html
     local anim_html
     local backhref_html
     local thumbs_dir_html
+    local anchor_class_html
 
     photo_html=$(_html_escape "$photo_file")
     anim_html=$(_html_escape "$animation_class")
     backhref_html=$(_html_escape "$backhref")
     thumbs_dir_html=$(_html_escape "$thumbs_dir")
-    printf '<a id=%s href=%s>\n' \
-        "'$photo_html'" "'$page_num-$preview_num.html'"
-    printf "  <img class='thumb %s' alt='%s' src='%s/%s/%s'>\n</a>" \
-        "$anim_html" "$photo_html" "$backhref_html" "$thumbs_dir_html" "$photo_html"
+    if [ -n "$anchor_class" ]; then
+        anchor_class_html=$(_html_escape "$anchor_class")
+        printf '<a id=%s class=%s href=%s>\n' \
+            "'$photo_html'" "'$anchor_class_html'" \
+            "'$page_num-$preview_num.html'"
+    else
+        printf '<a id=%s href=%s>\n' \
+            "'$photo_html'" "'$page_num-$preview_num.html'"
+    fi
+    printf "  <img class='%s %s' alt='%s' src='%s/%s/%s'>\n</a>" \
+        "$img_class" "$anim_html" "$photo_html" "$backhref_html" \
+        "$thumbs_dir_html" "$photo_html"
 }
 
 render_view_page() {

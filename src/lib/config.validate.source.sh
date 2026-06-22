@@ -32,6 +32,19 @@ validate_optional_positive_integer_config_var() {
     fi
 }
 
+# A percentage config var: an integer in the inclusive range 0..100. Unlike
+# validate_positive_integer_config_var, 0 is allowed (it is the natural "off"
+# value, e.g. THUMB_SUBDIVIDE_PERCENT=0 disables tile subdivision entirely).
+validate_percentage_config_var() {
+    local -r name="$1"; shift
+    local -r value="${!name}"
+
+    if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value > 100 )); then
+        config_error "$name must be an integer between 0 and 100"
+        return 1
+    fi
+}
+
 validate_yes_no_config_var() {
     local -r name="$1"; shift
     local -r value="${!name}"
@@ -273,6 +286,7 @@ validate_common_config() {
     validate_optional_positive_integer_config_var HEIGHT || return
     validate_positive_integer_config_var THUMBHEIGHT || return
     validate_positive_integer_config_var MAXPREVIEWS || return
+    validate_percentage_config_var THUMB_SUBDIVIDE_PERCENT || return
     validate_positive_integer_config_var IMAGE_JOBS || return
     validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
     validate_positive_integer_config_var TAR_TIMEOUT || return

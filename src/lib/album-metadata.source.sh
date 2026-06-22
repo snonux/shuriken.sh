@@ -209,6 +209,7 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_height"]="$HEIGHT"
     _GENERATION_METADATA["settings_thumbheight"]="$THUMBHEIGHT"
     _GENERATION_METADATA["settings_maxpreviews"]="$MAXPREVIEWS"
+    _GENERATION_METADATA["settings_subdivide_percent"]="$THUMB_SUBDIVIDE_PERCENT"
     _GENERATION_METADATA["settings_image_jobs"]="$IMAGE_JOBS"
     _GENERATION_METADATA["settings_random_seed"]="$RANDOM_SEED"
     _GENERATION_METADATA["settings_shuffle"]="$SHUFFLE"
@@ -264,6 +265,8 @@ _generation_metadata_json() {
         "$(_json_string "${_GENERATION_METADATA["settings_thumbheight"]}")"
     printf '    "maxpreviews": %s,\n' \
         "$(_json_string "${_GENERATION_METADATA["settings_maxpreviews"]}")"
+    printf '    "subdivide_percent": %s,\n' \
+        "$(_json_string "${_GENERATION_METADATA["settings_subdivide_percent"]}")"
     printf '    "image_jobs": %s,\n' \
         "$(_json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
     printf '    "random_seed": %s,\n' \
@@ -345,6 +348,7 @@ collect_dry_run_plan() {
     plan_ref["height"]="$HEIGHT"
     plan_ref["thumbheight"]="$THUMBHEIGHT"
     plan_ref["maxpreviews"]="$MAXPREVIEWS"
+    plan_ref["subdivide_percent"]="$THUMB_SUBDIVIDE_PERCENT"
     plan_ref["image_jobs"]="$IMAGE_JOBS"
     plan_ref["random_seed"]="$RANDOM_SEED"
     plan_ref["shuffle"]="$SHUFFLE"
@@ -375,6 +379,7 @@ print_dry_run_plan() {
     printf 'Height: %s\n' "${plan_ref["height"]}"
     printf 'Thumb height: %s\n' "${plan_ref["thumbheight"]}"
     printf 'Max previews per page: %s\n' "${plan_ref["maxpreviews"]}"
+    printf 'Subdivide percent: %s\n' "${plan_ref["subdivide_percent"]}"
     printf 'Image jobs: %s\n' "${plan_ref["image_jobs"]}"
     printf 'Random seed: %s\n' "${plan_ref["random_seed"]}"
     printf 'Shuffle: %s\n' "${plan_ref["shuffle"]}"

@@ -139,6 +139,7 @@ assert metadata["settings"]["title"] == title
 assert metadata["settings"]["height"] == "120"
 assert metadata["settings"]["thumbheight"] == "30"
 assert metadata["settings"]["maxpreviews"] == maxpreviews
+assert metadata["settings"]["subdivide_percent"] == "30"
 assert metadata["settings"]["image_jobs"] == "3"
 assert metadata["settings"]["shuffle"] is False
 assert isinstance(metadata["settings"]["splash_page"], bool)
@@ -1412,6 +1413,7 @@ TITLE=A\\ simple\\ Shuriken
 HEIGHT=1200
 THUMBHEIGHT=300
 MAXPREVIEWS=40
+THUMB_SUBDIVIDE_PERCENT=30
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
@@ -1461,6 +1463,7 @@ TITLE=Minimal\\ defaults
 HEIGHT=''
 THUMBHEIGHT=30
 MAXPREVIEWS=40
+THUMB_SUBDIVIDE_PERCENT=30
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
@@ -1603,6 +1606,7 @@ TITLE=Selected\\ config
 HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=7
+THUMB_SUBDIVIDE_PERCENT=30
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
@@ -1647,6 +1651,7 @@ TITLE=Current\\ directory\\ config
 HEIGHT=120
 THUMBHEIGHT=30
 MAXPREVIEWS=8
+THUMB_SUBDIVIDE_PERCENT=30
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
@@ -1699,6 +1704,7 @@ test_print_config_applies_cli_overrides_without_writes() {
                 --height 456 \
                 --thumbheight 45 \
                 --maxpreviews 9 \
+                --subdivide 55 \
                 --image-jobs 2 \
                 --random-seed cli-seed \
                 --shuffle \
@@ -1716,6 +1722,7 @@ TITLE=CLI\\ title
 HEIGHT=456
 THUMBHEIGHT=45
 MAXPREVIEWS=9
+THUMB_SUBDIVIDE_PERCENT=55
 IMAGE_JOBS=2
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=cli-seed
@@ -1932,6 +1939,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
                 --height 456 \
                 --thumbheight 45 \
                 --maxpreviews 2 \
+                --subdivide 25 \
                 --image-jobs 2 \
                 --random-seed dry-seed \
                 --shuffle \
@@ -1951,6 +1959,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
     test::assert_contains 'Height: 456' "$output"
     test::assert_contains 'Thumb height: 45' "$output"
     test::assert_contains 'Max previews per page: 2' "$output"
+    test::assert_contains 'Subdivide percent: 25' "$output"
     test::assert_contains 'Image jobs: 2' "$output"
     test::assert_contains 'Random seed: dry-seed' "$output"
     test::assert_contains 'Shuffle: yes' "$output"
@@ -2348,6 +2357,48 @@ test_generate_preflight_rejects_invalid_numbers() {
         test::assert_path_absent "$dist_dir"
     done
     test::teardown
+}
+
+# THUMB_SUBDIVIDE_PERCENT is a 0..100 integer (0 disables tile subdivision, 100
+# always subdivides). Unlike the positive-integer vars, 0 is valid, so it has its
+# own validator with its own range message.
+test_config_validate_percentage_var_enforces_range() {
+    local output
+    local value
+    local -i status=0
+
+    # shellcheck source=src/lib/config.validate.source.sh
+    source "$TEST_REPO_ROOT/src/lib/config.validate.source.sh"
+
+    # The inclusive bounds and a mid value are accepted.
+    for value in 0 30 100; do
+        export THUMB_SUBDIVIDE_PERCENT="$value"
+        set +e
+        validate_percentage_config_var THUMB_SUBDIVIDE_PERCENT 2>/dev/null
+        status=$?
+        set -e
+        if (( status != 0 )); then
+            printf 'FAIL: expected %s to be a valid percentage\n' "$value" >&2
+            exit 1
+        fi
+    done
+
+    # Out-of-range, negative, and non-integer values are rejected with the
+    # range message.
+    for value in 101 150 -1 not-a-number 3.5; do
+        export THUMB_SUBDIVIDE_PERCENT="$value"
+        set +e
+        output=$(validate_percentage_config_var THUMB_SUBDIVIDE_PERCENT 2>&1)
+        status=$?
+        set -e
+        if (( status == 0 )); then
+            printf 'FAIL: expected %s to be rejected\n' "$value" >&2
+            exit 1
+        fi
+        test::assert_contains \
+            'ERROR: THUMB_SUBDIVIDE_PERCENT must be an integer between 0 and 100' \
+            "$output"
+    done
 }
 
 test_config_validators_fail_fast_without_errexit() {
@@ -6492,6 +6543,9 @@ main() {
     test::run_case \
         '--generate preflight rejects invalid numbers' \
         test_generate_preflight_rejects_invalid_numbers
+    test::run_case \
+        'percentage config var enforces 0..100 range' \
+        test_config_validate_percentage_var_enforces_range
     test::run_case \
         'config validators fail fast without errexit' \
         test_config_validators_fail_fast_without_errexit

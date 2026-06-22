@@ -46,6 +46,9 @@ apply_config_defaults() {
     SOURCE_URL="${SOURCE_URL:-https://codeberg.org/snonux/shuriken.sh}"
     SPLASH_PAGE="${SPLASH_PAGE:-yes}"
     STATS_PAGE="${STATS_PAGE:-no}"
+    # Optional with a default (unlike the required THUMBHEIGHT): the percent
+    # chance a preview tile is subdivided into smaller thumbnails. 0 disables it.
+    THUMB_SUBDIVIDE_PERCENT="${THUMB_SUBDIVIDE_PERCENT:-30}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
     TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
