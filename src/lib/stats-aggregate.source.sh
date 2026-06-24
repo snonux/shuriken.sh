@@ -499,8 +499,8 @@ _stats_record_enums() {
 
 # Record dimension stats (megapixels, aspect ratio, orientation) from the native
 # Geometry field. Geometry is "WxH+x+y"; the leading WxH is what we need. These
-# are native fields, not exif: lines, so they come from the separate native
-# parser path in _stats_parse_identify_stream.
+# are native fields, not exif: lines, so they come from the native Geometry
+# (__geometry) path in the shared photo_exif_values_to parser.
 _stats_record_dimensions() {
     local -n values_ref="$1"; shift
     local -r photo="$1"; shift
@@ -618,24 +618,6 @@ _stats_tally() {
     fi
 }
 
-# Parse one photo's `identify -verbose` stream into an associative array. The
-# current album.source.sh regex only captures exif: lines, but the audit needs
-# the native Geometry field for dimensions, so this adds a second match path
-# storing it under the synthetic key __geometry.
-_stats_parse_identify_stream() {
-    local -n values_ref="$1"; shift
-    local line
-
-    values_ref=()
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*exif:([^:]+):[[:space:]]*(.*)$ ]]; then
-            values_ref["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
-        elif [[ "$line" =~ ^[[:space:]]*Geometry:[[:space:]]*(.*)$ ]]; then
-            values_ref[__geometry]="${BASH_REMATCH[1]}"
-        fi
-    done
-}
-
 # Aggregate a single photo: parse its identify stream (from stdin) and update
 # every counter. Split out from collect_photo_exif_stats so tests can feed a
 # synthetic fixture without stubbing the cache layer.
@@ -646,7 +628,11 @@ accumulate_photo_stats() {
     local -A exif_values=()
     local record_fn
 
-    _stats_parse_identify_stream exif_values
+    # Parse the identify stream from stdin via the single canonical parser
+    # (photo_exif_values_to, promoted to metadata-cache.source.sh in task 8r0).
+    # It captures both exif: tags and the native Geometry line under __geometry,
+    # which _stats_record_dimensions consumes.
+    photo_exif_values_to exif_values
     STATS_TOTALS[photos]=$(( STATS_TOTALS[photos] + 1 ))
     # Dispatch the EXIF-driven recorders from the registry list so categories are
     # not hardcoded here. Each takes the parsed values array plus the photo path.

@@ -102,3 +102,41 @@ cached_photo_identify_output() {
 
     print_cached_photo_identify_output "$cache_file"
 }
+
+# Canonical `identify -verbose` stream parser. Reads an identify stream from
+# stdin and fills the caller-provided associative array (by nameref) with one
+# entry per recognised field. Promoted here (task 8r0) from three near-identical
+# copies that had already drifted -- album-metadata had two exif:-only loops and
+# stats-aggregate added a native Geometry path. This single definition is a
+# strict superset of all three: it lives next to cached_photo_identify_output so
+# both the album (tooltips, details tables) and the stats aggregator share one
+# regex and one set of key conventions, isolating any future identify-format
+# drift to one place.
+#
+# Keys produced:
+#   - exif:* lines -> stored under the bare tag name (e.g. "Make", "FNumber"),
+#     i.e. WITHOUT the leading "exif:" -- callers that want the prefixed label
+#     (the details table) re-add it. This matches the historical album and stats
+#     array keys exactly.
+#   - the native Geometry line ("WxH+x+y") -> stored under the synthetic key
+#     "__geometry"; stats reads this for dimension tallies, album ignores it.
+#
+# Reads from stdin (not from a photo path) so it composes with the cache layer:
+# stats pipes a fixture or cache stream straight in, while album wraps it with
+# `photo_exif_values_to ref < <(cached_photo_identify_output ...)`.
+photo_exif_values_to() {
+    local -n output_ref="$1"; shift
+    local line
+
+    output_ref=()
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*exif:([^:]+):[[:space:]]*(.*)$ ]]; then
+            # output_ref writes to the caller-provided associative array.
+            # shellcheck disable=SC2034
+            output_ref["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+        elif [[ "$line" =~ ^[[:space:]]*Geometry:[[:space:]]*(.*)$ ]]; then
+            # shellcheck disable=SC2034
+            output_ref[__geometry]="${BASH_REMATCH[1]}"
+        fi
+    done
+}

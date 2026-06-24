@@ -8,31 +8,40 @@
 photo_exif_details_html() {
     local -r photo="$1"; shift
     local -r photo_path="$1"; shift
+    # exif_values is filled via the shared parser and iterated below.
+    # shellcheck disable=SC2034
+    local -A exif_values=()
     local key
     local key_html
-    local line
     local value
     local value_html
     local -i exif_count=0
 
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*exif:([^:]+):[[:space:]]*(.*)$ ]]; then
-            key="exif:${BASH_REMATCH[1]}"
-            value="${BASH_REMATCH[2]}"
-            key_html=$(_html_escape "$key")
-            value_html=$(_html_escape "$value")
+    # Parse via the single canonical reader/parser (task 8r0) instead of a
+    # private exif: regex loop. The parser also yields a synthetic __geometry key
+    # from the native Geometry line; the details table only shows real exif: tags
+    # (rendered with their historical "exif:" label prefix), so __geometry is
+    # skipped explicitly below.
+    _photo_exif_values_to exif_values "$photo" "$photo_path"
 
-            if (( exif_count == 0 )); then
-                printf '<table class="details">\n'
-                printf '<tbody>\n'
-            fi
-
-            printf '<tr><th>%s</th><td>%s</td></tr>\n' \
-                "$key_html" \
-                "$value_html"
-            (( ++exif_count ))
+    for key in "${!exif_values[@]}"; do
+        if [ "$key" = '__geometry' ]; then
+            continue
         fi
-    done < <(cached_photo_identify_output "$photo" "$photo_path")
+        value="${exif_values[$key]}"
+        key_html=$(_html_escape "exif:$key")
+        value_html=$(_html_escape "$value")
+
+        if (( exif_count == 0 )); then
+            printf '<table class="details">\n'
+            printf '<tbody>\n'
+        fi
+
+        printf '<tr><th>%s</th><td>%s</td></tr>\n' \
+            "$key_html" \
+            "$value_html"
+        (( ++exif_count ))
+    done
 
     if (( exif_count == 0 )); then
         printf '<p class="details-empty">No EXIF details available.</p>\n'
@@ -58,20 +67,19 @@ _first_exif_value_to() {
     done
 }
 
+# Fill the caller's associative array with a photo's parsed EXIF values. Thin
+# wrapper that pairs the shared cache reader with the shared stream parser
+# (photo_exif_values_to, promoted to metadata-cache.source.sh in task 8r0): it
+# reads the cached identify output for this photo and pipes it through the one
+# canonical parser. The parser also captures a __geometry key, which album code
+# simply ignores.
 _photo_exif_values_to() {
-    local -n output_ref="$1"; shift
+    local -r target_array="$1"; shift
     local -r photo="$1"; shift
     local -r photo_path="$1"; shift
-    local line
 
-    output_ref=()
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*exif:([^:]+):[[:space:]]*(.*)$ ]]; then
-            # output_ref writes to the caller-provided associative array.
-            # shellcheck disable=SC2034
-            output_ref["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
-        fi
-    done < <(cached_photo_identify_output "$photo" "$photo_path")
+    photo_exif_values_to "$target_array" \
+        < <(cached_photo_identify_output "$photo" "$photo_path")
 }
 
 _photo_exif_tooltip_text_from_values() {

@@ -6151,6 +6151,35 @@ test_stats_tolerates_missing_and_edge_case_fields() {
     test::teardown
 }
 
+# Regression for 8r0: the single canonical parser (photo_exif_values_to in
+# metadata-cache.source.sh, now shared by album-metadata and stats-aggregate)
+# must be a strict superset of the three former copies -- it returns both the
+# bare exif: tag keys the album relies on AND the synthetic __geometry key the
+# stats dimensions recorder relies on, from one parse of one stdin stream.
+test_shared_identify_parser_returns_exif_and_geometry() {
+    local fixture
+    local -A values=()
+
+    test::setup
+    test::source_shuriken_lib
+
+    fixture=$'  Geometry: 160x90+0+0\n'
+    fixture+=$'  exif:Make: Canon\n'
+    fixture+=$'  exif:FNumber: 28/10'
+
+    photo_exif_values_to values <<< "$fixture"
+
+    # exif: tags are keyed WITHOUT the "exif:" prefix (album/stats convention).
+    test "${values[Make]}" = 'Canon'
+    test "${values[FNumber]}" = '28/10'
+    # The native Geometry line is captured under the synthetic __geometry key.
+    test "${values[__geometry]}" = '160x90+0+0'
+    # Exactly the three recognised fields, nothing spurious.
+    test "${#values[@]}" -eq 3
+
+    test::teardown
+}
+
 test_stats_distinct_cameras_get_unique_slugs() {
     local sep
     test::setup
@@ -6768,6 +6797,9 @@ main() {
     test::run_case \
         'stats tolerate missing and edge-case fields' \
         test_stats_tolerates_missing_and_edge_case_fields
+    test::run_case \
+        'shared identify parser returns exif and geometry' \
+        test_shared_identify_parser_returns_exif_and_geometry
     test::run_case \
         'stats give distinct cameras unique slugs' \
         test_stats_distinct_cameras_get_unique_slugs
