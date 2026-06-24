@@ -3488,7 +3488,6 @@ generate() {
 }
 
 refresh_splash() {
-    local restore_errexit=no
     local -i status=0
     local tmp_html
     local tmp_path
@@ -3496,41 +3495,58 @@ refresh_splash() {
     tmp_path=$(mktemp "$DIST_DIR/.index.html.XXXXXX")
     tmp_html=$(basename "$tmp_path")
 
-    if [[ "$-" == *e* ]]; then
-        restore_errexit=yes
-        set +e
-    fi
-    (
-        set -e
-        render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html"
-    )
+    # Single cleanup point for the mktemp'd staging file, registered right after
+    # mktemp so a signal between here and the final mv cannot leak it. Note that
+    # --clean only sweeps .shuriken.*-prefixed artifacts, so it would NOT catch
+    # this .index.html.XXXXXX file; the trap is the only thing that removes it on
+    # interruption. We mirror source_template_file's idiom: RETURN covers both
+    # normal and error returns (errexit unwinds through it) and the terminating
+    # signals are trapped too, because a RETURN trap alone does not fire when a
+    # signal kills the shell with its default disposition. The trap MUST be set
+    # in refresh_splash's own body (a RETURN trap is not function-scoped unless
+    # functrace is enabled). The handler clears ALL of these traps (including
+    # itself) so a lingering RETURN trap cannot fire again on an enclosing
+    # function's return against the now out-of-scope $tmp_html local. The
+    # successful path below clears the trap before the mv so the file we just
+    # renamed into place is not removed on return.
+    trap 'rm -f "$DIST_DIR/$tmp_html"; trap - INT TERM HUP RETURN' RETURN INT TERM HUP
+
+    # Render the splash page and copy site assets in errexit subshells, then
+    # capture each subshell's status to decide whether to abort.
+    #
+    # The subshell MUST run as a standalone command (not inside an "if"/"||"
+    # condition): bash ignores an inner "set -e" whenever a compound command is
+    # part of a condition or &&/|| list, which would let render_album_splash_page
+    # sail past a failing "photo=$(random_splash_photo ...)" instead of failing.
+    # So we localize "set +e" around the bare subshell purely to stop the
+    # parent's errexit from aborting before we can read $? and clean up.
+    #
+    # This is the project's canonical "localized set +e for expected failures"
+    # idiom (see bash-best-practices). It replaces the old, fragile variant that
+    # string-tested $- ("[[ $- == *e* ]]") to remember whether errexit had been
+    # on: refresh_splash always runs under the top-level "set -euo pipefail", so
+    # errexit is unconditionally restored with a plain "set -e" afterwards.
+    status=0
+    set +e
+    ( set -e; render_album_splash_page 'photos' '.' 'blurs' '.' "$tmp_html" )
     status=$?
-    if [ "$restore_errexit" = yes ]; then
-        set -e
-    fi
+    set -e
     if (( status != 0 )); then
-        rm -f "$DIST_DIR/$tmp_html"
         return "$status"
     fi
 
-    restore_errexit=no
-    if [[ "$-" == *e* ]]; then
-        restore_errexit=yes
-        set +e
-    fi
-    (
-        set -e
-        prepare_generation_site_assets
-    )
+    status=0
+    set +e
+    ( set -e; prepare_generation_site_assets )
     status=$?
-    if [ "$restore_errexit" = yes ]; then
-        set -e
-    fi
+    set -e
     if (( status != 0 )); then
-        rm -f "$DIST_DIR/$tmp_html"
         return "$status"
     fi
 
+    # Promote the rendered temp file to index.html. Clear the cleanup trap first
+    # so the RETURN handler does not delete the file we just moved into place.
+    trap - RETURN INT TERM HUP
     mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
     log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
 }
