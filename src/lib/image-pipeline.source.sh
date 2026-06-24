@@ -48,10 +48,7 @@ create_all_photo_derivatives() {
         job_pool_submit image_jobs "image derivative job for photo $photo" \
             create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" \
             "$photo"
-    done < <(
-        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
-            | sort
-    )
+    done < <(list_photos "$photos_dir")
 
     job_pool_wait image_jobs
 }

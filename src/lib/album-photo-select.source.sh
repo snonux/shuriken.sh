@@ -9,6 +9,10 @@
 # the per-page render jobs at runtime; all libs are sourced before any code runs,
 # so availability does not depend on source order.
 
+# Unlike the other photo listings this one keeps its own find rather than using
+# list_photos (photo-list.source.sh): it pipes through maybe_shuffle, not sort,
+# because the album's display order is the configurable (seeded) shuffle, not a
+# plain sort.
 album_photo_files() {
     local -r photos_dir="$1"; shift
 
@@ -49,6 +53,9 @@ album_page_records() {
     fi
 }
 
+# Splash candidates: the album's photos (sorted) that also have a matching blur,
+# since the splash page renders a blurred background. Lists via the shared
+# list_photos (photo-list.source.sh) and filters to those with a blur present.
 splash_photo_files() {
     local -r photos_dir="$1"; shift
     local -r blurs_dir="$1"; shift
@@ -58,16 +65,18 @@ splash_photo_files() {
         if [ -f "$DIST_DIR/$blurs_dir/$photo" ]; then
             printf '%s\n' "$photo"
         fi
-    done < <(
-        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
-            | sort
-    )
+    done < <(list_photos "$photos_dir")
 }
 
+# Pick a seeded-random splash photo: one of the album's photos that also has a
+# matching blur. Shares the selection core (_pick_random_from_list,
+# photo-list.source.sh) with the other pickers; only the candidate list (splash
+# photos, not all photos), the "photo:<dir>:splash" namespace and the
+# splash-specific empty error are particular to splash selection. Output and
+# determinism are unchanged from the former inline implementation.
 random_splash_photo() {
     local -r photos_dir="$1"; shift
     local -r blurs_dir="$1"; shift
-    local -i index
     local photo
     local -a photos=()
 
@@ -75,37 +84,11 @@ random_splash_photo() {
         photos+=("$photo")
     done < <(splash_photo_files "$photos_dir" "$blurs_dir")
 
-    if (( ${#photos[@]} == 0 )); then
+    if ! _pick_random_from_list "photo:$photos_dir:splash" photos; then
         printf 'ERROR: No splash photos found in %s with matching blurs in %s\n' \
             "$(_display_path "$DIST_DIR/$photos_dir")" \
             "$(_display_path "$DIST_DIR/$blurs_dir")" >&2
         return 1
     fi
-
-    index=$(random_index "photo:$photos_dir:splash" "${#photos[@]}")
-    printf '%s\n' "${photos[index]}"
-}
-
-randomphoto() {
-    local -r photos_dir="$1"; shift
-    local -r context="${1:-$photos_dir}"
-    local -i index
-    local photo
-    local -a photos=()
-
-    while IFS= read -r photo; do
-        photos+=("$photo")
-    done < <(
-        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
-            | sort
-    )
-
-    if (( ${#photos[@]} == 0 )); then
-        printf 'ERROR: No photos found in %s\n' \
-            "$(_display_path "$DIST_DIR/$photos_dir")" >&2
-        return 1
-    fi
-
-    index=$(random_index "photo:$photos_dir:$context" "${#photos[@]}")
-    printf '%s\n' "${photos[index]}"
+    printf '\n'
 }

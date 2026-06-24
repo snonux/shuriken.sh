@@ -294,9 +294,13 @@ _stats_build_body() {
 # render the page without a populated photos directory.
 # Load the sorted photo list for blurred backgrounds once into a global. This
 # runs for every filter page (thousands of them), so the per-call directory scan
-# randomphoto would otherwise do dominates the build. render_filter_pages loads
-# it before forking the render jobs so each background subshell inherits the
-# populated array instead of rescanning.
+# the picker would otherwise do dominates the build. render_filter_pages loads it
+# before forking the render jobs so each background subshell inherits the
+# populated array instead of rescanning. The listing reuses the shared
+# list_photos (photo-list.source.sh); 2>/dev/null keeps the original behaviour of
+# silently yielding an empty list when the photos directory does not exist (e.g.
+# unit tests). The STATS_BG_PHOTOS_LOADED guard preserves the once-only caching,
+# so there is no per-page re-listing regression.
 _stats_load_background_photos() {
     if [ -n "${STATS_BG_PHOTOS_LOADED:-}" ]; then
         return
@@ -305,46 +309,43 @@ _stats_load_background_photos() {
     local photo
     while IFS= read -r photo; do
         STATS_BG_PHOTOS+=("$photo")
-    done < <(
-        find "$DIST_DIR/$STATS_PHOTOS_DIR" -maxdepth 1 -type f -printf '%f\n' \
-            2>/dev/null | sort
-    )
+    done < <(list_photos "$STATS_PHOTOS_DIR" 2>/dev/null)
     STATS_BG_PHOTOS_LOADED=yes
 }
 
 # Pick a seeded-random photo for a stats/camera page's blurred background from
-# the cached photo list. Empty (plain black) when no photos exist.
+# the cached photo list. Empty (plain black) when no photos exist. Shares the
+# selection core (_pick_random_from_list, photo-list.source.sh); the
+# "photo:<STATS_PHOTOS_DIR>:<context>" namespace is unchanged so determinism and
+# the empty-string-on-empty degradation match the former inline code exactly.
 _stats_random_background() {
     local -r context="$1"; shift
-    local -i index
 
     _stats_load_background_photos
-    if (( ${#STATS_BG_PHOTOS[@]} == 0 )); then
-        return
-    fi
-    index=$(random_index "photo:$STATS_PHOTOS_DIR:$context" \
-        "${#STATS_BG_PHOTOS[@]}")
-    printf '%s' "${STATS_BG_PHOTOS[index]}"
+    # An empty list is a normal "no background" degrade, not an error: swallow the
+    # picker's empty-list status (return 1) so the caller's set -e is unaffected,
+    # exactly like the former inline "return" on an empty list.
+    _pick_random_from_list "photo:$STATS_PHOTOS_DIR:$context" STATS_BG_PHOTOS \
+        || return 0
 }
 
 # Pick a seeded-random photo from a newline-separated list (a filter's own
 # photos) for a filter gallery's blurred background, so the background fits the
-# category. Empty when the list is empty.
+# category. Empty when the list is empty. Shares the selection core
+# (_pick_random_from_list, photo-list.source.sh); the "photo:filter:<context>"
+# namespace is unchanged so selection is identical to the former inline code.
 _stats_pick_background() {
     local -r context="$1"; shift
     local -r photos="$1"; shift
     local -a list=()
     local photo
-    local -i index
 
     while IFS= read -r photo; do
         [ -n "$photo" ] && list+=("$photo")
     done <<< "$photos"
-    if (( ${#list[@]} == 0 )); then
-        return
-    fi
-    index=$(random_index "photo:filter:$context" "${#list[@]}")
-    printf '%s' "${list[index]}"
+    # Empty list -> no background; swallow the picker's empty status so the
+    # caller's set -e is unaffected, matching the former inline "return".
+    _pick_random_from_list "photo:filter:$context" list || return 0
 }
 
 render_stats_page() {

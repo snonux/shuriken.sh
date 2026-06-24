@@ -5,8 +5,10 @@
 # bundle now live in siblings, all sourced before this file:
 #   - album-tile-layout.source.sh   (tile_layout_for/build_tile_block/...)
 #   - album-thumbnail-html.source.sh (build_preview_thumbnail/append_preview_grid)
-#   - album-photo-select.source.sh  (album_photo_files/randomphoto/splash/...)
-# This module calls into all three at runtime; all libs are sourced before any
+#   - album-photo-select.source.sh  (album_photo_files/album_page_records/splash)
+# The generic "pick one seeded-random photo from a dir" used for page backgrounds
+# now comes from the shared pick_random_photo (photo-list.source.sh, task br0).
+# This module calls into all of these at runtime; all libs are sourced before any
 # code runs, so the cross-module calls resolve regardless of source order.
 #
 # Maps each album photo filename to its view-page basename ("<page>-<preview>")
@@ -39,7 +41,7 @@ start_preview_page() {
     local -r header_bar="$1"; shift
     local background_image
 
-    background_image=$(randomphoto "$photos_dir" "$page_name")
+    background_image=$(pick_random_photo "$photos_dir" "$page_name")
     template header "$page_name.html" \
         html_dir "$html_dir" \
         backhref "$backhref" \
