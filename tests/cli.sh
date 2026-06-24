@@ -166,8 +166,24 @@ test_version() {
     test::assert_contains 'This is Shuriken Version' "$output"
 }
 
+# Sources a generated config under "set -euo pipefail" in an isolated subshell
+# and prints the resulting TEMPLATE_DIR. This mirrors how load_configured_action
+# consumes the config, so it both proves the file sources cleanly (the subshell
+# would abort otherwise) and reports the value that actually takes effect after
+# the shell parses any quoting.
+test::sourced_template_dir() {
+    local -r config_file="$1"; shift
+
+    (
+        set -euo pipefail
+        # shellcheck disable=SC1090
+        source "$config_file"
+        printf '%s\n' "$TEMPLATE_DIR"
+    )
+}
+
 test_init() {
-    local config
+    local template_dir
 
     test::setup
     (
@@ -176,20 +192,22 @@ test_init() {
             "$TEST_SHURIKEN" --init >/dev/null
         test::assert_file_exists shuriken.conf
     )
-    config=$(<"$TEST_TMPDIR/shuriken.conf")
-    test::assert_contains \
-        "TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default" \
-        "$config"
+    template_dir=$(test::sourced_template_dir "$TEST_TMPDIR/shuriken.conf")
+    test "$template_dir" = "$TEST_REPO_ROOT/share/templates/default"
     test::teardown
 }
 
-test_init_with_hash_in_source_path() {
-    local config
+# Runs --init from a copy of the repo whose root path contains "marker", then
+# asserts the generated config sources cleanly and that TEMPLATE_DIR resolves to
+# the expected path with the marker preserved. Shared by the # and space cases.
+test::assert_init_rewrites_template_dir() {
+    local -r marker="$1"; shift
     local output_dir
     local repo_dir
+    local template_dir
 
     test::setup
-    repo_dir="$TEST_TMPDIR/repo#with-hash"
+    repo_dir="$TEST_TMPDIR/repo$marker"
     output_dir="$TEST_TMPDIR/output"
     mkdir -p "$repo_dir" "$output_dir"
     cp -R \
@@ -204,11 +222,17 @@ test_init_with_hash_in_source_path() {
             "$repo_dir/bin/shuriken" --init >/dev/null
         test::assert_file_exists shuriken.conf
     )
-    config=$(<"$output_dir/shuriken.conf")
-    test::assert_contains \
-        "TEMPLATE_DIR=$repo_dir/share/templates/default" \
-        "$config"
+    template_dir=$(test::sourced_template_dir "$output_dir/shuriken.conf")
+    test "$template_dir" = "$repo_dir/share/templates/default"
     test::teardown
+}
+
+test_init_with_hash_in_source_path() {
+    test::assert_init_rewrites_template_dir '#with-hash'
+}
+
+test_init_with_space_in_source_path() {
+    test::assert_init_rewrites_template_dir ' with space'
 }
 
 test_init_existing_config_fails_without_overwrite() {
@@ -6406,6 +6430,9 @@ main() {
     test::run_case \
         '--init succeeds when source path contains #' \
         test_init_with_hash_in_source_path
+    test::run_case \
+        '--init succeeds when source path contains a space' \
+        test_init_with_space_in_source_path
     test::run_case \
         '--init refuses existing config without overwrite' \
         test_init_existing_config_fails_without_overwrite

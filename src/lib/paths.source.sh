@@ -121,9 +121,16 @@ init_config() {
         && "$default_rc_file" = "$source_root/src/shuriken.default.conf" ]]; then
         source_template_dir="$source_root/share/templates/default"
         rewritten_rc_file=$(mktemp "${rc_file}.XXXXXX")
+        # Emit the rewritten TEMPLATE_DIR as a single-quoted assignment so the
+        # generated config sources cleanly under "set -euo pipefail" even when
+        # the source-checkout path contains spaces or other shell metacharacters
+        # (an unquoted value would be word-split on source, truncating the path
+        # and running its tail as a command -> exit 127). Any embedded single
+        # quote is closed, escaped as '\'', and reopened so the literal survives.
         if ! awk -v template_dir="$source_template_dir" \
             '/^TEMPLATE_DIR=/ {
-                print "TEMPLATE_DIR=" template_dir
+                gsub(/'\''/, "'\''\\'\'''\''", template_dir)
+                print "TEMPLATE_DIR='\''" template_dir "'\''"
                 next
             }
             { print }' "$rc_file" > "$rewritten_rc_file"; then
