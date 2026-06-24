@@ -251,6 +251,45 @@ test_init_existing_config_fails_without_overwrite() {
     test::teardown
 }
 
+# Guards against config DEFAULT DRIFT for TARBALL_INCLUDE: its documented default
+# in shuriken.default.conf (written verbatim by --init) MUST agree with the
+# fallback applied by apply_config_defaults when the key is unset. These two
+# previously disagreed ('yes' in the conf vs 'no' in apply_config_defaults); the
+# authoritative default is 'yes' (tarball inclusion has been on since the start).
+test_tarball_include_default_matches_init_config() {
+    local init_default
+    local applied_default
+
+    test::setup
+
+    # Value a fresh --init config gives the user (the documented default).
+    (
+        cd "$TEST_TMPDIR"
+        SHURIKEN_DEFAULT_RC="$TEST_TMPDIR/missing" \
+            "$TEST_SHURIKEN" --init >/dev/null
+    )
+    init_default=$(
+        set -euo pipefail
+        # shellcheck disable=SC1090,SC1091
+        source "$TEST_TMPDIR/shuriken.conf"
+        printf '%s\n' "$TARBALL_INCLUDE"
+    )
+
+    # Value apply_config_defaults falls back to when the key is left unset.
+    applied_default=$(
+        set -euo pipefail
+        # shellcheck source=/dev/null
+        source <(sed '$d' "$TEST_SHURIKEN")
+        unset -v TARBALL_INCLUDE || true
+        apply_config_defaults
+        printf '%s\n' "$TARBALL_INCLUDE"
+    )
+
+    test "$init_default" = "$applied_default"
+    test "$applied_default" = yes
+    test::teardown
+}
+
 test_just_install_and_deinstall_with_destdir() {
     local stage_dir
 
@@ -1499,7 +1538,7 @@ RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
 STATS_PAGE=no
-TARBALL_INCLUDE=no
+TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
@@ -6465,6 +6504,9 @@ main() {
     test::run_case \
         '--init refuses existing config without overwrite' \
         test_init_existing_config_fails_without_overwrite
+    test::run_case \
+        'TARBALL_INCLUDE default matches between --init config and apply_config_defaults' \
+        test_tarball_include_default_matches_init_config
     test::run_case \
         'just install and deinstall supports DESTDIR' \
         test_just_install_and_deinstall_with_destdir

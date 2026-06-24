@@ -52,7 +52,11 @@ apply_config_defaults() {
     THUMB_SUBDIVIDE_PERCENT="${THUMB_SUBDIVIDE_PERCENT:-30}"
     THUMB_FEATURE_PERCENT="${THUMB_FEATURE_PERCENT:-10}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
-    TARBALL_INCLUDE="${TARBALL_INCLUDE:-no}"
+    # Default 'yes': a tarball of the incoming dir is included in the dist unless
+    # disabled. This must match the documented default in shuriken.default.conf
+    # (TARBALL_INCLUDE=yes) -- it previously drifted to 'no' here. 'yes' is the
+    # original, authoritative default (tarball inclusion was on from the start).
+    TARBALL_INCLUDE="${TARBALL_INCLUDE:-yes}"
     TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
     TAR_TIMEOUT="${TAR_TIMEOUT:-120}"
     if ! declare -p TAR_OPTS >/dev/null 2>&1; then
