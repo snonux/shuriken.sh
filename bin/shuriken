@@ -2491,7 +2491,381 @@ print_dry_run_plan() {
     fi
 }
 
+# Inlined from src/lib/album-tile-layout.source.sh
+# Album thumbnail-grid tile layout / subdivision. Split out of
+# album-render.source.sh (task ar0) so the "how do consecutive thumbnails get
+# grouped into tiles" concern (feature 2x2 hero tiles, subdivided multi-thumb
+# tiles, plain squares) lives apart from the page orchestration and the raw
+# thumbnail HTML. These deciders change for visual/CSS reasons, independent of
+# the job plumbing or the photo-selection policy.
+#
+# tile_layout_for rolls the seeded random layout for the next tile;
+# build_tile_block / build_subdivided_tile emit the chosen tile's markup. They
+# call build_preview_thumbnail (album-thumbnail-html.source.sh) at runtime, and
+# are themselves driven by append_preview_grid there; all libs are sourced
+# before any code runs, so the cross-module calls resolve regardless of source
+# order.
+
+# Decide the layout for the next tile, printing "<layout> <photo-count>". When
+# feature_allowed is non-zero each tile rolls first for a "feature" (one photo
+# blown up to a 2x2 hero tile) with THUMB_FEATURE_PERCENT probability; the caller
+# clears feature_allowed once a page has reached its per-page feature-tile cap
+# (see append_preview_grid). Otherwise the tile rolls for a subdivision with
+# THUMB_SUBDIVIDE_PERCENT probability (only into a layout that fits the photos
+# still remaining on the page); failing both it is a single square thumbnail. The
+# feature and subdivide rolls use independent seeded random_index namespaces, so
+# builds stay reproducible when RANDOM_SEED is set.
+tile_layout_for() {
+    local -ri remaining="$1"; shift
+    local -r context="$1"; shift
+    local -ri feature_allowed="$1"; shift
+    local -a names=(two_wide)
+    local -a counts=(2)
+    local -i roll choice
+
+    # A feature tile always fits (it consumes a single photo), so roll for it
+    # first -- but only while the page has not used its one allowed feature.
+    # THUMB_FEATURE_PERCENT == 0 disables it (the roll can never be < 0).
+    if (( feature_allowed )); then
+        roll=$(random_index "feature:$context" 100)
+        if (( roll < THUMB_FEATURE_PERCENT )); then
+            printf 'feature 1\n'
+            return
+        fi
+    fi
+
+    # A single tile when subdivision is disabled, too few photos remain to fill
+    # even the smallest subdivided layout (two_wide needs 2), or the roll misses.
+    if (( remaining < 2 || THUMB_SUBDIVIDE_PERCENT == 0 )); then
+        printf 'single 1\n'
+        return
+    fi
+    roll=$(random_index "subdivide:$context" 100)
+    if (( roll >= THUMB_SUBDIVIDE_PERCENT )); then
+        printf 'single 1\n'
+        return
+    fi
+
+    # Offer only the subdivision layouts that fit the remaining photo count.
+    if (( remaining >= 3 )); then
+        names+=(squares_wide_top squares_wide_bottom)
+        counts+=(3 3)
+    fi
+    if (( remaining >= 4 )); then
+        names+=(quad)
+        counts+=(4)
+    fi
+
+    choice=$(random_index "sublayout:$context" "${#names[@]}")
+    printf '%s %s\n' "${names[choice]}" "${counts[choice]}"
+}
+
+# Render one tile's markup (no trailing newline). A "single" tile is the plain
+# square thumbnail, byte-identical to the previous per-thumbnail output. A
+# "feature" tile is the same single thumbnail but with the 'feature' anchor class
+# that makes CSS span it across a 2x2 block. Any other layout is a subdivided
+# tile. The tile's photos are the trailing args and their preview numbers run
+# from start_preview upward.
+build_tile_block() {
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r href_prefix="$1"; shift
+    local -r layout="$1"; shift
+    local -ri start_preview="$1"; shift
+    local -a photos=("$@")
+    local animation_class
+
+    case "$layout" in
+        single|feature)
+            animation_class=$(random_animation_css_class slow "${photos[0]}")
+            # 'single' -> no anchor class (legacy output); 'feature' -> the
+            # 'feature' anchor class CSS spans across a 2x2 grid block.
+            local anchor_class=''
+            if [ "$layout" = feature ]; then
+                anchor_class='feature'
+            fi
+            build_preview_thumbnail \
+                "$thumbs_dir" "$backhref" "$href_prefix" "$start_preview" \
+                "${photos[0]}" "$animation_class" thumb "$anchor_class"
+            return
+            ;;
+    esac
+    build_subdivided_tile \
+        "$thumbs_dir" "$backhref" "$href_prefix" "$layout" "$start_preview" \
+        "${photos[@]}"
+}
+
+# Emit a subdivided tile: a <div class='tile'> wrapping the smaller
+# sub-thumbnails (class 'subthumb'). Each sub-thumbnail is still its own
+# clickable photo/view page; only its size and (for the full-width strip) an
+# extra 'wide' anchor class differ from a normal square thumbnail. The anchor
+# ORDER encodes the layout for the CSS grid's auto-placement:
+#   two_wide            -> two full-width strips (both 'wide'), stacked
+#   squares_wide_top    -> strip first (top row), then two squares (bottom row)
+#   squares_wide_bottom -> two squares first (top row), then strip (bottom row)
+#   quad                -> four squares (2x2)
+build_subdivided_tile() {
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r href_prefix="$1"; shift
+    local -r layout="$1"; shift
+    local -ri start_preview="$1"; shift
+    local -a photos=("$@")
+    local -a anchor_classes
+    local -i k
+    local animation_class
+
+    case "$layout" in
+        two_wide)            anchor_classes=(wide wide) ;;
+        squares_wide_top)    anchor_classes=(wide '' '') ;;
+        squares_wide_bottom) anchor_classes=('' '' wide) ;;
+        quad)                anchor_classes=('' '' '' '') ;;
+    esac
+
+    printf "<div class='tile'>\n"
+    for (( k = 0; k < ${#photos[@]}; k++ )); do
+        animation_class=$(random_animation_css_class slow "${photos[k]}")
+        build_preview_thumbnail \
+            "$thumbs_dir" "$backhref" "$href_prefix" "$(( start_preview + k ))" \
+            "${photos[k]}" "$animation_class" subthumb "${anchor_classes[k]:-}"
+        printf '\n'
+    done
+    printf '</div>'
+}
+
+# Inlined from src/lib/album-thumbnail-html.source.sh
+# Album thumbnail HTML. Split out of album-render.source.sh (task ar0) so the
+# "what markup does one thumbnail / a whole grid emit" concern lives apart from
+# the tile-layout deciders (album-tile-layout.source.sh), the page orchestration
+# and the photo-selection policy. This markup changes for HTML/CSS reasons
+# (escaping, classes, link shape), independent of how tiles are grouped or how
+# jobs are wired.
+#
+# append_preview_grid walks a photo list into tiles by calling tile_layout_for /
+# build_tile_block (album-tile-layout.source.sh); build_preview_thumbnail emits
+# one thumbnail's <a>/<img>. All libs are sourced before any code runs, so the
+# calls between this module and album-tile-layout resolve regardless of source
+# order.
+
+# Build a whole thumbnail-grid buffer by walking a list of photos and grouping
+# them into tiles. Most tiles are a single square thumbnail, but (controlled by
+# THUMB_FEATURE_PERCENT / THUMB_SUBDIVIDE_PERCENT) some become a 2x2 feature tile
+# or are subdivided into several smaller thumbnails. Each photo keeps its 1-based
+# position as its preview number (tiling only groups CONSECUTIVE photos visually,
+# never reorders them), so the view-page links stay correct. The view-page link
+# is "${href_prefix}${preview_num}.html": the main album passes "<page_num>-"; the
+# stats mini-albums pass "" (their view pages are bare "<index>.html"). This is
+# the single shared grid builder for both the main preview pages and the stats
+# mini-album galleries. Tile blocks are separated by a single newline; the
+# template adds the trailing newline.
+append_preview_grid() {
+    local -n buffer_ref="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r href_prefix="$1"; shift
+    local -a photos=("$@")
+    local -i i=0
+    local -i count
+    local layout
+    local block
+    # Cap the big 2x2 feature tiles at this many per page; once reached, later
+    # tiles are no longer offered the "feature" layout (they fall back to
+    # subdivided/single), so a page never gets crowded with hero tiles.
+    local -ri max_features=2
+    local -i features_used=0
+
+    while (( i < ${#photos[@]} )); do
+        # Decide this tile's layout from the photos still available; the first
+        # photo's name is the seeded-random context so the choice is stable.
+        # Features are only offered until the per-page cap is reached.
+        read -r layout count < <(
+            tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}" \
+                "$(( features_used < max_features ? 1 : 0 ))"
+        )
+        if [ "$layout" = feature ]; then
+            (( ++features_used ))
+        fi
+        block=$(build_tile_block \
+            "$thumbs_dir" "$backhref" "$href_prefix" "$layout" "$(( i + 1 ))" \
+            "${photos[@]:i:count}")
+        if [ -z "$buffer_ref" ]; then
+            buffer_ref="$block"
+        else
+            buffer_ref+=$'\n'"$block"
+        fi
+        (( i += count ))
+    done
+}
+
+# Render the HTML for a single preview thumbnail (HTML-escaping every value the
+# way preview.tmpl's context_html fields did). Returned without a trailing
+# newline so callers control separators. The view-page link is
+# "${href_prefix}${preview_num}.html", so the main album passes "<page_num>-" and
+# the stats mini-albums (whose view pages are bare "<index>.html") pass "" -- the
+# only thing that differs between the two grids, keeping one shared builder.
+# img_class defaults to 'thumb' (the full square); subdivided tiles pass
+# 'subthumb'. anchor_class is an optional extra class on the <a> ('wide' marks the
+# full-width strip inside a subdivided tile, 'feature' a 2x2 hero tile); when empty
+# the <a> has no class attribute, keeping the single-tile output byte-identical to
+# before.
+build_preview_thumbnail() {
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r href_prefix="$1"; shift
+    local -r preview_num="$1"; shift
+    local -r photo_file="$1"; shift
+    local -r animation_class="$1"; shift
+    local -r img_class="${1:-thumb}"
+    local -r anchor_class="${2:-}"
+    local photo_html
+    local anim_html
+    local backhref_html
+    local thumbs_dir_html
+    local anchor_class_html
+
+    photo_html=$(_html_escape "$photo_file")
+    anim_html=$(_html_escape "$animation_class")
+    backhref_html=$(_html_escape "$backhref")
+    thumbs_dir_html=$(_html_escape "$thumbs_dir")
+    if [ -n "$anchor_class" ]; then
+        anchor_class_html=$(_html_escape "$anchor_class")
+        printf '<a id=%s class=%s href=%s>\n' \
+            "'$photo_html'" "'$anchor_class_html'" \
+            "'${href_prefix}${preview_num}.html'"
+    else
+        printf '<a id=%s href=%s>\n' \
+            "'$photo_html'" "'${href_prefix}${preview_num}.html'"
+    fi
+    printf "  <img class='%s %s' alt='%s' src='%s/%s/%s'>\n</a>" \
+        "$img_class" "$anim_html" "$photo_html" "$backhref_html" \
+        "$thumbs_dir_html" "$photo_html"
+}
+
+# Inlined from src/lib/album-photo-select.source.sh
+# Album photo listing and random selection. Split out of
+# album-render.source.sh (task ar0) so the "which photos are in this album, in
+# what order, and which one do we pick for a background/splash" concern lives
+# apart from the page orchestration, the tile-layout deciders and the thumbnail
+# HTML. This is selection POLICY (shuffle/sort, splash-requires-a-blur, seeded
+# random pick) and changes for different reasons than the rendering plumbing.
+#
+# These helpers are called by the orchestrator (album-render.source.sh) and by
+# the per-page render jobs at runtime; all libs are sourced before any code runs,
+# so availability does not depend on source order.
+
+album_photo_files() {
+    local -r photos_dir="$1"; shift
+
+    find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
+        | maybe_shuffle
+}
+
+# Group the album's photos into pages of at most MAXPREVIEWS, in their final
+# (shuffled/sorted) order. The result is emitted one line per page as a
+# tab-separated record "<page_num>\t<photo>\t<photo>..." so the caller can walk
+# pages without keeping every page in memory at once. Order is fully
+# deterministic (album_photo_files already applies the seeded shuffle), so the
+# downstream parallelism only changes timing, never which photo lands where.
+album_page_records() {
+    local -r photos_dir="$1"; shift
+    local photo
+    local -i num=1
+    local -i count=0
+    local line=''
+
+    while IFS= read -r photo; do
+        if (( count == MAXPREVIEWS )); then
+            printf '%d\t%s\n' "$num" "$line"
+            (( ++num ))
+            count=0
+            line=''
+        fi
+        if (( count == 0 )); then
+            line="$photo"
+        else
+            line="$line"$'\t'"$photo"
+        fi
+        (( ++count ))
+    done < <(album_photo_files "$photos_dir")
+
+    if (( count > 0 )); then
+        printf '%d\t%s\n' "$num" "$line"
+    fi
+}
+
+splash_photo_files() {
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local photo
+
+    while IFS= read -r photo; do
+        if [ -f "$DIST_DIR/$blurs_dir/$photo" ]; then
+            printf '%s\n' "$photo"
+        fi
+    done < <(
+        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
+            | sort
+    )
+}
+
+random_splash_photo() {
+    local -r photos_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -i index
+    local photo
+    local -a photos=()
+
+    while IFS= read -r photo; do
+        photos+=("$photo")
+    done < <(splash_photo_files "$photos_dir" "$blurs_dir")
+
+    if (( ${#photos[@]} == 0 )); then
+        printf 'ERROR: No splash photos found in %s with matching blurs in %s\n' \
+            "$(_display_path "$DIST_DIR/$photos_dir")" \
+            "$(_display_path "$DIST_DIR/$blurs_dir")" >&2
+        return 1
+    fi
+
+    index=$(random_index "photo:$photos_dir:splash" "${#photos[@]}")
+    printf '%s\n' "${photos[index]}"
+}
+
+randomphoto() {
+    local -r photos_dir="$1"; shift
+    local -r context="${1:-$photos_dir}"
+    local -i index
+    local photo
+    local -a photos=()
+
+    while IFS= read -r photo; do
+        photos+=("$photo")
+    done < <(
+        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
+            | sort
+    )
+
+    if (( ${#photos[@]} == 0 )); then
+        printf 'ERROR: No photos found in %s\n' \
+            "$(_display_path "$DIST_DIR/$photos_dir")" >&2
+        return 1
+    fi
+
+    index=$(random_index "photo:$photos_dir:$context" "${#photos[@]}")
+    printf '%s\n' "${photos[index]}"
+}
+
 # Inlined from src/lib/album-render.source.sh
+# Album page orchestration. After the ar0 split this module owns only the page
+# assembly and the job plumbing: it builds the preview pages, the per-photo
+# view/details pages, the navigation redirects and the index/splash, driving the
+# job_pool_* pool so pages render in parallel. The three concerns it used to
+# bundle now live in siblings, all sourced before this file:
+#   - album-tile-layout.source.sh   (tile_layout_for/build_tile_block/...)
+#   - album-thumbnail-html.source.sh (build_preview_thumbnail/append_preview_grid)
+#   - album-photo-select.source.sh  (album_photo_files/randomphoto/splash/...)
+# This module calls into all three at runtime; all libs are sourced before any
+# code runs, so the cross-module calls resolve regardless of source order.
+#
 # Maps each album photo filename to its view-page basename ("<page>-<preview>")
 # as assigned during render_album_pages. Declared globally so it always exists
 # for the accessor even when no album was rendered.
@@ -2511,13 +2885,6 @@ album_view_page_for_photo() {
     local -r photo="$1"; shift
 
     printf '%s' "${ALBUM_VIEW_PAGE_BY_PHOTO[$photo]:-}"
-}
-
-album_photo_files() {
-    local -r photos_dir="$1"; shift
-
-    find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
-        | maybe_shuffle
 }
 
 start_preview_page() {
@@ -2662,227 +3029,6 @@ queue_preview_page_render_job() {
         "$prev_page" \
         "$next_page" \
         "$@"
-}
-
-# Build a whole thumbnail-grid buffer by walking a list of photos and grouping
-# them into tiles. Most tiles are a single square thumbnail, but (controlled by
-# THUMB_FEATURE_PERCENT / THUMB_SUBDIVIDE_PERCENT) some become a 2x2 feature tile
-# or are subdivided into several smaller thumbnails. Each photo keeps its 1-based
-# position as its preview number (tiling only groups CONSECUTIVE photos visually,
-# never reorders them), so the view-page links stay correct. The view-page link
-# is "${href_prefix}${preview_num}.html": the main album passes "<page_num>-"; the
-# stats mini-albums pass "" (their view pages are bare "<index>.html"). This is
-# the single shared grid builder for both the main preview pages and the stats
-# mini-album galleries. Tile blocks are separated by a single newline; the
-# template adds the trailing newline.
-append_preview_grid() {
-    local -n buffer_ref="$1"; shift
-    local -r thumbs_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r href_prefix="$1"; shift
-    local -a photos=("$@")
-    local -i i=0
-    local -i count
-    local layout
-    local block
-    # Cap the big 2x2 feature tiles at this many per page; once reached, later
-    # tiles are no longer offered the "feature" layout (they fall back to
-    # subdivided/single), so a page never gets crowded with hero tiles.
-    local -ri max_features=2
-    local -i features_used=0
-
-    while (( i < ${#photos[@]} )); do
-        # Decide this tile's layout from the photos still available; the first
-        # photo's name is the seeded-random context so the choice is stable.
-        # Features are only offered until the per-page cap is reached.
-        read -r layout count < <(
-            tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}" \
-                "$(( features_used < max_features ? 1 : 0 ))"
-        )
-        if [ "$layout" = feature ]; then
-            (( ++features_used ))
-        fi
-        block=$(build_tile_block \
-            "$thumbs_dir" "$backhref" "$href_prefix" "$layout" "$(( i + 1 ))" \
-            "${photos[@]:i:count}")
-        if [ -z "$buffer_ref" ]; then
-            buffer_ref="$block"
-        else
-            buffer_ref+=$'\n'"$block"
-        fi
-        (( i += count ))
-    done
-}
-
-# Decide the layout for the next tile, printing "<layout> <photo-count>". When
-# feature_allowed is non-zero each tile rolls first for a "feature" (one photo
-# blown up to a 2x2 hero tile) with THUMB_FEATURE_PERCENT probability; the caller
-# clears feature_allowed once a page has reached its per-page feature-tile cap
-# (see append_preview_grid). Otherwise the tile rolls for a subdivision with
-# THUMB_SUBDIVIDE_PERCENT probability (only into a layout that fits the photos
-# still remaining on the page); failing both it is a single square thumbnail. The
-# feature and subdivide rolls use independent seeded random_index namespaces, so
-# builds stay reproducible when RANDOM_SEED is set.
-tile_layout_for() {
-    local -ri remaining="$1"; shift
-    local -r context="$1"; shift
-    local -ri feature_allowed="$1"; shift
-    local -a names=(two_wide)
-    local -a counts=(2)
-    local -i roll choice
-
-    # A feature tile always fits (it consumes a single photo), so roll for it
-    # first -- but only while the page has not used its one allowed feature.
-    # THUMB_FEATURE_PERCENT == 0 disables it (the roll can never be < 0).
-    if (( feature_allowed )); then
-        roll=$(random_index "feature:$context" 100)
-        if (( roll < THUMB_FEATURE_PERCENT )); then
-            printf 'feature 1\n'
-            return
-        fi
-    fi
-
-    # A single tile when subdivision is disabled, too few photos remain to fill
-    # even the smallest subdivided layout (two_wide needs 2), or the roll misses.
-    if (( remaining < 2 || THUMB_SUBDIVIDE_PERCENT == 0 )); then
-        printf 'single 1\n'
-        return
-    fi
-    roll=$(random_index "subdivide:$context" 100)
-    if (( roll >= THUMB_SUBDIVIDE_PERCENT )); then
-        printf 'single 1\n'
-        return
-    fi
-
-    # Offer only the subdivision layouts that fit the remaining photo count.
-    if (( remaining >= 3 )); then
-        names+=(squares_wide_top squares_wide_bottom)
-        counts+=(3 3)
-    fi
-    if (( remaining >= 4 )); then
-        names+=(quad)
-        counts+=(4)
-    fi
-
-    choice=$(random_index "sublayout:$context" "${#names[@]}")
-    printf '%s %s\n' "${names[choice]}" "${counts[choice]}"
-}
-
-# Render one tile's markup (no trailing newline). A "single" tile is the plain
-# square thumbnail, byte-identical to the previous per-thumbnail output. A
-# "feature" tile is the same single thumbnail but with the 'feature' anchor class
-# that makes CSS span it across a 2x2 block. Any other layout is a subdivided
-# tile. The tile's photos are the trailing args and their preview numbers run
-# from start_preview upward.
-build_tile_block() {
-    local -r thumbs_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r href_prefix="$1"; shift
-    local -r layout="$1"; shift
-    local -ri start_preview="$1"; shift
-    local -a photos=("$@")
-    local animation_class
-
-    case "$layout" in
-        single|feature)
-            animation_class=$(random_animation_css_class slow "${photos[0]}")
-            # 'single' -> no anchor class (legacy output); 'feature' -> the
-            # 'feature' anchor class CSS spans across a 2x2 grid block.
-            local anchor_class=''
-            if [ "$layout" = feature ]; then
-                anchor_class='feature'
-            fi
-            build_preview_thumbnail \
-                "$thumbs_dir" "$backhref" "$href_prefix" "$start_preview" \
-                "${photos[0]}" "$animation_class" thumb "$anchor_class"
-            return
-            ;;
-    esac
-    build_subdivided_tile \
-        "$thumbs_dir" "$backhref" "$href_prefix" "$layout" "$start_preview" \
-        "${photos[@]}"
-}
-
-# Emit a subdivided tile: a <div class='tile'> wrapping the smaller
-# sub-thumbnails (class 'subthumb'). Each sub-thumbnail is still its own
-# clickable photo/view page; only its size and (for the full-width strip) an
-# extra 'wide' anchor class differ from a normal square thumbnail. The anchor
-# ORDER encodes the layout for the CSS grid's auto-placement:
-#   two_wide            -> two full-width strips (both 'wide'), stacked
-#   squares_wide_top    -> strip first (top row), then two squares (bottom row)
-#   squares_wide_bottom -> two squares first (top row), then strip (bottom row)
-#   quad                -> four squares (2x2)
-build_subdivided_tile() {
-    local -r thumbs_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r href_prefix="$1"; shift
-    local -r layout="$1"; shift
-    local -ri start_preview="$1"; shift
-    local -a photos=("$@")
-    local -a anchor_classes
-    local -i k
-    local animation_class
-
-    case "$layout" in
-        two_wide)            anchor_classes=(wide wide) ;;
-        squares_wide_top)    anchor_classes=(wide '' '') ;;
-        squares_wide_bottom) anchor_classes=('' '' wide) ;;
-        quad)                anchor_classes=('' '' '' '') ;;
-    esac
-
-    printf "<div class='tile'>\n"
-    for (( k = 0; k < ${#photos[@]}; k++ )); do
-        animation_class=$(random_animation_css_class slow "${photos[k]}")
-        build_preview_thumbnail \
-            "$thumbs_dir" "$backhref" "$href_prefix" "$(( start_preview + k ))" \
-            "${photos[k]}" "$animation_class" subthumb "${anchor_classes[k]:-}"
-        printf '\n'
-    done
-    printf '</div>'
-}
-
-# Render the HTML for a single preview thumbnail (HTML-escaping every value the
-# way preview.tmpl's context_html fields did). Returned without a trailing
-# newline so callers control separators. The view-page link is
-# "${href_prefix}${preview_num}.html", so the main album passes "<page_num>-" and
-# the stats mini-albums (whose view pages are bare "<index>.html") pass "" -- the
-# only thing that differs between the two grids, keeping one shared builder.
-# img_class defaults to 'thumb' (the full square); subdivided tiles pass
-# 'subthumb'. anchor_class is an optional extra class on the <a> ('wide' marks the
-# full-width strip inside a subdivided tile, 'feature' a 2x2 hero tile); when empty
-# the <a> has no class attribute, keeping the single-tile output byte-identical to
-# before.
-build_preview_thumbnail() {
-    local -r thumbs_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r href_prefix="$1"; shift
-    local -r preview_num="$1"; shift
-    local -r photo_file="$1"; shift
-    local -r animation_class="$1"; shift
-    local -r img_class="${1:-thumb}"
-    local -r anchor_class="${2:-}"
-    local photo_html
-    local anim_html
-    local backhref_html
-    local thumbs_dir_html
-    local anchor_class_html
-
-    photo_html=$(_html_escape "$photo_file")
-    anim_html=$(_html_escape "$animation_class")
-    backhref_html=$(_html_escape "$backhref")
-    thumbs_dir_html=$(_html_escape "$thumbs_dir")
-    if [ -n "$anchor_class" ]; then
-        anchor_class_html=$(_html_escape "$anchor_class")
-        printf '<a id=%s class=%s href=%s>\n' \
-            "'$photo_html'" "'$anchor_class_html'" \
-            "'${href_prefix}${preview_num}.html'"
-    else
-        printf '<a id=%s href=%s>\n' \
-            "'$photo_html'" "'${href_prefix}${preview_num}.html'"
-    fi
-    printf "  <img class='%s %s' alt='%s' src='%s/%s/%s'>\n</a>" \
-        "$img_class" "$anim_html" "$photo_html" "$backhref_html" \
-        "$thumbs_dir_html" "$photo_html"
 }
 
 render_view_page() {
@@ -3168,39 +3314,6 @@ queue_album_view_render_job() {
         "$photo"
 }
 
-# Group the album's photos into pages of at most MAXPREVIEWS, in their final
-# (shuffled/sorted) order. The result is emitted one line per page as a
-# tab-separated record "<page_num>\t<photo>\t<photo>..." so the caller can walk
-# pages without keeping every page in memory at once. Order is fully
-# deterministic (album_photo_files already applies the seeded shuffle), so the
-# downstream parallelism only changes timing, never which photo lands where.
-album_page_records() {
-    local -r photos_dir="$1"; shift
-    local photo
-    local -i num=1
-    local -i count=0
-    local line=''
-
-    while IFS= read -r photo; do
-        if (( count == MAXPREVIEWS )); then
-            printf '%d\t%s\n' "$num" "$line"
-            (( ++num ))
-            count=0
-            line=''
-        fi
-        if (( count == 0 )); then
-            line="$photo"
-        else
-            line="$line"$'\t'"$photo"
-        fi
-        (( ++count ))
-    done < <(album_photo_files "$photos_dir")
-
-    if (( count > 0 )); then
-        printf '%d\t%s\n' "$num" "$line"
-    fi
-}
-
 # Per-photo bookkeeping shared by the album loop: queue the view+details render
 # job, record the page/preview as a rendered view page (for redirect generation)
 # and remember the photo -> view-page mapping for the stats mini-albums. Kept
@@ -3313,67 +3426,6 @@ render_album_pages() {
     fi
     render_view_redirects "$html_dir" rendered_view_pages rendered_last_views
     render_album_index "$photos_dir" "$html_dir" "$blurs_dir" "$backhref"
-}
-
-splash_photo_files() {
-    local -r photos_dir="$1"; shift
-    local -r blurs_dir="$1"; shift
-    local photo
-
-    while IFS= read -r photo; do
-        if [ -f "$DIST_DIR/$blurs_dir/$photo" ]; then
-            printf '%s\n' "$photo"
-        fi
-    done < <(
-        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
-            | sort
-    )
-}
-
-random_splash_photo() {
-    local -r photos_dir="$1"; shift
-    local -r blurs_dir="$1"; shift
-    local -i index
-    local photo
-    local -a photos=()
-
-    while IFS= read -r photo; do
-        photos+=("$photo")
-    done < <(splash_photo_files "$photos_dir" "$blurs_dir")
-
-    if (( ${#photos[@]} == 0 )); then
-        printf 'ERROR: No splash photos found in %s with matching blurs in %s\n' \
-            "$(_display_path "$DIST_DIR/$photos_dir")" \
-            "$(_display_path "$DIST_DIR/$blurs_dir")" >&2
-        return 1
-    fi
-
-    index=$(random_index "photo:$photos_dir:splash" "${#photos[@]}")
-    printf '%s\n' "${photos[index]}"
-}
-
-randomphoto() {
-    local -r photos_dir="$1"; shift
-    local -r context="${1:-$photos_dir}"
-    local -i index
-    local photo
-    local -a photos=()
-
-    while IFS= read -r photo; do
-        photos+=("$photo")
-    done < <(
-        find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
-            | sort
-    )
-
-    if (( ${#photos[@]} == 0 )); then
-        printf 'ERROR: No photos found in %s\n' \
-            "$(_display_path "$DIST_DIR/$photos_dir")" >&2
-        return 1
-    fi
-
-    index=$(random_index "photo:$photos_dir:$context" "${#photos[@]}")
-    printf '%s\n' "${photos[index]}"
 }
 
 # Inlined from src/lib/album.source.sh

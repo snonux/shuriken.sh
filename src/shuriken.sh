@@ -119,6 +119,12 @@ source "$SHURIKEN_SOURCE_DIR/lib/album-metadata.source.sh"
 source "$SHURIKEN_SOURCE_DIR/lib/generation-metadata.source.sh"
 # shellcheck source=src/lib/dry-run.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/dry-run.source.sh"
+# shellcheck source=src/lib/album-tile-layout.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/album-tile-layout.source.sh"
+# shellcheck source=src/lib/album-thumbnail-html.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/album-thumbnail-html.source.sh"
+# shellcheck source=src/lib/album-photo-select.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/album-photo-select.source.sh"
 # shellcheck source=src/lib/album-render.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/album-render.source.sh"
 # shellcheck source=src/lib/album.source.sh
