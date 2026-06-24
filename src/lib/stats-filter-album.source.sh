@@ -196,14 +196,7 @@ END
 # background render so parallelism follows the configured IMAGE_JOBS.
 _stats_enqueue_filter_album() {
     local -r pagebase="$1"; shift
-    local -r pids_name="$1"; shift
-    local -r statuses_name="$1"; shift
-    local -r labels_name="$1"; shift
-    local -r failed_name="$1"; shift
-    # shellcheck disable=SC2178
-    local -n pids_ref="$pids_name"
-    # shellcheck disable=SC2178
-    local -n labels_ref="$labels_name"
+    local -r pool="$1"; shift
     local photo
     local -a photo_list=()
     local -i i n
@@ -213,20 +206,14 @@ _stats_enqueue_filter_album() {
     done <<< "${STATS_FILTER_PHOTOS[$pagebase]}"
     n=${#photo_list[@]}
 
-    wait_for_template_render_job_slot \
-        "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
-    _stats_render_filter_gallery "$pagebase" &
-    pids_ref+=("$!")
-    labels_ref["$!"]="filter gallery $pagebase"
+    job_pool_submit "$pool" "filter gallery $pagebase" \
+        _stats_render_filter_gallery "$pagebase"
 
     for (( i = 1; i <= n; i++ )); do
-        wait_for_template_render_job_slot \
-            "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
-        _stats_render_filter_view_page \
+        job_pool_submit "$pool" "filter view $pagebase/$i" \
+            _stats_render_filter_view_page \
             "$pagebase" "${photo_list[i - 1]}" "$i" \
-            "$(( i == 1 ? n : i - 1 ))" "$(( i == n ? 1 : i + 1 ))" &
-        pids_ref+=("$!")
-        labels_ref["$!"]="filter view $pagebase/$i"
+            "$(( i == 1 ? n : i - 1 ))" "$(( i == n ? 1 : i + 1 ))"
     done
 }
 
@@ -241,24 +228,18 @@ _stats_enqueue_filter_album() {
 # collect_photo_exif_stats first to fill STATS_FILTER_PHOTOS.
 render_filter_pages() {
     local pagebase
-    # Render job pool, throttled to IMAGE_JOBS by the job-pool helpers.
-    local -a render_job_pids=()
-    # shellcheck disable=SC2034
-    local -A render_job_statuses=()
-    # shellcheck disable=SC2034
-    local -A render_job_labels=()
-    local -i render_failed=0
 
     if (( ${#STATS_FILTER_PHOTOS[@]} == 0 )); then
         return
     fi
+
+    # Render job pool (max IMAGE_JOBS concurrent), addressed by the single handle
+    # "render_jobs". job_pool_wait returns 1 if any render job failed.
+    job_pool_init render_jobs
+
     while IFS= read -r pagebase; do
-        _stats_enqueue_filter_album "$pagebase" \
-            render_job_pids render_job_statuses render_job_labels render_failed
+        _stats_enqueue_filter_album "$pagebase" render_jobs
     done < <(printf '%s\n' "${!STATS_FILTER_PHOTOS[@]}" | LC_ALL=C sort)
-    wait_for_template_render_jobs \
-        render_job_pids render_job_statuses render_job_labels render_failed
-    if (( render_failed != 0 )); then
-        return 1
-    fi
+
+    job_pool_wait render_jobs
 }

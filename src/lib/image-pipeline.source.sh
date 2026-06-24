@@ -38,41 +38,22 @@ create_all_photo_derivatives() {
     local -r photos_dir="$1"; shift
     local -r thumbs_dir="$1"; shift
     local -r blurs_dir="$1"; shift
-    local -i failed=0
-    local -a image_job_pids=()
-    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
-    # shellcheck disable=SC2034
-    local -A image_job_labels=()
-    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
-    # shellcheck disable=SC2034
-    local -A image_job_statuses=()
     local photo
 
+    # Throttled background job pool (max IMAGE_JOBS concurrent), addressed by the
+    # single handle "image_jobs". job_pool_wait returns 1 if any job failed.
+    job_pool_init image_jobs
+
     while IFS= read -r photo; do
-        wait_for_image_job_slot \
-            image_job_pids \
-            image_job_statuses \
-            image_job_labels \
-            failed
-        create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" \
-            "$photo" &
-        image_job_pids+=("$!")
-        # Read through a nameref in the job-pool helpers.
-        # shellcheck disable=SC2034
-        image_job_labels["$!"]="image derivative job for photo $photo"
+        job_pool_submit image_jobs "image derivative job for photo $photo" \
+            create_photo_derivatives "$photos_dir" "$thumbs_dir" "$blurs_dir" \
+            "$photo"
     done < <(
         find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
             | sort
     )
 
-    wait_for_image_jobs \
-        image_job_pids \
-        image_job_statuses \
-        image_job_labels \
-        failed
-    if (( failed != 0 )); then
-        return 1
-    fi
+    job_pool_wait image_jobs
 }
 
 prepare_generation_photo_assets() {

@@ -132,13 +132,13 @@ render_full_preview_page() {
     fi
 }
 
-# Enqueue one complete preview page as a background render job, throttled to
-# IMAGE_JOBS via the shared template render job pool. Mirrors
-# queue_album_view_render_job: wait for a free slot, background the whole-page
-# assembly, then track its pid/label so a failed job flips render_failed and
-# makes generation fail loudly. The page's photos are passed as trailing
-# positional args; the background subshell forks a private copy of them, so the
-# caller is free to reuse its per-page accumulator for the next page.
+# Enqueue one complete preview page as a background render job in the given job
+# pool (throttled to IMAGE_JOBS). Mirrors queue_album_view_render_job: job_pool_submit
+# waits for a free slot, backgrounds the whole-page assembly, and tracks its
+# pid/label so a failed job is reported by job_pool_wait and makes generation
+# fail loudly. The page's photos are passed as trailing positional args; the
+# background subshell forks a private copy of them, so the caller is free to
+# reuse its per-page accumulator for the next page.
 queue_preview_page_render_job() {
     local -r photos_dir="$1"; shift
     local -r html_dir="$1"; shift
@@ -151,24 +151,11 @@ queue_preview_page_render_job() {
     local -r header_bar="$1"; shift
     local -r prev_page="$1"; shift
     local -r next_page="$1"; shift
-    # shellcheck disable=SC2178
-    local -n render_job_pids_ref="$1"; shift
-    # Passed by name to wait_for_template_render_job_slot.
-    # shellcheck disable=SC2034,SC2178
-    local -n render_job_statuses_ref="$1"; shift
-    # Passed by name to wait_for_template_render_job_slot and assigned below.
-    # shellcheck disable=SC2034,SC2178
-    local -n render_job_labels_ref="$1"; shift
-    # shellcheck disable=SC2178
-    local -n render_failed_ref="$1"; shift
+    local -r pool="$1"; shift
     # Remaining positional args ("$@") are this page's photos in order.
 
-    wait_for_template_render_job_slot \
-        render_job_pids_ref \
-        render_job_statuses_ref \
-        render_job_labels_ref \
-        render_failed_ref
-    render_full_preview_page \
+    job_pool_submit "$pool" "template render job for preview $page_name" \
+        render_full_preview_page \
         "$photos_dir" \
         "$html_dir" \
         "$thumbs_dir" \
@@ -180,9 +167,7 @@ queue_preview_page_render_job() {
         "$header_bar" \
         "$prev_page" \
         "$next_page" \
-        "$@" &
-    render_job_pids_ref+=("$!")
-    render_job_labels_ref["$!"]="template render job for preview $page_name"
+        "$@"
 }
 
 # Build a whole thumbnail-grid buffer by walking a list of photos and grouping
@@ -592,37 +577,26 @@ render_view_redirects() {
     local -n redirect_last_views_ref="$1"; shift
     local max_page
     local page
-    # Render job pool, throttled to IMAGE_JOBS by the job-pool helpers.
-    # shellcheck disable=SC2034
-    local -a render_job_pids=()
-    # shellcheck disable=SC2034
-    local -A render_job_statuses=()
-    # shellcheck disable=SC2034
-    local -A render_job_labels=()
-    local -i render_failed=0
 
     if (( ${#view_pages_ref[@]} == 0 )); then
         return
     fi
 
+    # Render job pool (max IMAGE_JOBS concurrent), addressed by the single handle
+    # "render_jobs". job_pool_wait returns 1 if any render job failed.
+    job_pool_init render_jobs
+
     max_page=${view_pages_ref[$(( ${#view_pages_ref[@]} - 1 ))]}
 
     for page in "${view_pages_ref[@]}"; do
-        wait_for_template_render_job_slot \
-            render_job_pids render_job_statuses render_job_labels render_failed
-        render_page_view_redirects \
+        job_pool_submit render_jobs \
+            "template render job for redirect page $page" \
+            render_page_view_redirects \
             "$html_dir" "$page" "${redirect_last_views_ref[$page]}" \
-            "$max_page" &
-        render_job_pids+=("$!")
-        # shellcheck disable=SC2034
-        render_job_labels["$!"]="template render job for redirect page $page"
+            "$max_page"
     done
 
-    wait_for_template_render_jobs \
-        render_job_pids render_job_statuses render_job_labels render_failed
-    if (( render_failed != 0 )); then
-        return 1
-    fi
+    job_pool_wait render_jobs
 }
 
 render_album_index_redirect() {
@@ -686,23 +660,10 @@ queue_album_view_render_job() {
     local -r page_num="$1"; shift
     local -r preview_num="$1"; shift
     local -r photo="$1"; shift
-    # shellcheck disable=SC2178
-    local -n render_job_pids_ref="$1"; shift
-    # Passed by name to wait_for_template_render_job_slot.
-    # shellcheck disable=SC2034,SC2178
-    local -n render_job_statuses_ref="$1"; shift
-    # Passed by name to wait_for_template_render_job_slot and assigned below.
-    # shellcheck disable=SC2034,SC2178
-    local -n render_job_labels_ref="$1"; shift
-    # shellcheck disable=SC2178
-    local -n render_failed_ref="$1"; shift
+    local -r pool="$1"; shift
 
-    wait_for_template_render_job_slot \
-        render_job_pids_ref \
-        render_job_statuses_ref \
-        render_job_labels_ref \
-        render_failed_ref
-    render_photo_view_and_details \
+    job_pool_submit "$pool" "template render job for photo $photo" \
+        render_photo_view_and_details \
         "$photos_dir" \
         "$blurs_dir" \
         "$html_dir" \
@@ -710,31 +671,7 @@ queue_album_view_render_job() {
         "$tarball_name" \
         "$page_num" \
         "$preview_num" \
-        "$photo" &
-    render_job_pids_ref+=("$!")
-    render_job_labels_ref["$!"]="template render job for photo $photo"
-}
-
-wait_for_album_view_render_jobs() {
-    # shellcheck disable=SC2178
-    local -n render_job_pids_ref="$1"; shift
-    # Passed by name to wait_for_template_render_jobs.
-    # shellcheck disable=SC2034,SC2178
-    local -n render_job_statuses_ref="$1"; shift
-    # Passed by name to wait_for_template_render_jobs.
-    # shellcheck disable=SC2034,SC2178
-    local -n render_job_labels_ref="$1"; shift
-    # shellcheck disable=SC2178
-    local -n render_failed_ref="$1"; shift
-
-    wait_for_template_render_jobs \
-        render_job_pids_ref \
-        render_job_statuses_ref \
-        render_job_labels_ref \
-        render_failed_ref
-    if (( render_failed_ref != 0 )); then
-        return 1
-    fi
+        "$photo"
 }
 
 # Group the album's photos into pages of at most MAXPREVIEWS, in their final
@@ -783,17 +720,14 @@ _album_record_view_photo() {
     local -ri page_num="$1"; shift
     local -ri preview_num="$1"; shift
     local -r photo="$1"; shift
-    local -r pids_name="$1"; shift
-    local -r statuses_name="$1"; shift
-    local -r labels_name="$1"; shift
-    local -r failed_name="$1"; shift
+    local -r pool="$1"; shift
     local -r view_pages_name="$1"; shift
     local -r last_views_name="$1"; shift
 
     queue_album_view_render_job \
         "$photos_dir" "$blurs_dir" "$html_dir" "$backhref" "$tarball_name" \
         "$page_num" "$preview_num" "$photo" \
-        "$pids_name" "$statuses_name" "$labels_name" "$failed_name"
+        "$pool"
     record_rendered_view_page "$view_pages_name" "$last_views_name" \
         "$page_num" "$preview_num"
     # Read later through the album_view_page_for_photo accessor (e.g. by the
@@ -819,15 +753,6 @@ render_album_pages() {
     local prev_name=''
     local record
     local -i preview_num
-    # Passed by name to the render-pool helpers below.
-    # shellcheck disable=SC2034
-    local -i render_failed=0
-    # shellcheck disable=SC2034
-    local -a render_job_pids=()
-    # shellcheck disable=SC2034
-    local -A render_job_labels=()
-    # shellcheck disable=SC2034
-    local -A render_job_statuses=()
     # Passed by name to record_rendered_view_page and render_view_redirects.
     # shellcheck disable=SC2034
     local -A rendered_last_views=()
@@ -835,6 +760,10 @@ render_album_pages() {
     local -a rendered_view_pages=()
     local -a page_photos=()
     local -a page_records=()
+
+    # Render job pool (max IMAGE_JOBS concurrent), addressed by the single handle
+    # "render_jobs". job_pool_wait returns 1 if any render job failed.
+    job_pool_init render_jobs
 
     # Rebuild the photo -> view-page map for this album from scratch so a
     # re-generate (or a smaller incoming set) does not keep stale entries. The
@@ -867,8 +796,7 @@ render_album_pages() {
             _album_record_view_photo \
                 "$photos_dir" "$blurs_dir" "$html_dir" "$backhref" \
                 "$tarball_name" "$page_num" "$preview_num" "$photo" \
-                render_job_pids render_job_statuses render_job_labels \
-                render_failed rendered_view_pages rendered_last_views
+                render_jobs rendered_view_pages rendered_last_views
         done
 
         # A page has a "next" link unless it is the last record.
@@ -880,18 +808,13 @@ render_album_pages() {
             "$photos_dir" "$html_dir" "$thumbs_dir" "$blurs_dir" "$backhref" \
             "$tarball_name" "$name" "$page_num" "$header_bar" \
             "$prev_name" "$next_name" \
-            render_job_pids render_job_statuses render_job_labels \
-            render_failed \
+            render_jobs \
             "${page_photos[@]}"
 
         prev_name="$name"
     done
 
-    if ! wait_for_album_view_render_jobs \
-        render_job_pids \
-        render_job_statuses \
-        render_job_labels \
-        render_failed; then
+    if ! job_pool_wait render_jobs; then
         return 1
     fi
     render_view_redirects "$html_dir" rendered_view_pages rendered_last_views

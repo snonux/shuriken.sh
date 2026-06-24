@@ -102,37 +102,18 @@ warn_unsupported_incoming_files() {
 }
 
 scalephotos() {
-    local -i failed=0
-    local -a image_job_pids=()
-    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
-    # shellcheck disable=SC2034
-    local -A image_job_labels=()
-    # Passed by name to wait_for_image_job_slot and wait_for_image_jobs.
-    # shellcheck disable=SC2034
-    local -A image_job_statuses=()
     local photo
 
+    # Throttled background job pool (max IMAGE_JOBS concurrent), addressed by the
+    # single handle "image_jobs". job_pool_wait returns 1 if any job failed.
+    job_pool_init image_jobs
+
     while IFS= read -r photo; do
-        wait_for_image_job_slot \
-            image_job_pids \
-            image_job_statuses \
-            image_job_labels \
-            failed
-        scale_photo "$photo" &
-        image_job_pids+=("$!")
-        # Read through a nameref in the job-pool helpers.
-        # shellcheck disable=SC2034
-        image_job_labels["$!"]="image job for photo $photo"
+        job_pool_submit image_jobs "image job for photo $photo" \
+            scale_photo "$photo"
     done < <(incoming_image_files)
 
-    wait_for_image_jobs \
-        image_job_pids \
-        image_job_statuses \
-        image_job_labels \
-        failed
-    if (( failed != 0 )); then
-        return 1
-    fi
+    job_pool_wait image_jobs
 }
 
 scale_photo() {
