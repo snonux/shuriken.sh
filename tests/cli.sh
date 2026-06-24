@@ -515,8 +515,9 @@ test_generate_cli_overrides_config_values() {
     test::assert_path_absent "$TEST_TMPDIR/config-dist"
     test::assert_find_count 0 "$TEST_TMPDIR/cli-dist" '*.tar'
     test::assert_contains '<title>CLI title</title>' "$page_html"
-    # THUMBHEIGHT is the grid's minimum cell width (columns grow to fill).
-    test::assert_contains 'minmax(45px, 1fr)' "$page_html"
+    # THUMBHEIGHT is the grid's minimum cell width (columns grow to fill); it is
+    # wrapped in min(...,100%) so a column never overflows a narrow phone.
+    test::assert_contains 'minmax(min(45px, 100%), 1fr)' "$page_html"
     test::assert_contains 'max-height: 456px;' "$view_html"
     test::assert_contains 'Next 1 pictures' "$page_html"
     test::assert_contains 'href="page-2.html" class="arrow">&rArr;</a>' \

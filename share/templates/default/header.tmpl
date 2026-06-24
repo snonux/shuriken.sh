@@ -3,6 +3,7 @@ cat <<END
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${render_title_html}</title>
     <link rel="icon" href="${render_backhref_html}/favicon.ico" type="image/x-icon">
     <style>
@@ -18,6 +19,9 @@ cat <<END
                width, and makes the gap above the header / below the footer the
                same 2px as the gaps between the header, grid and footer. */
             margin: 0;
+            /* The slam/glitch entry animations translate elements by +/-80vw;
+               clip the horizontal overflow so a phone never scrolls sideways. */
+            overflow-x: hidden;
         }
 
         a {
@@ -204,8 +208,11 @@ cat <<END
            leave. Spacing comes from the grid gap, so images carry no padding. */
         div.thumbs-grid {
             display: grid;
+            /* min(THUMBHEIGHT, 100%) keeps a column from ever exceeding the
+               viewport width, so narrow phones never scroll sideways; on wide
+               screens the columns are >= THUMBHEIGHT and grow (1fr) to fill. */
             grid-template-columns:
-                repeat(auto-fill, minmax(${render_thumbheight_html}px, 1fr));
+                repeat(auto-fill, minmax(min(${render_thumbheight_html}px, 100%), 1fr));
             grid-auto-flow: dense;
             gap: 10px;
             margin: 0 4px;
@@ -375,6 +382,50 @@ cat <<END
 
             div.details-photo-column {
                 width: 95%;
+            }
+        }
+
+        /* Phone layout: a 2-column square grid, and the navigator/footer/splash
+           links become large, well-spaced tap targets (~44px). Pure CSS. */
+        @media (max-width: 700px) {
+            div.thumbs-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+                margin: 0 2px;
+            }
+
+            div.navigator {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                justify-content: center;
+                align-items: center;
+            }
+
+            div.navigator a,
+            div.footer a {
+                display: inline-block;
+                padding: 12px 16px;
+                border: 2px solid #ffffff;
+                border-radius: 8px;
+                font-size: 1.1em;
+                text-decoration: none;
+            }
+
+            div.navigator a.arrow {
+                padding: 10px 18px;
+                font-size: 1.4em;
+            }
+
+            /* Hide the "|" separators (wrapped in spans) so the links read as
+               discrete buttons on a phone; they stay visible on desktop. */
+            div.navigator span.nav-sep {
+                display: none;
+            }
+
+            p.enter a {
+                padding: 14px 24px;
+                font-size: 1.3em;
             }
         }
     </style>

@@ -4736,7 +4736,8 @@ _stats_build_filterview_body() {
     fi
     view_page=$(album_view_page_for_photo "$photo")
     if [ -n "$view_page" ]; then
-        details_link=$(printf ' <a href="%s/%s-details.html">Details</a> |' \
+        details_link=$(printf \
+            ' <a href="%s/%s-details.html">Details</a> <span class="nav-sep">|</span>' \
             "$backhref_html" "$view_page")
     fi
     _stats_print_filterview_body "$backhref_html" "$photo_html" \
@@ -4760,11 +4761,11 @@ _stats_print_filterview_body() {
     cat <<END
 <div class='view'>
     <a href="$next.html">
-        <img class='view $animation_class' border='0' src='$backhref_html/$STATS_PHOTOS_DIR/$photo_html'$tooltip_attr />
+        <img class='view $animation_class' alt='$photo_html' src='$backhref_html/$STATS_PHOTOS_DIR/$photo_html'$tooltip_attr />
     </a>
     <div class="navigator">
         <a href="$prev.html" class="arrow">&lArr;</a>
-        <a href="index.html">Gallery</a> |$details_link
+        <a href="index.html">Gallery</a> <span class="nav-sep">|</span>$details_link
         <a href="$backhref_html/$STATS_PHOTOS_DIR/$photo_html">Direct link</a>
         <a href="$next.html" class="arrow">&rArr;</a>
     </div>
