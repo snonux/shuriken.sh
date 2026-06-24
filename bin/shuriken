@@ -465,6 +465,34 @@ run_with_timeout() {
 }
 
 # Inlined from src/lib/archive.source.sh
+# Tarball creation plus the naming helpers that decide what the archive file is
+# called. The naming helpers (tarball_name_plan / generated_tarball_name) were
+# moved here from album-metadata.source.sh (task 6r0): naming the archive is part
+# of this module's tarball concern, alongside tarball() which writes it. The
+# planned-name variant is consumed by the dry-run preview; the generated variant
+# (with a real timestamp slug) is consumed by the album coordinator when it
+# actually creates the archive. Behaviour and signatures are unchanged.
+
+# Print the tarball name as it will appear in the dry-run plan: the incoming
+# directory's basename, a literal "<timestamp>" placeholder, and the suffix.
+tarball_name_plan() {
+    local base
+
+    base=$(basename "$INCOMING_DIR")
+    printf '%s-<timestamp>%s\n' "$base" "$TARBALL_SUFFIX"
+}
+
+# Print the real tarball name used at generation time: the incoming directory's
+# basename, the current timestamp slug, and the configured suffix.
+generated_tarball_name() {
+    local base
+    local timestamp
+
+    base=$(basename "$INCOMING_DIR")
+    timestamp=$(current_timestamp_slug)
+    printf '%s-%s%s\n' "$base" "$timestamp" "$TARBALL_SUFFIX"
+}
+
 tarball() {
     local -r tarball_name="$1"; shift
     local -r tarball_suffix="$TARBALL_SUFFIX"
@@ -1624,6 +1652,44 @@ incoming_image_files() {
         | sort
 }
 
+# File counters for the source tree and the generated dist. Moved here from
+# album-metadata.source.sh (task 6r0): counting incoming/generated files is part
+# of this module's file-enumeration concern -- count_incoming_images is a direct
+# wrapper of incoming_image_files above, and count_files/count_tree_files are the
+# generic siblings the generation-metadata and dry-run modules use to tally the
+# produced photos, thumbs and HTML pages. Behaviour and signatures are unchanged.
+count_files() {
+    local -r dir="$1"; shift
+    local -r name="${1:-}"; shift || true
+
+    if [ ! -d "$dir" ]; then
+        printf '0\n'
+        return
+    fi
+
+    if [ -n "$name" ]; then
+        find "$dir" -maxdepth 1 -type f -name "$name" | wc -l
+    else
+        find "$dir" -maxdepth 1 -type f | wc -l
+    fi
+}
+
+count_incoming_images() {
+    incoming_image_files | wc -l
+}
+
+count_tree_files() {
+    local -r dir="$1"; shift
+    local -r name="$1"; shift
+
+    if [ ! -d "$dir" ]; then
+        printf '0\n'
+        return
+    fi
+
+    find "$dir" -type f -name "$name" | wc -l
+}
+
 warn_unsupported_incoming_files() {
     local file
 
@@ -1952,6 +2018,19 @@ photo_exif_values_to() {
     done
 }
 
+# Empty the volatile EXIF cache (./cache/exif, parallel to ./dist) so a --force
+# run re-runs `identify` from scratch. Done once up front; the cache then
+# repopulates and is reused for the rest of the run (one identify per photo).
+# Moved here from album-metadata.source.sh (task 6r0): clearing the cache is the
+# lifecycle counterpart of cached_photo_identify_output above, so the cache's
+# creation and destruction now live in the same module.
+clear_exif_cache() {
+    local -r cache_dir="$(dirname "$DIST_DIR")/cache/exif"
+
+    log_verbose "Force generation; clearing EXIF cache $cache_dir"
+    rm -rf "$cache_dir"
+}
+
 # Inlined from src/lib/image-pipeline.source.sh
 create_photo_derivatives() {
     local -r photos_dir="$1"; shift
@@ -2039,6 +2118,14 @@ prepare_generation_photo_assets() {
 }
 
 # Inlined from src/lib/album-metadata.source.sh
+# Album EXIF presentation: turn a photo's parsed EXIF values into the per-photo
+# details table and hover tooltip the album pages render. This module now holds
+# ONLY the EXIF presentation concern -- the file counting, tarball naming,
+# generation-metadata/JSON, dry-run and cache-lifecycle helpers that used to live
+# here were split out into their own modules (task 6r0): counting -> image, tarball
+# naming -> archive, generation metadata -> generation-metadata, dry-run -> dry-run,
+# clear_exif_cache -> metadata-cache.
+#
 # The EXIF identify cache primitive (cached_photo_identify_output and its
 # private helpers photo_cache_signature / print_cached_photo_identify_output)
 # was promoted to the shared metadata-cache.source.sh module (task pn0): it is a
@@ -2187,53 +2274,18 @@ photo_exif_tooltip_text() {
     _photo_exif_tooltip_text_from_values exif_values
 }
 
-count_files() {
-    local -r dir="$1"; shift
-    local -r name="${1:-}"; shift || true
-
-    if [ ! -d "$dir" ]; then
-        printf '0\n'
-        return
-    fi
-
-    if [ -n "$name" ]; then
-        find "$dir" -maxdepth 1 -type f -name "$name" | wc -l
-    else
-        find "$dir" -maxdepth 1 -type f | wc -l
-    fi
-}
-
-count_incoming_images() {
-    incoming_image_files | wc -l
-}
-
-tarball_name_plan() {
-    local base
-
-    base=$(basename "$INCOMING_DIR")
-    printf '%s-<timestamp>%s\n' "$base" "$TARBALL_SUFFIX"
-}
-
-generated_tarball_name() {
-    local base
-    local timestamp
-
-    base=$(basename "$INCOMING_DIR")
-    timestamp=$(current_timestamp_slug)
-    printf '%s-%s%s\n' "$base" "$timestamp" "$TARBALL_SUFFIX"
-}
-
-count_tree_files() {
-    local -r dir="$1"; shift
-    local -r name="$1"; shift
-
-    if [ ! -d "$dir" ]; then
-        printf '0\n'
-        return
-    fi
-
-    find "$dir" -type f -name "$name" | wc -l
-}
+# Inlined from src/lib/generation-metadata.source.sh
+# Generation metadata: collect a snapshot of the run (generator version, source
+# and generated file counts, effective settings) and serialise it to the
+# dist/shuriken.json sidecar. Moved out of album-metadata.source.sh (task 6r0):
+# describing the generation run is its own concern, distinct from the EXIF
+# presentation that stays in the album module. The collector depends on the file
+# counters (count_files / count_incoming_images / count_tree_files, now in
+# image.source.sh), current_timestamp_iso (template.source.sh) and the JSON
+# helpers (_json_string / _json_bool, template.source.sh); all are sourced before
+# this module, and these are runtime calls anyway, so source order documents the
+# dependency without affecting availability. Behaviour and signatures are
+# unchanged by the move.
 
 _collect_generation_metadata() {
     local -r tarball_file="$1"; shift
@@ -2344,15 +2396,16 @@ write_generation_metadata() {
     } > "$DIST_DIR/shuriken.json"
 }
 
-# Empty the volatile EXIF cache (./cache/exif, parallel to ./dist) so a --force
-# run re-runs `identify` from scratch. Done once up front; the cache then
-# repopulates and is reused for the rest of the run (one identify per photo).
-clear_exif_cache() {
-    local -r cache_dir="$(dirname "$DIST_DIR")/cache/exif"
-
-    log_verbose "Force generation; clearing EXIF cache $cache_dir"
-    rm -rf "$cache_dir"
-}
+# Inlined from src/lib/dry-run.source.sh
+# Dry-run plan: describe what a generation run WOULD produce (directories, page
+# and redirect counts, the planned tarball name) without writing anything. Moved
+# out of album-metadata.source.sh (task 6r0): previewing a run is its own concern,
+# distinct from the EXIF presentation that stays in the album module. The plan
+# depends on count_incoming_images (image.source.sh) for the image tally and
+# tarball_name_plan (archive.source.sh) for the planned archive name; both are
+# sourced before this module and called at runtime, so source order documents the
+# dependency without affecting availability. dry_run is the CLI entry point wired
+# up from action.source.sh. Behaviour and signatures are unchanged by the move.
 
 dry_run() {
     # shellcheck disable=SC2034

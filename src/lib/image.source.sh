@@ -53,6 +53,44 @@ incoming_image_files() {
         | sort
 }
 
+# File counters for the source tree and the generated dist. Moved here from
+# album-metadata.source.sh (task 6r0): counting incoming/generated files is part
+# of this module's file-enumeration concern -- count_incoming_images is a direct
+# wrapper of incoming_image_files above, and count_files/count_tree_files are the
+# generic siblings the generation-metadata and dry-run modules use to tally the
+# produced photos, thumbs and HTML pages. Behaviour and signatures are unchanged.
+count_files() {
+    local -r dir="$1"; shift
+    local -r name="${1:-}"; shift || true
+
+    if [ ! -d "$dir" ]; then
+        printf '0\n'
+        return
+    fi
+
+    if [ -n "$name" ]; then
+        find "$dir" -maxdepth 1 -type f -name "$name" | wc -l
+    else
+        find "$dir" -maxdepth 1 -type f | wc -l
+    fi
+}
+
+count_incoming_images() {
+    incoming_image_files | wc -l
+}
+
+count_tree_files() {
+    local -r dir="$1"; shift
+    local -r name="$1"; shift
+
+    if [ ! -d "$dir" ]; then
+        printf '0\n'
+        return
+    fi
+
+    find "$dir" -type f -name "$name" | wc -l
+}
+
 warn_unsupported_incoming_files() {
     local file
 

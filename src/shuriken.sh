@@ -115,6 +115,10 @@ source "$SHURIKEN_SOURCE_DIR/lib/random.source.sh"
 source "$SHURIKEN_SOURCE_DIR/lib/image-pipeline.source.sh"
 # shellcheck source=src/lib/album-metadata.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/album-metadata.source.sh"
+# shellcheck source=src/lib/generation-metadata.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/generation-metadata.source.sh"
+# shellcheck source=src/lib/dry-run.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/dry-run.source.sh"
 # shellcheck source=src/lib/album-render.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/album-render.source.sh"
 # shellcheck source=src/lib/album.source.sh

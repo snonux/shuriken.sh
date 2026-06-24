@@ -140,3 +140,16 @@ photo_exif_values_to() {
         fi
     done
 }
+
+# Empty the volatile EXIF cache (./cache/exif, parallel to ./dist) so a --force
+# run re-runs `identify` from scratch. Done once up front; the cache then
+# repopulates and is reused for the rest of the run (one identify per photo).
+# Moved here from album-metadata.source.sh (task 6r0): clearing the cache is the
+# lifecycle counterpart of cached_photo_identify_output above, so the cache's
+# creation and destruction now live in the same module.
+clear_exif_cache() {
+    local -r cache_dir="$(dirname "$DIST_DIR")/cache/exif"
+
+    log_verbose "Force generation; clearing EXIF cache $cache_dir"
+    rm -rf "$cache_dir"
+}

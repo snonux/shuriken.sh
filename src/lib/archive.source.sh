@@ -1,3 +1,31 @@
+# Tarball creation plus the naming helpers that decide what the archive file is
+# called. The naming helpers (tarball_name_plan / generated_tarball_name) were
+# moved here from album-metadata.source.sh (task 6r0): naming the archive is part
+# of this module's tarball concern, alongside tarball() which writes it. The
+# planned-name variant is consumed by the dry-run preview; the generated variant
+# (with a real timestamp slug) is consumed by the album coordinator when it
+# actually creates the archive. Behaviour and signatures are unchanged.
+
+# Print the tarball name as it will appear in the dry-run plan: the incoming
+# directory's basename, a literal "<timestamp>" placeholder, and the suffix.
+tarball_name_plan() {
+    local base
+
+    base=$(basename "$INCOMING_DIR")
+    printf '%s-<timestamp>%s\n' "$base" "$TARBALL_SUFFIX"
+}
+
+# Print the real tarball name used at generation time: the incoming directory's
+# basename, the current timestamp slug, and the configured suffix.
+generated_tarball_name() {
+    local base
+    local timestamp
+
+    base=$(basename "$INCOMING_DIR")
+    timestamp=$(current_timestamp_slug)
+    printf '%s-%s%s\n' "$base" "$timestamp" "$TARBALL_SUFFIX"
+}
+
 tarball() {
     local -r tarball_name="$1"; shift
     local -r tarball_suffix="$TARBALL_SUFFIX"
