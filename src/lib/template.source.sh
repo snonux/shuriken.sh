@@ -1,10 +1,25 @@
-_html_escape() {
-    local -r text="$1"; shift
-    local escaped_text
-
-    html_escape_to escaped_text "$text"
-    printf '%s\n' "$escaped_text"
-}
+# --- Escape helper family: one consistent API shape -------------------------
+#
+# Every escaper in this file follows the SAME two-form convention:
+#
+#   <name>_to <out_var> <text>   nameref form, the hot path. Writes the escaped
+#                                result into the named variable with no
+#                                subshell/command substitution.
+#   <name> <text>                thin printf convenience wrapper. Writes the
+#                                escaped result to stdout (for $(...) callers).
+#                                It just delegates to <name>_to and prints.
+#
+# Naming convention for the "_" prefix in THIS file:
+#   - A leading "_" marks a genuinely PRIVATE/internal helper (only called from
+#     within the same module).
+#   - Helpers that are part of the public escape API -- called from other
+#     modules -- carry NO leading "_". html_escape / css_string_escape /
+#     json_string / json_bool are all called from sibling lib modules, so they
+#     are public and unprefixed. (They used to be "_"-prefixed, which wrongly
+#     signalled "private" for what is effectively a public API.)
+#
+# Only the escaping/encoding logic is authoritative; the printf wrappers add no
+# behavior of their own beyond appending a trailing newline for stdout use.
 
 html_escape_to() {
     local -n output_ref="$1"; shift
@@ -19,11 +34,12 @@ html_escape_to() {
     output_ref="$text"
 }
 
-_css_string_escape() {
+# Thin printf wrapper around html_escape_to for $(...) callers.
+html_escape() {
     local -r text="$1"; shift
     local escaped_text
 
-    css_string_escape_to escaped_text "$text"
+    html_escape_to escaped_text "$text"
     printf '%s\n' "$escaped_text"
 }
 
@@ -41,7 +57,17 @@ css_string_escape_to() {
     output_ref="$text"
 }
 
-_json_string_escape() {
+# Thin printf wrapper around css_string_escape_to for $(...) callers.
+css_string_escape() {
+    local -r text="$1"; shift
+    local escaped_text
+
+    css_string_escape_to escaped_text "$text"
+    printf '%s\n' "$escaped_text"
+}
+
+json_string_escape_to() {
+    local -n output_ref="$1"; shift
     local text="$1"; shift
     local char
     local escaped=''
@@ -86,26 +112,61 @@ _json_string_escape() {
         esac
     done
 
-    printf '%s\n' "$escaped"
+    output_ref="$escaped"
 }
 
-_json_string() {
+# Thin printf wrapper around json_string_escape_to for $(...) callers.
+json_string_escape() {
     local -r text="$1"; shift
+    local escaped_text
 
-    printf '"%s"' "$(_json_string_escape "$text")"
+    json_string_escape_to escaped_text "$text"
+    printf '%s\n' "$escaped_text"
 }
 
-_json_bool() {
+# Nameref form: write the JSON-quoted ("...") string into out_var.
+json_string_to() {
+    local -n string_output_ref="$1"; shift
+    local -r text="$1"; shift
+    local escaped_text
+
+    json_string_escape_to escaped_text "$text"
+    # shellcheck disable=SC2034  # written through the output nameref
+    string_output_ref="\"$escaped_text\""
+}
+
+# Thin printf wrapper around json_string_to for $(...) callers.
+json_string() {
+    local -r text="$1"; shift
+    local quoted_text
+
+    json_string_to quoted_text "$text"
+    printf '%s' "$quoted_text"
+}
+
+# Nameref form: write the JSON boolean literal into out_var.
+json_bool_to() {
+    local -n bool_output_ref="$1"; shift
     local -r value="$1"; shift
 
+    # shellcheck disable=SC2034  # written through the output nameref
     case "$value" in
         yes)
-            printf 'true'
+            bool_output_ref='true'
             ;;
         *)
-            printf 'false'
+            bool_output_ref='false'
             ;;
     esac
+}
+
+# Thin printf wrapper around json_bool_to for $(...) callers.
+json_bool() {
+    local -r value="$1"; shift
+    local bool_literal
+
+    json_bool_to bool_literal "$value"
+    printf '%s' "$bool_literal"
 }
 
 _display_path() {
@@ -119,14 +180,11 @@ _display_path() {
     fi
 }
 
-current_date_text() {
-    if random_seed_is_set; then
-        printf 'Thu Jan  1 00:00:00 UTC 1970\n'
-    else
-        command date
-    fi
-}
-
+# Nameref form: write the current date text into out_var, caching it in
+# SHURIKEN_CURRENT_DATE_TEXT so repeated calls within a run do not re-exec date
+# (the value is constant for a generation run). The wrapper below delegates here
+# so BOTH forms share this cache -- a hot-path caller using the printf form no
+# longer silently re-runs `date` every call.
 current_date_text_to() {
     local -n output_ref="$1"; shift
 
@@ -139,6 +197,15 @@ current_date_text_to() {
     fi
 
     output_ref="$SHURIKEN_CURRENT_DATE_TEXT"
+}
+
+# Thin printf wrapper around current_date_text_to for stdout/$(...) callers.
+# Delegates so it shares the SHURIKEN_CURRENT_DATE_TEXT cache (output unchanged).
+current_date_text() {
+    local date_text
+
+    current_date_text_to date_text
+    printf '%s\n' "$date_text"
 }
 
 # Each entry: render_var|kind|source_name|context_var|required_templates

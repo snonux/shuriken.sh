@@ -146,11 +146,11 @@ _stats_build_filterview_body() {
     local view_page
     local details_link=''
 
-    photo_html=$(_html_escape "$photo")
+    photo_html=$(html_escape "$photo")
     animation_class=$(random_animation_css_class fast "$photo")
     tooltip=$(photo_exif_tooltip_text "$photo" "$INCOMING_DIR/$photo")
     if [ -n "$tooltip" ]; then
-        tooltip_attr=" title=\"$(_html_escape "$tooltip")\""
+        tooltip_attr=" title=\"$(html_escape "$tooltip")\""
     fi
     view_page=$(album_view_page_for_photo "$photo")
     if [ -n "$view_page" ]; then

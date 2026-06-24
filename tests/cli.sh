@@ -5415,6 +5415,8 @@ test_template_stdout_escape_helpers_match_nameref_helpers() {
     local html_text
     local html_to
     local html_stdout_file
+    local json_text
+    local json_to
 
     # shellcheck source=src/lib/template.source.sh
     source "$TEST_REPO_ROOT/src/lib/template.source.sh"
@@ -5427,29 +5429,72 @@ test_template_stdout_escape_helpers_match_nameref_helpers() {
 
     html_text=$'A & "quoted" <title> \'ok\''
     html_escape_to html_to "$html_text"
-    _html_escape "$html_text" > "$html_stdout_file"
+    html_escape "$html_text" > "$html_stdout_file"
     printf '%s\n' "$html_to" > "$html_expected"
     cmp -s "$html_expected" "$html_stdout_file"
     test "$(<"$html_stdout_file")" = \
         'A &amp; &quot;quoted&quot; &lt;title&gt; &#39;ok&#39;'
 
     html_escape_to html_to ''
-    _html_escape '' > "$html_stdout_file"
+    html_escape '' > "$html_stdout_file"
     printf '%s\n' "$html_to" > "$html_expected"
     cmp -s "$html_expected" "$html_stdout_file"
 
     css_text=$'path\\kid\'s_"<tag>&.jpg'
     css_string_escape_to css_to "$css_text"
-    _css_string_escape "$css_text" > "$css_stdout_file"
+    css_string_escape "$css_text" > "$css_stdout_file"
     printf '%s\n' "$css_to" > "$css_expected"
     cmp -s "$css_expected" "$css_stdout_file"
     test "$(<"$css_stdout_file")" = \
         'path\\kid\000027s_\000022\00003ctag\00003e\000026.jpg'
 
     css_string_escape_to css_to ''
-    _css_string_escape '' > "$css_stdout_file"
+    css_string_escape '' > "$css_stdout_file"
     printf '%s\n' "$css_to" > "$css_expected"
     cmp -s "$css_expected" "$css_stdout_file"
+
+    # JSON family: the printf wrappers must agree with their _to nameref forms.
+    json_text=$'tab\tand "quote" \\back\nnewline'
+    json_string_escape_to json_to "$json_text"
+    test "$json_to" = "$(json_string_escape "$json_text")"
+    json_string_to json_to "$json_text"
+    test "$json_to" = "$(json_string "$json_text")"
+    test "$(json_string "$json_text")" = \
+        '"tab\tand \"quote\" \\back\nnewline"'
+    json_bool_to json_to yes
+    test "$json_to" = 'true'
+    test "$(json_bool yes)" = 'true'
+    test "$(json_bool no)" = 'false'
+
+    test::teardown
+}
+
+test_template_current_date_text_caches_and_matches_nameref() {
+    local date_to
+
+    # shellcheck source=src/lib/random.source.sh
+    source "$TEST_REPO_ROOT/src/lib/random.source.sh"
+    # shellcheck source=src/lib/template.source.sh
+    source "$TEST_REPO_ROOT/src/lib/template.source.sh"
+
+    test::setup
+
+    # Deterministic path so the value is fixed and we can assert exact output.
+    RANDOM_SEED='1'
+    SHURIKEN_CURRENT_DATE_TEXT=''
+
+    # A direct (non-subshell) call through the printf wrapper primes the shared
+    # cache var, since it now delegates to current_date_text_to. (A $(...) call
+    # would prime the cache only inside its own command-substitution subshell --
+    # that is inherent to command substitution, not specific to this helper.)
+    date_to=$(current_date_text)
+    test "$date_to" = 'Thu Jan  1 00:00:00 UTC 1970'
+    current_date_text > /dev/null
+    test "$SHURIKEN_CURRENT_DATE_TEXT" = 'Thu Jan  1 00:00:00 UTC 1970'
+
+    # Both forms read the same cache, so they agree.
+    current_date_text_to date_to
+    test "$date_to" = "$(current_date_text)"
 
     test::teardown
 }
@@ -6824,6 +6869,9 @@ main() {
     test::run_case \
         'template stdout escapers match nameref helpers' \
         test_template_stdout_escape_helpers_match_nameref_helpers
+    test::run_case \
+        'current_date_text caches and matches nameref form' \
+        test_template_current_date_text_caches_and_matches_nameref
     test::run_case \
         '--generate escapes generated HTML values' \
         test_generate_escapes_html_values

@@ -87,12 +87,12 @@ build_preview_thumbnail() {
     local thumbs_dir_html
     local anchor_class_html
 
-    photo_html=$(_html_escape "$photo_file")
-    anim_html=$(_html_escape "$animation_class")
-    backhref_html=$(_html_escape "$backhref")
-    thumbs_dir_html=$(_html_escape "$thumbs_dir")
+    photo_html=$(html_escape "$photo_file")
+    anim_html=$(html_escape "$animation_class")
+    backhref_html=$(html_escape "$backhref")
+    thumbs_dir_html=$(html_escape "$thumbs_dir")
     if [ -n "$anchor_class" ]; then
-        anchor_class_html=$(_html_escape "$anchor_class")
+        anchor_class_html=$(html_escape "$anchor_class")
         printf '<a id=%s class=%s href=%s>\n' \
             "'$photo_html'" "'$anchor_class_html'" \
             "'${href_prefix}${preview_num}.html'"

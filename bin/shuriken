@@ -537,13 +537,28 @@ resolve_tar_opts() {
 }
 
 # Inlined from src/lib/template.source.sh
-_html_escape() {
-    local -r text="$1"; shift
-    local escaped_text
-
-    html_escape_to escaped_text "$text"
-    printf '%s\n' "$escaped_text"
-}
+# --- Escape helper family: one consistent API shape -------------------------
+#
+# Every escaper in this file follows the SAME two-form convention:
+#
+#   <name>_to <out_var> <text>   nameref form, the hot path. Writes the escaped
+#                                result into the named variable with no
+#                                subshell/command substitution.
+#   <name> <text>                thin printf convenience wrapper. Writes the
+#                                escaped result to stdout (for $(...) callers).
+#                                It just delegates to <name>_to and prints.
+#
+# Naming convention for the "_" prefix in THIS file:
+#   - A leading "_" marks a genuinely PRIVATE/internal helper (only called from
+#     within the same module).
+#   - Helpers that are part of the public escape API -- called from other
+#     modules -- carry NO leading "_". html_escape / css_string_escape /
+#     json_string / json_bool are all called from sibling lib modules, so they
+#     are public and unprefixed. (They used to be "_"-prefixed, which wrongly
+#     signalled "private" for what is effectively a public API.)
+#
+# Only the escaping/encoding logic is authoritative; the printf wrappers add no
+# behavior of their own beyond appending a trailing newline for stdout use.
 
 html_escape_to() {
     local -n output_ref="$1"; shift
@@ -558,11 +573,12 @@ html_escape_to() {
     output_ref="$text"
 }
 
-_css_string_escape() {
+# Thin printf wrapper around html_escape_to for $(...) callers.
+html_escape() {
     local -r text="$1"; shift
     local escaped_text
 
-    css_string_escape_to escaped_text "$text"
+    html_escape_to escaped_text "$text"
     printf '%s\n' "$escaped_text"
 }
 
@@ -580,7 +596,17 @@ css_string_escape_to() {
     output_ref="$text"
 }
 
-_json_string_escape() {
+# Thin printf wrapper around css_string_escape_to for $(...) callers.
+css_string_escape() {
+    local -r text="$1"; shift
+    local escaped_text
+
+    css_string_escape_to escaped_text "$text"
+    printf '%s\n' "$escaped_text"
+}
+
+json_string_escape_to() {
+    local -n output_ref="$1"; shift
     local text="$1"; shift
     local char
     local escaped=''
@@ -625,26 +651,61 @@ _json_string_escape() {
         esac
     done
 
-    printf '%s\n' "$escaped"
+    output_ref="$escaped"
 }
 
-_json_string() {
+# Thin printf wrapper around json_string_escape_to for $(...) callers.
+json_string_escape() {
     local -r text="$1"; shift
+    local escaped_text
 
-    printf '"%s"' "$(_json_string_escape "$text")"
+    json_string_escape_to escaped_text "$text"
+    printf '%s\n' "$escaped_text"
 }
 
-_json_bool() {
+# Nameref form: write the JSON-quoted ("...") string into out_var.
+json_string_to() {
+    local -n string_output_ref="$1"; shift
+    local -r text="$1"; shift
+    local escaped_text
+
+    json_string_escape_to escaped_text "$text"
+    # shellcheck disable=SC2034  # written through the output nameref
+    string_output_ref="\"$escaped_text\""
+}
+
+# Thin printf wrapper around json_string_to for $(...) callers.
+json_string() {
+    local -r text="$1"; shift
+    local quoted_text
+
+    json_string_to quoted_text "$text"
+    printf '%s' "$quoted_text"
+}
+
+# Nameref form: write the JSON boolean literal into out_var.
+json_bool_to() {
+    local -n bool_output_ref="$1"; shift
     local -r value="$1"; shift
 
+    # shellcheck disable=SC2034  # written through the output nameref
     case "$value" in
         yes)
-            printf 'true'
+            bool_output_ref='true'
             ;;
         *)
-            printf 'false'
+            bool_output_ref='false'
             ;;
     esac
+}
+
+# Thin printf wrapper around json_bool_to for $(...) callers.
+json_bool() {
+    local -r value="$1"; shift
+    local bool_literal
+
+    json_bool_to bool_literal "$value"
+    printf '%s' "$bool_literal"
 }
 
 _display_path() {
@@ -658,14 +719,11 @@ _display_path() {
     fi
 }
 
-current_date_text() {
-    if random_seed_is_set; then
-        printf 'Thu Jan  1 00:00:00 UTC 1970\n'
-    else
-        command date
-    fi
-}
-
+# Nameref form: write the current date text into out_var, caching it in
+# SHURIKEN_CURRENT_DATE_TEXT so repeated calls within a run do not re-exec date
+# (the value is constant for a generation run). The wrapper below delegates here
+# so BOTH forms share this cache -- a hot-path caller using the printf form no
+# longer silently re-runs `date` every call.
 current_date_text_to() {
     local -n output_ref="$1"; shift
 
@@ -678,6 +736,15 @@ current_date_text_to() {
     fi
 
     output_ref="$SHURIKEN_CURRENT_DATE_TEXT"
+}
+
+# Thin printf wrapper around current_date_text_to for stdout/$(...) callers.
+# Delegates so it shares the SHURIKEN_CURRENT_DATE_TEXT cache (output unchanged).
+current_date_text() {
+    local date_text
+
+    current_date_text_to date_text
+    printf '%s\n' "$date_text"
 }
 
 # Each entry: render_var|kind|source_name|context_var|required_templates
@@ -2184,8 +2251,8 @@ photo_exif_details_html() {
             continue
         fi
         value="${exif_values[$key]}"
-        key_html=$(_html_escape "exif:$key")
-        value_html=$(_html_escape "$value")
+        key_html=$(html_escape "exif:$key")
+        value_html=$(html_escape "$value")
 
         if (( exif_count == 0 )); then
             printf '<table class="details">\n'
@@ -2309,7 +2376,7 @@ photo_exif_tooltip_text() {
 # presentation that stays in the album module. The collector depends on the file
 # counters (count_files / count_incoming_images / count_tree_files, now in
 # image.source.sh), current_timestamp_iso (template.source.sh) and the JSON
-# helpers (_json_string / _json_bool, template.source.sh); all are sourced before
+# helpers (json_string / json_bool, template.source.sh); all are sourced before
 # this module, and these are runtime calls anyway, so source order documents the
 # dependency without affecting availability. Behaviour and signatures are
 # unchanged by the move.
@@ -2351,23 +2418,23 @@ _generation_metadata_json() {
     printf '{\n'
     printf '  "generator": {\n'
     printf '    "name": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["generator_name"]}")"
+        "$(json_string "${_GENERATION_METADATA["generator_name"]}")"
     printf '    "version": %s\n' \
-        "$(_json_string "${_GENERATION_METADATA["generator_version"]}")"
+        "$(json_string "${_GENERATION_METADATA["generator_version"]}")"
     printf '  },\n'
     printf '  "generated_at": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["generated_at"]}")"
+        "$(json_string "${_GENERATION_METADATA["generated_at"]}")"
     printf '  "config_source": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["config_source"]}")"
+        "$(json_string "${_GENERATION_METADATA["config_source"]}")"
     printf '  "template": {\n'
     printf '    "name": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["template_name"]}")"
+        "$(json_string "${_GENERATION_METADATA["template_name"]}")"
     printf '    "directory": %s\n' \
-        "$(_json_string "${_GENERATION_METADATA["template_directory"]}")"
+        "$(json_string "${_GENERATION_METADATA["template_directory"]}")"
     printf '  },\n'
     printf '  "source": {\n'
     printf '    "incoming_dir": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["source_incoming_dir"]}")"
+        "$(json_string "${_GENERATION_METADATA["source_incoming_dir"]}")"
     printf '    "image_count": %s\n' \
         "${_GENERATION_METADATA["source_image_count"]}"
     printf '  },\n'
@@ -2381,35 +2448,35 @@ _generation_metadata_json() {
     printf '  },\n'
     printf '  "tarball": {\n'
     printf '    "included": %s,\n' \
-        "$(_json_bool "${_GENERATION_METADATA["tarball_included"]}")"
+        "$(json_bool "${_GENERATION_METADATA["tarball_included"]}")"
     printf '    "file": %s\n' \
-        "$(_json_string "${_GENERATION_METADATA["tarball_file"]}")"
+        "$(json_string "${_GENERATION_METADATA["tarball_file"]}")"
     printf '  },\n'
     printf '  "settings": {\n'
     printf '    "title": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_title"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_title"]}")"
     printf '    "height": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_height"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_height"]}")"
     printf '    "thumbheight": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_thumbheight"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_thumbheight"]}")"
     printf '    "maxpreviews": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_maxpreviews"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_maxpreviews"]}")"
     printf '    "subdivide_percent": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_subdivide_percent"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_subdivide_percent"]}")"
     printf '    "feature_percent": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_feature_percent"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_feature_percent"]}")"
     printf '    "image_jobs": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
     printf '    "random_seed": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_random_seed"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_random_seed"]}")"
     printf '    "shuffle": %s,\n' \
-        "$(_json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
+        "$(json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
     printf '    "splash_page": %s,\n' \
-        "$(_json_bool "${_GENERATION_METADATA["settings_splash_page"]}")"
+        "$(json_bool "${_GENERATION_METADATA["settings_splash_page"]}")"
     printf '    "stats_page": %s,\n' \
-        "$(_json_bool "${_GENERATION_METADATA["settings_stats_page"]}")"
+        "$(json_bool "${_GENERATION_METADATA["settings_stats_page"]}")"
     printf '    "original_basepath": %s\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
     printf '  }\n'
     printf '}\n'
 }
@@ -2799,12 +2866,12 @@ build_preview_thumbnail() {
     local thumbs_dir_html
     local anchor_class_html
 
-    photo_html=$(_html_escape "$photo_file")
-    anim_html=$(_html_escape "$animation_class")
-    backhref_html=$(_html_escape "$backhref")
-    thumbs_dir_html=$(_html_escape "$thumbs_dir")
+    photo_html=$(html_escape "$photo_file")
+    anim_html=$(html_escape "$animation_class")
+    backhref_html=$(html_escape "$backhref")
+    thumbs_dir_html=$(html_escape "$thumbs_dir")
     if [ -n "$anchor_class" ]; then
-        anchor_class_html=$(_html_escape "$anchor_class")
+        anchor_class_html=$(html_escape "$anchor_class")
         printf '<a id=%s class=%s href=%s>\n' \
             "'$photo_html'" "'$anchor_class_html'" \
             "'${href_prefix}${preview_num}.html'"
@@ -4386,7 +4453,7 @@ _stats_section_open() {
     if [ -n "$list_class" ]; then
         ul_class+=" $list_class"
     fi
-    heading_html=$(_html_escape "$heading")
+    heading_html=$(html_escape "$heading")
     printf '<section class="stats-section">\n'
     printf '<h2>%s</h2>\n' "$heading_html"
     printf '<ul class="%s">\n' "$ul_class"
@@ -4458,7 +4525,7 @@ _stats_render_ordered_section() {
         if [ -z "${counts_ref[$bucket]:-}" ]; then
             continue
         fi
-        row_html=$(_stats_filter_link "$prefix" "$bucket" "$(_html_escape "$bucket")")
+        row_html=$(_stats_filter_link "$prefix" "$bucket" "$(html_escape "$bucket")")
         _stats_bar_row "$row_html" "${counts_ref[$bucket]}" "$total" "$max"
     done
     _stats_section_close
@@ -4485,7 +4552,7 @@ _stats_render_ranked_section() {
     max=$(_stats_max_count "$array_name")
     _stats_section_open "$heading" "$list_class"
     while IFS= read -r key; do
-        row_html=$(_stats_filter_link "$prefix" "$key" "$(_html_escape "$key")")
+        row_html=$(_stats_filter_link "$prefix" "$key" "$(html_escape "$key")")
         _stats_bar_row "$row_html" "${counts_ref[$key]}" "$total" "$max"
     done < <(_stats_keys_by_count_desc "$array_name")
     _stats_section_close
@@ -4824,11 +4891,11 @@ _stats_build_filterview_body() {
     local view_page
     local details_link=''
 
-    photo_html=$(_html_escape "$photo")
+    photo_html=$(html_escape "$photo")
     animation_class=$(random_animation_css_class fast "$photo")
     tooltip=$(photo_exif_tooltip_text "$photo" "$INCOMING_DIR/$photo")
     if [ -n "$tooltip" ]; then
-        tooltip_attr=" title=\"$(_html_escape "$tooltip")\""
+        tooltip_attr=" title=\"$(html_escape "$tooltip")\""
     fi
     view_page=$(album_view_page_for_photo "$photo")
     if [ -n "$view_page" ]; then

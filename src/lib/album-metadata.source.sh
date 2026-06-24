@@ -37,8 +37,8 @@ photo_exif_details_html() {
             continue
         fi
         value="${exif_values[$key]}"
-        key_html=$(_html_escape "exif:$key")
-        value_html=$(_html_escape "$value")
+        key_html=$(html_escape "exif:$key")
+        value_html=$(html_escape "$value")
 
         if (( exif_count == 0 )); then
             printf '<table class="details">\n'

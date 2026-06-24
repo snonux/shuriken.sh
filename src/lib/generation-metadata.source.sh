@@ -5,7 +5,7 @@
 # presentation that stays in the album module. The collector depends on the file
 # counters (count_files / count_incoming_images / count_tree_files, now in
 # image.source.sh), current_timestamp_iso (template.source.sh) and the JSON
-# helpers (_json_string / _json_bool, template.source.sh); all are sourced before
+# helpers (json_string / json_bool, template.source.sh); all are sourced before
 # this module, and these are runtime calls anyway, so source order documents the
 # dependency without affecting availability. Behaviour and signatures are
 # unchanged by the move.
@@ -47,23 +47,23 @@ _generation_metadata_json() {
     printf '{\n'
     printf '  "generator": {\n'
     printf '    "name": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["generator_name"]}")"
+        "$(json_string "${_GENERATION_METADATA["generator_name"]}")"
     printf '    "version": %s\n' \
-        "$(_json_string "${_GENERATION_METADATA["generator_version"]}")"
+        "$(json_string "${_GENERATION_METADATA["generator_version"]}")"
     printf '  },\n'
     printf '  "generated_at": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["generated_at"]}")"
+        "$(json_string "${_GENERATION_METADATA["generated_at"]}")"
     printf '  "config_source": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["config_source"]}")"
+        "$(json_string "${_GENERATION_METADATA["config_source"]}")"
     printf '  "template": {\n'
     printf '    "name": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["template_name"]}")"
+        "$(json_string "${_GENERATION_METADATA["template_name"]}")"
     printf '    "directory": %s\n' \
-        "$(_json_string "${_GENERATION_METADATA["template_directory"]}")"
+        "$(json_string "${_GENERATION_METADATA["template_directory"]}")"
     printf '  },\n'
     printf '  "source": {\n'
     printf '    "incoming_dir": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["source_incoming_dir"]}")"
+        "$(json_string "${_GENERATION_METADATA["source_incoming_dir"]}")"
     printf '    "image_count": %s\n' \
         "${_GENERATION_METADATA["source_image_count"]}"
     printf '  },\n'
@@ -77,35 +77,35 @@ _generation_metadata_json() {
     printf '  },\n'
     printf '  "tarball": {\n'
     printf '    "included": %s,\n' \
-        "$(_json_bool "${_GENERATION_METADATA["tarball_included"]}")"
+        "$(json_bool "${_GENERATION_METADATA["tarball_included"]}")"
     printf '    "file": %s\n' \
-        "$(_json_string "${_GENERATION_METADATA["tarball_file"]}")"
+        "$(json_string "${_GENERATION_METADATA["tarball_file"]}")"
     printf '  },\n'
     printf '  "settings": {\n'
     printf '    "title": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_title"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_title"]}")"
     printf '    "height": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_height"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_height"]}")"
     printf '    "thumbheight": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_thumbheight"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_thumbheight"]}")"
     printf '    "maxpreviews": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_maxpreviews"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_maxpreviews"]}")"
     printf '    "subdivide_percent": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_subdivide_percent"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_subdivide_percent"]}")"
     printf '    "feature_percent": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_feature_percent"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_feature_percent"]}")"
     printf '    "image_jobs": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
     printf '    "random_seed": %s,\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_random_seed"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_random_seed"]}")"
     printf '    "shuffle": %s,\n' \
-        "$(_json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
+        "$(json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
     printf '    "splash_page": %s,\n' \
-        "$(_json_bool "${_GENERATION_METADATA["settings_splash_page"]}")"
+        "$(json_bool "${_GENERATION_METADATA["settings_splash_page"]}")"
     printf '    "stats_page": %s,\n' \
-        "$(_json_bool "${_GENERATION_METADATA["settings_stats_page"]}")"
+        "$(json_bool "${_GENERATION_METADATA["settings_stats_page"]}")"
     printf '    "original_basepath": %s\n' \
-        "$(_json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
+        "$(json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
     printf '  }\n'
     printf '}\n'
 }

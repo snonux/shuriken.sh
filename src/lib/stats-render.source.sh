@@ -84,7 +84,7 @@ _stats_section_open() {
     if [ -n "$list_class" ]; then
         ul_class+=" $list_class"
     fi
-    heading_html=$(_html_escape "$heading")
+    heading_html=$(html_escape "$heading")
     printf '<section class="stats-section">\n'
     printf '<h2>%s</h2>\n' "$heading_html"
     printf '<ul class="%s">\n' "$ul_class"
@@ -156,7 +156,7 @@ _stats_render_ordered_section() {
         if [ -z "${counts_ref[$bucket]:-}" ]; then
             continue
         fi
-        row_html=$(_stats_filter_link "$prefix" "$bucket" "$(_html_escape "$bucket")")
+        row_html=$(_stats_filter_link "$prefix" "$bucket" "$(html_escape "$bucket")")
         _stats_bar_row "$row_html" "${counts_ref[$bucket]}" "$total" "$max"
     done
     _stats_section_close
@@ -183,7 +183,7 @@ _stats_render_ranked_section() {
     max=$(_stats_max_count "$array_name")
     _stats_section_open "$heading" "$list_class"
     while IFS= read -r key; do
-        row_html=$(_stats_filter_link "$prefix" "$key" "$(_html_escape "$key")")
+        row_html=$(_stats_filter_link "$prefix" "$key" "$(html_escape "$key")")
         _stats_bar_row "$row_html" "${counts_ref[$key]}" "$total" "$max"
     done < <(_stats_keys_by_count_desc "$array_name")
     _stats_section_close
