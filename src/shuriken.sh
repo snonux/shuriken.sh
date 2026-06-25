@@ -93,6 +93,8 @@ declare -r SHURIKEN_SOURCE_DIR
 # SHURIKEN_LIB_SOURCES_BEGIN
 # shellcheck source=src/lib/logging.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/logging.source.sh"
+# shellcheck source=src/lib/compat.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/compat.source.sh"
 # shellcheck source=src/lib/bootstrap.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/bootstrap.source.sh"
 # shellcheck source=src/lib/paths.source.sh
@@ -162,6 +164,12 @@ main() {
     fi
 
     parse_cli_arguments "$@"
+    status=$?
+    if (( status != 0 )); then
+        return "$status"
+    fi
+
+    require_gnu_tools
     status=$?
     if (( status != 0 )); then
         return "$status"

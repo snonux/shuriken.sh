@@ -6190,6 +6190,79 @@ test_empty_args_fail() {
     test::assert_contains 'Usage:' "$output"
 }
 
+# The runtime GNU-tool guard (require_gnu_tools in src/lib/compat.source.sh)
+# must reject invocations when a core tool lacks the GNU-only feature shuriken
+# depends on. Each case installs a complete coreutils set via the shared
+# helper (so the environment is otherwise real), then replaces exactly one tool
+# with a fake that mimics the BSD/macOS behavior (rejecting the GNU flag), runs a
+# valid action, and asserts a clear GNU-only error. The guard runs before any
+# action work, so even --version is gated.
+test_gnu_tool_guard_rejects_non_gnu_find() {
+    local path_bin
+    local real_find
+    local output
+
+    test::setup
+    path_bin="$TEST_TMPDIR/bin"
+    real_find=$(command -v find)
+    test::install_coreutils_without_imagemagick "$path_bin"
+    rm -f "$path_bin/find"
+    cat > "$path_bin/find" <<FAKE
+#!/usr/bin/env bash
+set -euo pipefail
+for arg in "\$@"; do
+    if [ "\$arg" = -printf ]; then
+        printf 'find: unknown predicate -printf\n' >&2
+        exit 2
+    fi
+done
+exec "$real_find" "\$@"
+FAKE
+    chmod 0755 "$path_bin/find"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$path_bin" test::capture_failure_output \
+            "$TEST_SHURIKEN" --version
+    )
+
+    test::assert_contains 'shuriken requires the GNU versions' "$output"
+    test::assert_contains 'find (missing the -printf action)' "$output"
+    test::teardown
+}
+
+test_gnu_tool_guard_rejects_non_gnu_stat() {
+    local path_bin
+    local real_stat
+    local output
+
+    test::setup
+    path_bin="$TEST_TMPDIR/bin"
+    real_stat=$(command -v stat)
+    test::install_coreutils_without_imagemagick "$path_bin"
+    rm -f "$path_bin/stat"
+    cat > "$path_bin/stat" <<FAKE
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "\${1:-}" = -c ]; then
+    printf 'stat: illegal option -c\n' >&2
+    exit 1
+fi
+exec "$real_stat" "\$@"
+FAKE
+    chmod 0755 "$path_bin/stat"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$path_bin" test::capture_failure_output \
+            "$TEST_SHURIKEN" --version
+    )
+
+    test::assert_contains 'shuriken requires the GNU versions' "$output"
+    test::assert_contains 'stat (missing the -c option)' "$output"
+    test::teardown
+}
+
 test_extra_args_fail() {
     test::assert_failure 'extra operand is rejected' "$TEST_SHURIKEN" --version extra
     test::assert_failure \
@@ -7040,6 +7113,12 @@ main() {
     test::run_case 'empty args fail' test_empty_args_fail
     test::run_case 'extra args fail' test_extra_args_fail
     test::run_case 'missing option values fail' test_missing_option_values_fail
+    test::run_case \
+        'GNU-tool guard rejects non-GNU find' \
+        test_gnu_tool_guard_rejects_non_gnu_find
+    test::run_case \
+        'GNU-tool guard rejects non-GNU stat' \
+        test_gnu_tool_guard_rejects_non_gnu_stat
 }
 
 main "$@"

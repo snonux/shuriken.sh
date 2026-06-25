@@ -6,6 +6,16 @@ shuriken is a Bash script for Unix-like operating systems (such as Linux) that
 generates static web photo albums. The resulting album is pure HTML+CSS — no
 JavaScript.
 
+## Platform compatibility
+
+shuriken relies on **GNU** versions of the standard Unix tools. Specifically,
+it uses GNU-only extensions such as `find -printf`, `stat -c`, `cp -a`, and
+`sort -R`, which are not supported by the BSD variants shipped with macOS and
+BSD systems. As a result shuriken is currently **Linux-only** and will not run
+unmodified on macOS or BSD-based systems (including the stock tools that ship
+with macOS). If you are on macOS, run shuriken inside a Linux container or VM
+instead.
+
 ## Example site
 
 [irregular.ninja](https://irregular.ninja) is a live photo album built with
@@ -33,6 +43,9 @@ shuriken --clean      # remove ./dist and leftover staging dirs
 ```
 
 ImageMagick (`magick` or `convert`) and Bash 5.1 or newer are required.
+GNU coreutils/findutils (the default `find`, `stat`, `cp`, and `sort` on a
+Linux distribution) are also required; the BSD/macOS equivalents are not
+sufficient (see *Platform compatibility* above).
 
 ## Main flags
 

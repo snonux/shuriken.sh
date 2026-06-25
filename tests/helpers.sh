@@ -695,6 +695,7 @@ test::install_coreutils_without_imagemagick() {
     local -a names=(
         basename
         bash
+        cp
         date
         dirname
         find
@@ -704,6 +705,7 @@ test::install_coreutils_without_imagemagick() {
         rm
         sed
         sort
+        stat
         tac
         tar
         wc
