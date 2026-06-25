@@ -66,6 +66,165 @@ tile_layout_for() {
     printf '%s %s\n' "${names[choice]}" "${counts[choice]}"
 }
 
+# The valid subdivided-tile layout name for a given photo count (2..4); used when
+# a split leaves a smaller-but-still-subdivided remainder. A count of 1 is a
+# plain single and never asks here.
+_grid_subdivide_layout_for() {
+    case "$1" in
+        2) printf 'two_wide\n' ;;
+        3) printf 'squares_wide_top\n' ;;
+        *) printf 'quad\n' ;;
+    esac
+}
+
+# Snap a page's tiles onto a grid-cell total that is a multiple of 12 so the
+# fixed 2/3/4/6-column overview grid (all divisors of 12) forms a COMPLETE
+# rectangle at every breakpoint -- no ragged, cut-off last row at any window
+# width. The cell footprint is 4 for a 2x2 "feature" tile and 1 for every other
+# tile, so a page's natural total is rarely a multiple of 12.
+#
+# Two levers reach the nearest reachable multiple of 12, both keeping the SAME
+# photos in the SAME order (so per-photo preview numbers / view-page links never
+# change), only their visual grouping shifts:
+#   - PREFERRED, round up: split subdivided tiles into singles (+1 cell per photo
+#     peeled). Abundant on a normal album (many subdivided tiles) and needs no
+#     adjacency, so this is the reliable lever.
+#   - FALLBACK, round down: merge adjacent single tiles into two-up tiles (-1 cell
+#     per merge). Used when there are too few subdivided cells to round up (e.g. a
+#     single-heavy page, or THUMB_SUBDIVIDE_PERCENT=0).
+# Left untouched when the page has fewer than 12 cells (a tiny stats mini-album or
+# the album's short final page) or neither lever can reach a multiple of 12.
+# Operates in place on the parallel layout/start/count arrays passed by name.
+# The three array arguments are the NAMES of the caller's parallel arrays (passed
+# as strings and forwarded by name to the chosen lever helper). We bind only
+# read-only local namerefs here (uniquely named so they never alias a caller's
+# nameref of the same name -- bash would treat that as a circular reference).
+_align_page_tiles_to_grid() {
+    local -r layouts_name="$1"; shift
+    local -r starts_name="$1"; shift
+    local -r counts_name="$1"; shift
+    local -ri total_cells="$1"; shift
+
+    local -ri remainder=$(( total_cells % 12 ))
+    if (( total_cells < 12 || remainder == 0 )); then
+        return
+    fi
+
+    # How many extra cells splitting every subdivided tile fully could yield.
+    # shellcheck disable=SC2178
+    local -n align_layouts="$layouts_name"
+    # shellcheck disable=SC2178
+    local -n align_counts="$counts_name"
+    local -i capacity_up=0 i
+    for (( i = 0; i < ${#align_layouts[@]}; i++ )); do
+        if [ "${align_layouts[i]}" != single ] \
+            && [ "${align_layouts[i]}" != feature ] \
+            && (( align_counts[i] >= 2 )); then
+            capacity_up=$(( capacity_up + align_counts[i] - 1 ))
+        fi
+    done
+
+    if (( capacity_up >= 12 - remainder )); then
+        _grid_split_subdivides_to_add \
+            "$layouts_name" "$starts_name" "$counts_name" "$(( 12 - remainder ))"
+    else
+        _grid_merge_singles_to_remove \
+            "$layouts_name" "$starts_name" "$counts_name" "$remainder"
+    fi
+}
+
+# Round a page UP to the next multiple of 12 by peeling `to_add` photos off
+# subdivided tiles into trailing singles (each peel: +1 cell, photos preserved in
+# order). Peeling the tail of a subdivide keeps both pieces contiguous, so the
+# kept remainder (a smaller subdivide, or a single when only one photo is left)
+# and the peeled singles stay in photo order. Rebuilds the arrays in place.
+_grid_split_subdivides_to_add() {
+    # shellcheck disable=SC2178
+    local -n split_layouts="$1"; shift
+    # shellcheck disable=SC2178
+    local -n split_starts="$1"; shift
+    # shellcheck disable=SC2178
+    local -n split_counts="$1"; shift
+    local -i to_add="$1"; shift
+
+    local -a new_layouts=() new_starts=() new_counts=()
+    local -i i p peel keep start cnt
+    for (( i = 0; i < ${#split_layouts[@]}; i++ )); do
+        start=${split_starts[i]}
+        cnt=${split_counts[i]}
+        if (( to_add > 0 )) && [ "${split_layouts[i]}" != single ] \
+            && [ "${split_layouts[i]}" != feature ] && (( cnt >= 2 )); then
+            peel=$(( to_add < cnt - 1 ? to_add : cnt - 1 ))
+            keep=$(( cnt - peel ))
+            if (( keep == 1 )); then
+                new_layouts+=(single)
+            else
+                new_layouts+=("$(_grid_subdivide_layout_for "$keep")")
+            fi
+            new_starts+=("$start")
+            new_counts+=("$keep")
+            for (( p = 0; p < peel; p++ )); do
+                new_layouts+=(single)
+                new_starts+=("$(( start + keep + p ))")
+                new_counts+=(1)
+            done
+            to_add=$(( to_add - peel ))
+        else
+            new_layouts+=("${split_layouts[i]}")
+            new_starts+=("$start")
+            new_counts+=("$cnt")
+        fi
+    done
+
+    split_layouts=("${new_layouts[@]}")
+    split_starts=("${new_starts[@]}")
+    split_counts=("${new_counts[@]}")
+}
+
+# Round a page DOWN to the previous multiple of 12 by merging `to_remove` pairs of
+# adjacent single tiles into two-up "two_wide" tiles (each merge: -1 cell). Walks
+# right-to-left building a reversed result, then un-reverses it. Decrements use
+# assignment ("k=$(( k - 1 ))"), never a bare "(( --k ))": under set -euo pipefail
+# an arithmetic command whose result is 0 (e.g. --k reaching 0) returns status 1
+# and would abort the whole generate; an assignment always returns 0.
+_grid_merge_singles_to_remove() {
+    # shellcheck disable=SC2178
+    local -n merge_layouts="$1"; shift
+    # shellcheck disable=SC2178
+    local -n merge_starts="$1"; shift
+    # shellcheck disable=SC2178
+    local -n merge_counts="$1"; shift
+    local -i merges_left="$1"; shift
+
+    local -a new_layouts=() new_starts=() new_counts=()
+    local -i k=${#merge_layouts[@]} j
+    while (( k > 0 )); do
+        k=$(( k - 1 ))
+        if (( merges_left > 0 && k > 0 )) \
+            && [ "${merge_layouts[k]}" = single ] \
+            && [ "${merge_layouts[k - 1]}" = single ]; then
+            new_layouts+=(two_wide)
+            new_starts+=("${merge_starts[k - 1]}")
+            new_counts+=(2)
+            merges_left=$(( merges_left - 1 ))
+            k=$(( k - 1 ))
+        else
+            new_layouts+=("${merge_layouts[k]}")
+            new_starts+=("${merge_starts[k]}")
+            new_counts+=("${merge_counts[k]}")
+        fi
+    done
+
+    merge_layouts=() merge_starts=() merge_counts=()
+    j=${#new_layouts[@]}
+    while (( j > 0 )); do
+        j=$(( j - 1 ))
+        merge_layouts+=("${new_layouts[j]}")
+        merge_starts+=("${new_starts[j]}")
+        merge_counts+=("${new_counts[j]}")
+    done
+}
+
 # Render one tile's markup (no trailing newline). A "single" tile is the plain
 # square thumbnail, byte-identical to the previous per-thumbnail output. A
 # "feature" tile is the same single thumbnail but with the 'feature' anchor class

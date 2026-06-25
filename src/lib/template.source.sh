@@ -262,7 +262,6 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_stats_page_html|config_html|STATS_PAGE||header'
     'render_tarball_include|tarball_include|||footer'
     'render_tarball_name_html|context_html|tarball_name|tarball_name|footer'
-    'render_thumbheight_html|config_html|THUMBHEIGHT||header'
     'render_thumbs_dir_html|context_html|thumbs_dir|thumbs_dir|preview'
     'render_title_html|config_html|TITLE||camera header splash stats'
     'render_view_next_html|preview_num_next_html|preview_num||details view'

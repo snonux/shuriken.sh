@@ -22,6 +22,13 @@
 # the single shared grid builder for both the main preview pages and the stats
 # mini-album galleries. Tile blocks are separated by a single newline; the
 # template adds the trailing newline.
+#
+# Three passes: (1) decide the whole page's tiles, recording each tile's layout,
+# first-photo index and photo count and accumulating the grid-cell footprint;
+# (2) snap that cell total onto a multiple of 12 (_align_page_tiles_to_grid) so
+# the fixed 2/3/4/6-column grid is a complete rectangle -- a flush last row -- at
+# every width; (3) emit the (possibly merged) tiles. Splitting decide-from-emit
+# is what lets pass 2 adjust the layout before any HTML is built.
 append_preview_grid() {
     local -n buffer_ref="$1"; shift
     local -r thumbs_dir="$1"; shift
@@ -30,6 +37,7 @@ append_preview_grid() {
     local -a photos=("$@")
     local -i i=0
     local -i count
+    local -i total_cells=0
     local layout
     local block
     # Cap the big 2x2 feature tiles at this many per page; once reached, later
@@ -37,27 +45,49 @@ append_preview_grid() {
     # subdivided/single), so a page never gets crowded with hero tiles.
     local -ri max_features=2
     local -i features_used=0
+    # Parallel records of the page's tiles: layout, the first photo's 0-based
+    # index, and how many photos the tile spans.
+    local -a tile_layouts=()
+    local -a tile_starts=()
+    local -a tile_counts=()
+    local -i t
 
+    # Pass 1: decide every tile (deterministic, seeded off each tile's first photo
+    # name). A 2x2 feature occupies 4 grid cells; every other tile occupies 1.
     while (( i < ${#photos[@]} )); do
-        # Decide this tile's layout from the photos still available; the first
-        # photo's name is the seeded-random context so the choice is stable.
-        # Features are only offered until the per-page cap is reached.
         read -r layout count < <(
             tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}" \
                 "$(( features_used < max_features ? 1 : 0 ))"
         )
         if [ "$layout" = feature ]; then
             (( ++features_used ))
+            (( total_cells += 4 ))
+        else
+            (( ++total_cells ))
         fi
+        tile_layouts+=("$layout")
+        tile_starts+=("$i")
+        tile_counts+=("$count")
+        (( i += count ))
+    done
+
+    # Pass 2: force the cell total onto a multiple of 12 so the grid is flush at
+    # every column breakpoint (no-op for tiny pages / too-few-singles -- see the
+    # helper). Per-photo preview numbers are preserved.
+    _align_page_tiles_to_grid \
+        tile_layouts tile_starts tile_counts "$total_cells"
+
+    # Pass 3: emit the tile blocks in order.
+    for (( t = 0; t < ${#tile_layouts[@]}; t++ )); do
         block=$(build_tile_block \
-            "$thumbs_dir" "$backhref" "$href_prefix" "$layout" "$(( i + 1 ))" \
-            "${photos[@]:i:count}")
+            "$thumbs_dir" "$backhref" "$href_prefix" "${tile_layouts[t]}" \
+            "$(( tile_starts[t] + 1 ))" \
+            "${photos[@]:${tile_starts[t]}:${tile_counts[t]}}")
         if [ -z "$buffer_ref" ]; then
             buffer_ref="$block"
         else
             buffer_ref+=$'\n'"$block"
         fi
-        (( i += count ))
     done
 }
 

@@ -578,9 +578,11 @@ test_generate_cli_overrides_config_values() {
     test::assert_path_absent "$TEST_TMPDIR/config-dist"
     test::assert_find_count 0 "$TEST_TMPDIR/cli-dist" '*.tar'
     test::assert_contains '<title>CLI title</title>' "$page_html"
-    # THUMBHEIGHT is the grid's minimum cell width (columns grow to fill); it is
-    # wrapped in min(...,100%) so a column never overflows a narrow phone.
-    test::assert_contains 'minmax(min(45px, 100%), 1fr)' "$page_html"
+    # The overview grid uses a FIXED column count per width breakpoint (2/3/4/6),
+    # not auto-fill, so each page tiles into a complete rectangle (flush last row).
+    # THUMBHEIGHT no longer drives the grid -- it only sizes the thumbnail files.
+    test::assert_contains 'grid-template-columns: repeat(2, 1fr)' "$page_html"
+    test::assert_contains 'grid-template-columns: repeat(6, 1fr)' "$page_html"
     test::assert_contains 'max-height: 456px;' "$view_html"
     test::assert_contains 'Next 1 pictures' "$page_html"
     test::assert_contains 'href="page-2.html" class="arrow">&rArr;</a>' \
@@ -3287,6 +3289,98 @@ test_render_view_redirects_wraps_when_last_page_full() {
     test::teardown
 }
 
+# _align_page_tiles_to_grid snaps a page's grid-cell total onto a multiple of 12
+# (so the fixed 2/3/4/6-column overview grid is a flush rectangle at every
+# breakpoint) by merging adjacent single tiles into two-up tiles, WITHOUT
+# dropping or reordering any photo. Drive the helper directly with synthetic tile
+# arrays and assert the post-merge cell total is a multiple of 12 and every photo
+# is still covered exactly once.
+test_album_grid_cells_align_to_multiple_of_12() {
+    local -a layouts=() starts=() counts=()
+    local -i n cells=0 covered=0 idx
+
+    test::setup
+    # shellcheck source=/dev/null
+    source <(sed '$d' "$TEST_SHURIKEN")
+
+    # 40 single tiles => 40 cells; not a multiple of 12. After alignment the
+    # remainder (40 % 12 == 4) is absorbed by merging 4 single pairs -> 36 cells.
+    for (( n = 0; n < 40; n++ )); do
+        layouts+=(single)
+        starts+=("$n")
+        counts+=(1)
+    done
+    _align_page_tiles_to_grid layouts starts counts 40
+
+    for (( idx = 0; idx < ${#layouts[@]}; idx++ )); do
+        if [ "${layouts[idx]}" = feature ]; then
+            (( cells += 4 ))
+        else
+            (( ++cells ))
+        fi
+        (( covered += counts[idx] ))
+    done
+
+    if (( cells % 12 != 0 )); then
+        printf 'FAIL: aligned grid cell total %d is not a multiple of 12\n' \
+            "$cells" >&2
+        exit 1
+    fi
+    if (( covered != 40 )); then
+        printf 'FAIL: alignment changed photo coverage: %d (want 40)\n' \
+            "$covered" >&2
+        exit 1
+    fi
+
+    # A page already on a multiple of 12 (24 singles) must be left untouched.
+    layouts=() starts=() counts=()
+    for (( n = 0; n < 24; n++ )); do
+        layouts+=(single)
+        starts+=("$n")
+        counts+=(1)
+    done
+    _align_page_tiles_to_grid layouts starts counts 24
+    if (( ${#layouts[@]} != 24 )); then
+        printf 'FAIL: a 24-cell page was modified (%d tiles, want 24)\n' \
+            "${#layouts[@]}" >&2
+        exit 1
+    fi
+
+    # Subdivide-heavy page: 5 singles + 12 two_wide tiles => 17 cells. With plenty
+    # of subdivided cells the helper rounds UP (splits subdivides into singles) to
+    # 24, keeping all 5 + 24 = 29 photos. Exercises the preferred split lever.
+    layouts=() starts=() counts=()
+    local -i s=0
+    for (( n = 0; n < 5; n++ )); do
+        layouts+=(single); starts+=("$s"); counts+=(1); s=$(( s + 1 ))
+    done
+    for (( n = 0; n < 12; n++ )); do
+        layouts+=(two_wide); starts+=("$s"); counts+=(2); s=$(( s + 2 ))
+    done
+    _align_page_tiles_to_grid layouts starts counts 17
+    cells=0
+    covered=0
+    for (( idx = 0; idx < ${#layouts[@]}; idx++ )); do
+        if [ "${layouts[idx]}" = feature ]; then
+            (( cells += 4 ))
+        else
+            (( ++cells ))
+        fi
+        (( covered += counts[idx] ))
+    done
+    if (( cells % 12 != 0 )); then
+        printf 'FAIL: split path cell total %d is not a multiple of 12\n' \
+            "$cells" >&2
+        exit 1
+    fi
+    if (( covered != 29 )); then
+        printf 'FAIL: split path changed photo coverage: %d (want 29)\n' \
+            "$covered" >&2
+        exit 1
+    fi
+    test::teardown
+}
+
 test_generate_config_no_splash_keeps_index_redirect() {
     local config_file
     local fake_bin
@@ -4360,7 +4454,6 @@ BASH
         render_show_header_bar \
         render_source_url_html \
         render_stats_page_html \
-        render_thumbheight_html \
         render_title_html | sort | paste -sd ' ' -)
 
     if [ "$output" != "present=$expected_present" ]; then
@@ -6752,6 +6845,9 @@ main() {
     test::run_case \
         'view redirects wrap when last page is full' \
         test_render_view_redirects_wraps_when_last_page_full
+    test::run_case \
+        'album grid cell total aligns to a multiple of 12' \
+        test_album_grid_cells_align_to_multiple_of_12
     test::run_case \
         '--generate SPLASH_PAGE=no keeps root index redirect' \
         test_generate_config_no_splash_keeps_index_redirect

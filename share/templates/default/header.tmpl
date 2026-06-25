@@ -197,25 +197,35 @@ cat <<END
             vertical-align: top;
         }
 
-        /* The album overview is a CSS grid. THUMBHEIGHT is the MINIMUM cell
-           width: columns grow (1fr) to fill the row, so the thumbnails use the
-           full window width instead of leaving big margins left and right, and
-           there is no centred leftover. Each 1x1 grid item is kept square with
-           aspect-ratio, so the auto-sized rows are square too; a "feature" tile
-           then spans a 2x2 block (a large hero image) and a subdivided tile packs
-           several smaller thumbnails into one cell. grid-auto-flow: dense lets
-           the smaller tiles backfill the holes a 2x2 feature would otherwise
-           leave. Spacing comes from the grid gap, so images carry no padding. */
+        /* The album overview is a CSS grid with a FIXED column count chosen by
+           width breakpoints (not auto-fill). The counts are 2 / 3 / 4 / 6 -- all
+           divisors of 12 -- so a page whose tile-cell total is a multiple of 12
+           (the generator guarantees this, see append_preview_grid) forms a
+           COMPLETE rectangle at every breakpoint: no ragged, cut-off last row at
+           any window width. Columns are 1fr, so the thumbnails grow to fill the
+           full window width instead of leaving margins. Each 1x1 grid item is
+           kept square with aspect-ratio; a "feature" tile spans a 2x2 block (a
+           large hero image) and a subdivided tile packs several smaller
+           thumbnails into one cell. grid-auto-flow: dense lets the smaller tiles
+           backfill the holes a 2x2 feature would otherwise leave. Spacing comes
+           from the grid gap, so images carry no padding. Mobile-first: the base
+           rule is the 2-column phone layout; min-width breakpoints widen it. */
         div.thumbs-grid {
             display: grid;
-            /* min(THUMBHEIGHT, 100%) keeps a column from ever exceeding the
-               viewport width, so narrow phones never scroll sideways; on wide
-               screens the columns are >= THUMBHEIGHT and grow (1fr) to fill. */
-            grid-template-columns:
-                repeat(auto-fill, minmax(min(${render_thumbheight_html}px, 100%), 1fr));
+            grid-template-columns: repeat(2, 1fr);
             grid-auto-flow: dense;
             gap: 10px;
             margin: 0 4px;
+        }
+
+        @media (min-width: 700px) {
+            div.thumbs-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (min-width: 1100px) {
+            div.thumbs-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        @media (min-width: 1600px) {
+            div.thumbs-grid { grid-template-columns: repeat(6, 1fr); }
         }
 
         div.thumbs-grid img {
@@ -385,11 +395,11 @@ cat <<END
             }
         }
 
-        /* Phone layout: a 2-column square grid, and the navigator/footer/splash
-           links become large, well-spaced tap targets (~44px). Pure CSS. */
+        /* Phone layout: the base rule already gives a 2-column grid; here we just
+           tighten the gap/margin, and the navigator/footer/splash links become
+           large, well-spaced tap targets (~44px). Pure CSS. */
         @media (max-width: 700px) {
             div.thumbs-grid {
-                grid-template-columns: 1fr 1fr;
                 gap: 6px;
                 margin: 0 2px;
             }
