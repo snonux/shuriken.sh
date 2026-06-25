@@ -64,8 +64,10 @@ _stats_build_filter_thumbs() {
     if (( ${#photo_list[@]} == 0 )); then
         return
     fi
+    # 'no' fill_last: stats mini-albums never widen a leftover tile to a full row
+    # (that orphan-final-page treatment is for the main album only).
     append_preview_grid thumbs \
-        "$STATS_THUMBS_DIR" "$backhref_html" '' "${photo_list[@]}"
+        "$STATS_THUMBS_DIR" "$backhref_html" '' no "${photo_list[@]}"
     printf '%s\n' "$thumbs"
 }
 

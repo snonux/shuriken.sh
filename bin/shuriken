@@ -2927,9 +2927,12 @@ _grid_merge_singles_to_remove() {
 # Render one tile's markup (no trailing newline). A "single" tile is the plain
 # square thumbnail, byte-identical to the previous per-thumbnail output. A
 # "feature" tile is the same single thumbnail but with the 'feature' anchor class
-# that makes CSS span it across a 2x2 block. Any other layout is a subdivided
-# tile. The tile's photos are the trailing args and their preview numbers run
-# from start_preview upward.
+# that makes CSS span it across a 2x2 block. A "fill" tile is one thumbnail with
+# the 'fill-row' anchor class that spans the WHOLE row (grid-column: 1 / -1) at
+# any breakpoint -- used for the leftover photo on the album's short final page so
+# its bottom edge is flush instead of an orphaned corner. Any other layout is a
+# subdivided tile. The tile's photos are the trailing args and their preview
+# numbers run from start_preview upward.
 build_tile_block() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
@@ -2940,14 +2943,16 @@ build_tile_block() {
     local animation_class
 
     case "$layout" in
-        single|feature)
+        single|feature|fill)
             animation_class=$(random_animation_css_class slow "${photos[0]}")
             # 'single' -> no anchor class (legacy output); 'feature' -> the
-            # 'feature' anchor class CSS spans across a 2x2 grid block.
+            # 'feature' anchor class CSS spans a 2x2 block; 'fill' -> the
+            # 'fill-row' anchor class spans the whole row at any column count.
             local anchor_class=''
-            if [ "$layout" = feature ]; then
-                anchor_class='feature'
-            fi
+            case "$layout" in
+                feature) anchor_class='feature' ;;
+                fill) anchor_class='fill-row' ;;
+            esac
             build_preview_thumbnail \
                 "$thumbs_dir" "$backhref" "$href_prefix" "$start_preview" \
                 "${photos[0]}" "$animation_class" thumb "$anchor_class"
@@ -3034,6 +3039,11 @@ append_preview_grid() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
     local -r href_prefix="$1"; shift
+    # 'yes' only for the main album's LAST page: when such a page cannot be
+    # aligned to a multiple of 12 (a short final page with a leftover photo), its
+    # final single tile is widened to span the whole row so the bottom stays
+    # flush. Callers that must not do this (stats mini-albums) pass 'no'.
+    local -r fill_last="$1"; shift
     local -a photos=("$@")
     local -i i=0
     local -i count
@@ -3076,6 +3086,25 @@ append_preview_grid() {
     # helper). Per-photo preview numbers are preserved.
     _align_page_tiles_to_grid \
         tile_layouts tile_starts tile_counts "$total_cells"
+
+    # Pass 2b: if this is the album's last page and it still could not be aligned
+    # to a multiple of 12 (a short final page), widen its final single tile to a
+    # full-row "fill" tile so the bottom edge is flush at every breakpoint instead
+    # of an orphaned corner. Recompute the post-alignment cell total first.
+    if [ "$fill_last" = yes ] && (( ${#tile_layouts[@]} > 0 )); then
+        local -i aligned_cells=0
+        for (( t = 0; t < ${#tile_layouts[@]}; t++ )); do
+            if [ "${tile_layouts[t]}" = feature ]; then
+                (( aligned_cells += 4 ))
+            else
+                (( ++aligned_cells ))
+            fi
+        done
+        local -i last=$(( ${#tile_layouts[@]} - 1 ))
+        if (( aligned_cells % 12 != 0 )) && [ "${tile_layouts[last]}" = single ]; then
+            tile_layouts[last]=fill
+        fi
+    fi
 
     # Pass 3: emit the tile blocks in order.
     for (( t = 0; t < ${#tile_layouts[@]}; t++ )); do
@@ -3355,10 +3384,16 @@ render_full_preview_page() {
     # also groups the page's photos into tiles (some subdivided into smaller
     # thumbnails), so the per-page ordering and preview numbering stay here.
     local preview_thumbs=''
+    # The album's last page (no "next" link) is the only one allowed to widen a
+    # leftover final tile to a full row, so a short final page stays flush.
+    local fill_last='no'
+    if [ -z "$next_page" ]; then
+        fill_last='yes'
+    fi
     # The main album's view pages are "<page_num>-<preview_num>.html", so the
     # shared grid builder gets "<page_num>-" as the href prefix.
     append_preview_grid preview_thumbs \
-        "$thumbs_dir" "$backhref" "$page_num-" "$@"
+        "$thumbs_dir" "$backhref" "$page_num-" "$fill_last" "$@"
     template previewpage "$page_name.html" \
         html_dir "$html_dir" \
         preview_thumbs "$preview_thumbs"
@@ -5060,8 +5095,10 @@ _stats_build_filter_thumbs() {
     if (( ${#photo_list[@]} == 0 )); then
         return
     fi
+    # 'no' fill_last: stats mini-albums never widen a leftover tile to a full row
+    # (that orphan-final-page treatment is for the main album only).
     append_preview_grid thumbs \
-        "$STATS_THUMBS_DIR" "$backhref_html" '' "${photo_list[@]}"
+        "$STATS_THUMBS_DIR" "$backhref_html" '' no "${photo_list[@]}"
     printf '%s\n' "$thumbs"
 }
 

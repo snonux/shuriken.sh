@@ -228,9 +228,12 @@ _grid_merge_singles_to_remove() {
 # Render one tile's markup (no trailing newline). A "single" tile is the plain
 # square thumbnail, byte-identical to the previous per-thumbnail output. A
 # "feature" tile is the same single thumbnail but with the 'feature' anchor class
-# that makes CSS span it across a 2x2 block. Any other layout is a subdivided
-# tile. The tile's photos are the trailing args and their preview numbers run
-# from start_preview upward.
+# that makes CSS span it across a 2x2 block. A "fill" tile is one thumbnail with
+# the 'fill-row' anchor class that spans the WHOLE row (grid-column: 1 / -1) at
+# any breakpoint -- used for the leftover photo on the album's short final page so
+# its bottom edge is flush instead of an orphaned corner. Any other layout is a
+# subdivided tile. The tile's photos are the trailing args and their preview
+# numbers run from start_preview upward.
 build_tile_block() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
@@ -241,14 +244,16 @@ build_tile_block() {
     local animation_class
 
     case "$layout" in
-        single|feature)
+        single|feature|fill)
             animation_class=$(random_animation_css_class slow "${photos[0]}")
             # 'single' -> no anchor class (legacy output); 'feature' -> the
-            # 'feature' anchor class CSS spans across a 2x2 grid block.
+            # 'feature' anchor class CSS spans a 2x2 block; 'fill' -> the
+            # 'fill-row' anchor class spans the whole row at any column count.
             local anchor_class=''
-            if [ "$layout" = feature ]; then
-                anchor_class='feature'
-            fi
+            case "$layout" in
+                feature) anchor_class='feature' ;;
+                fill) anchor_class='fill-row' ;;
+            esac
             build_preview_thumbnail \
                 "$thumbs_dir" "$backhref" "$href_prefix" "$start_preview" \
                 "${photos[0]}" "$animation_class" thumb "$anchor_class"

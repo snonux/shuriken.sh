@@ -247,6 +247,16 @@ cat <<END
             grid-row: span 2;
         }
 
+        /* A "fill-row" tile spans the whole row at ANY column count
+           (grid-column: 1 / -1). Used for the single leftover photo on the
+           album's short final page so the bottom edge stays flush at every
+           breakpoint instead of an orphaned corner; object-fit: cover crops it
+           to the wide banner shape without distortion. */
+        div.thumbs-grid a.fill-row {
+            grid-column: 1 / -1;
+            aspect-ratio: 3 / 1;
+        }
+
         /* A subdivided thumbnail tile fills one grid cell with its own 2x2 inner
            grid packing several smaller thumbnails. Anchor order + the "wide"
            class (a full-width strip spanning both columns) produce the quad /

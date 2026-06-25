@@ -121,10 +121,16 @@ render_full_preview_page() {
     # also groups the page's photos into tiles (some subdivided into smaller
     # thumbnails), so the per-page ordering and preview numbering stay here.
     local preview_thumbs=''
+    # The album's last page (no "next" link) is the only one allowed to widen a
+    # leftover final tile to a full row, so a short final page stays flush.
+    local fill_last='no'
+    if [ -z "$next_page" ]; then
+        fill_last='yes'
+    fi
     # The main album's view pages are "<page_num>-<preview_num>.html", so the
     # shared grid builder gets "<page_num>-" as the href prefix.
     append_preview_grid preview_thumbs \
-        "$thumbs_dir" "$backhref" "$page_num-" "$@"
+        "$thumbs_dir" "$backhref" "$page_num-" "$fill_last" "$@"
     template previewpage "$page_name.html" \
         html_dir "$html_dir" \
         preview_thumbs "$preview_thumbs"

@@ -34,6 +34,11 @@ append_preview_grid() {
     local -r thumbs_dir="$1"; shift
     local -r backhref="$1"; shift
     local -r href_prefix="$1"; shift
+    # 'yes' only for the main album's LAST page: when such a page cannot be
+    # aligned to a multiple of 12 (a short final page with a leftover photo), its
+    # final single tile is widened to span the whole row so the bottom stays
+    # flush. Callers that must not do this (stats mini-albums) pass 'no'.
+    local -r fill_last="$1"; shift
     local -a photos=("$@")
     local -i i=0
     local -i count
@@ -76,6 +81,25 @@ append_preview_grid() {
     # helper). Per-photo preview numbers are preserved.
     _align_page_tiles_to_grid \
         tile_layouts tile_starts tile_counts "$total_cells"
+
+    # Pass 2b: if this is the album's last page and it still could not be aligned
+    # to a multiple of 12 (a short final page), widen its final single tile to a
+    # full-row "fill" tile so the bottom edge is flush at every breakpoint instead
+    # of an orphaned corner. Recompute the post-alignment cell total first.
+    if [ "$fill_last" = yes ] && (( ${#tile_layouts[@]} > 0 )); then
+        local -i aligned_cells=0
+        for (( t = 0; t < ${#tile_layouts[@]}; t++ )); do
+            if [ "${tile_layouts[t]}" = feature ]; then
+                (( aligned_cells += 4 ))
+            else
+                (( ++aligned_cells ))
+            fi
+        done
+        local -i last=$(( ${#tile_layouts[@]} - 1 ))
+        if (( aligned_cells % 12 != 0 )) && [ "${tile_layouts[last]}" = single ]; then
+            tile_layouts[last]=fill
+        fi
+    fi
 
     # Pass 3: emit the tile blocks in order.
     for (( t = 0; t < ${#tile_layouts[@]}; t++ )); do
