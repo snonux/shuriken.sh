@@ -225,6 +225,49 @@ _grid_merge_singles_to_remove() {
     done
 }
 
+# Build the tile layout for the album's SHORT final page (a leftover handful of
+# photos that can't tile into a clean rectangle). Subdividing/featuring such a
+# page can drop its cell count below 12, where it can't be aligned to a multiple
+# of 12 and so is ragged at some breakpoints. Instead lay it out as plain singles
+# (one cell each) and then:
+#   - count >= 12: merge down to the nearest multiple of 12 -> a flush grid;
+#   - count < 12 : make every tile a full-row "fill" banner -> a flush filmstrip
+#     (one photo -> one clean full-width closer; a few photos -> stacked banners).
+# Either way the page is a complete set of full rows at 2/3/4/6 columns. Writes
+# the parallel layout/start/count arrays named by $1/$2/$3 in place.
+_build_final_page_tiles() {
+    local -r layouts_name="$1"; shift
+    local -r starts_name="$1"; shift
+    local -r counts_name="$1"; shift
+    local -ri photo_count="$1"; shift
+
+    # shellcheck disable=SC2178
+    local -n final_layouts="$layouts_name"
+    # shellcheck disable=SC2178
+    local -n final_starts="$starts_name"
+    # shellcheck disable=SC2178
+    local -n final_counts="$counts_name"
+    local -i p
+
+    final_layouts=()
+    final_starts=()
+    final_counts=()
+    for (( p = 0; p < photo_count; p++ )); do
+        final_layouts+=(single)
+        final_starts+=("$p")
+        final_counts+=(1)
+    done
+
+    if (( photo_count >= 12 )); then
+        _grid_merge_singles_to_remove \
+            "$layouts_name" "$starts_name" "$counts_name" "$(( photo_count % 12 ))"
+    else
+        for (( p = 0; p < photo_count; p++ )); do
+            final_layouts[p]=fill
+        done
+    fi
+}
+
 # Render one tile's markup (no trailing newline). A "single" tile is the plain
 # square thumbnail, byte-identical to the previous per-thumbnail output. A
 # "feature" tile is the same single thumbnail but with the 'feature' anchor class

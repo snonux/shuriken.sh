@@ -50,6 +50,14 @@ append_preview_grid() {
     # subdivided/single), so a page never gets crowded with hero tiles.
     local -ri max_features=2
     local -i features_used=0
+    # A 2x2 feature spans TWO grid rows, so one placed near the bottom of a page
+    # leaves an L-shaped gap that grid-auto-flow: dense cannot backfill (nothing
+    # follows it) -- a broken, cut-off corner at some breakpoints. Keep features
+    # out of the last feature_tail_margin photos so a feature always sits in the
+    # upper rows with enough following 1-cell tiles to complete its rows at every
+    # column count. This also disables features on pages too short to host one
+    # safely (a feature needs >= feature_tail_margin photos after it).
+    local -ri feature_tail_margin=16
     # Parallel records of the page's tiles: layout, the first photo's 0-based
     # index, and how many photos the tile spans.
     local -a tile_layouts=()
@@ -57,48 +65,40 @@ append_preview_grid() {
     local -a tile_counts=()
     local -i t
 
-    # Pass 1: decide every tile (deterministic, seeded off each tile's first photo
-    # name). A 2x2 feature occupies 4 grid cells; every other tile occupies 1.
-    while (( i < ${#photos[@]} )); do
-        read -r layout count < <(
-            tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}" \
-                "$(( features_used < max_features ? 1 : 0 ))"
-        )
-        if [ "$layout" = feature ]; then
-            (( ++features_used ))
-            (( total_cells += 4 ))
-        else
-            (( ++total_cells ))
-        fi
-        tile_layouts+=("$layout")
-        tile_starts+=("$i")
-        tile_counts+=("$count")
-        (( i += count ))
-    done
-
-    # Pass 2: force the cell total onto a multiple of 12 so the grid is flush at
-    # every column breakpoint (no-op for tiny pages / too-few-singles -- see the
-    # helper). Per-photo preview numbers are preserved.
-    _align_page_tiles_to_grid \
-        tile_layouts tile_starts tile_counts "$total_cells"
-
-    # Pass 2b: if this is the album's last page and it still could not be aligned
-    # to a multiple of 12 (a short final page), widen its final single tile to a
-    # full-row "fill" tile so the bottom edge is flush at every breakpoint instead
-    # of an orphaned corner. Recompute the post-alignment cell total first.
-    if [ "$fill_last" = yes ] && (( ${#tile_layouts[@]} > 0 )); then
-        local -i aligned_cells=0
-        for (( t = 0; t < ${#tile_layouts[@]}; t++ )); do
-            if [ "${tile_layouts[t]}" = feature ]; then
-                (( aligned_cells += 4 ))
+    # A SHORT final page (the album's last page with too few photos to tile into
+    # a clean rectangle) is built by a dedicated all-singles helper that is
+    # guaranteed flush at every breakpoint; subdividing/featuring it could drop
+    # the cell count below 12 where it can't be aligned. Longer pages (including a
+    # full final page) use the normal roll-and-align path, which is flush.
+    local -ri short_final_page_max=24
+    if [ "$fill_last" = yes ] && (( ${#photos[@]} < short_final_page_max )); then
+        _build_final_page_tiles \
+            tile_layouts tile_starts tile_counts "${#photos[@]}"
+    else
+        # Pass 1: decide every tile (deterministic, seeded off each tile's first
+        # photo name). A 2x2 feature occupies 4 grid cells; every other tile 1.
+        while (( i < ${#photos[@]} )); do
+            read -r layout count < <(
+                tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}" \
+                    "$(( features_used < max_features \
+                        && i + feature_tail_margin < ${#photos[@]} ? 1 : 0 ))"
+            )
+            if [ "$layout" = feature ]; then
+                (( ++features_used ))
+                (( total_cells += 4 ))
             else
-                (( ++aligned_cells ))
+                (( ++total_cells ))
             fi
+            tile_layouts+=("$layout")
+            tile_starts+=("$i")
+            tile_counts+=("$count")
+            (( i += count ))
         done
-        local -i last=$(( ${#tile_layouts[@]} - 1 ))
-        if (( aligned_cells % 12 != 0 )) && [ "${tile_layouts[last]}" = single ]; then
-            tile_layouts[last]=fill
-        fi
+
+        # Pass 2: force the cell total onto a multiple of 12 so the grid is flush
+        # at every column breakpoint. Per-photo preview numbers are preserved.
+        _align_page_tiles_to_grid \
+            tile_layouts tile_starts tile_counts "$total_cells"
     fi
 
     # Pass 3: emit the tile blocks in order.
