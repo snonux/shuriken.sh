@@ -52,11 +52,16 @@ declare -gr STATS_FILTER_BACKHREF='../..'
 # <div class="thumbs-grid"> container the main pages use.
 _stats_build_filter_thumbs() {
     local -r backhref_html="$1"; shift
+    # photos is a newline-joined string of photo paths, not an array. Other
+    # modules reuse the name "photos" as an array, so --check-sourced nameref
+    # aliasing misreports SC2178/SC2128; both are false positives here.
+    # shellcheck disable=SC2178
     local -r photos="$1"; shift
     local -a photo_list=()
     local photo
     local thumbs=''
 
+    # shellcheck disable=SC2128
     while IFS= read -r photo; do
         [ -n "$photo" ] && photo_list+=("$photo")
     done <<< "$photos"

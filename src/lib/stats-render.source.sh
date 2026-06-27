@@ -27,7 +27,7 @@ _stats_max_count() {
     local -i max=0
 
     for key in "${!counts_ref[@]}"; do
-        if (( counts_ref[$key] > max )); then
+        if (( counts_ref[key] > max )); then
             max=${counts_ref[$key]}
         fi
     done
@@ -336,10 +336,15 @@ _stats_random_background() {
 # namespace is unchanged so selection is identical to the former inline code.
 _stats_pick_background() {
     local -r context="$1"; shift
+    # photos is a newline-joined string of photo paths, not an array. Other
+    # modules reuse the name "photos" as an array, so --check-sourced nameref
+    # aliasing misreports SC2178/SC2128; both are false positives here.
+    # shellcheck disable=SC2178
     local -r photos="$1"; shift
     local -a list=()
     local photo
 
+    # shellcheck disable=SC2128
     while IFS= read -r photo; do
         [ -n "$photo" ] && list+=("$photo")
     done <<< "$photos"

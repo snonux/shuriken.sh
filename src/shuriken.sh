@@ -115,6 +115,10 @@ source "$SHURIKEN_SOURCE_DIR/lib/image.source.sh"
 source "$SHURIKEN_SOURCE_DIR/lib/random.source.sh"
 # shellcheck source=src/lib/photo-list.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/photo-list.source.sh"
+# shellcheck source=src/lib/metadata-label.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/metadata-label.source.sh"
+# shellcheck source=src/lib/metadata-cache.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/metadata-cache.source.sh"
 # shellcheck source=src/lib/image-pipeline.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/image-pipeline.source.sh"
 # shellcheck source=src/lib/album-metadata.source.sh
@@ -133,6 +137,12 @@ source "$SHURIKEN_SOURCE_DIR/lib/album-photo-select.source.sh"
 source "$SHURIKEN_SOURCE_DIR/lib/album-render.source.sh"
 # shellcheck source=src/lib/album.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/album.source.sh"
+# shellcheck source=src/lib/stats-aggregate.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/stats-aggregate.source.sh"
+# shellcheck source=src/lib/stats-render.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/stats-render.source.sh"
+# shellcheck source=src/lib/stats-filter-album.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/stats-filter-album.source.sh"
 # shellcheck source=src/lib/config.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/config.source.sh"
 # shellcheck source=src/lib/config.print.source.sh

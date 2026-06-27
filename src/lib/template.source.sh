@@ -688,7 +688,11 @@ prepare_template_render_var__config_html() {
             context_value="${THUMBHEIGHT:-}"
             ;;
         TITLE)
-            context_value="$TITLE"
+            # Always defaulted by apply_config_defaults; degrade to empty if
+            # somehow unset, matching the other config cases above. The :-
+            # default also silences SC2153 (a lowercase "title" local in another
+            # --check-sourced module makes shellcheck suspect a misspelling).
+            context_value="${TITLE:-}"
             ;;
         *)
             config_error "unknown template render config $source_name"

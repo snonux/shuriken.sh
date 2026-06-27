@@ -135,7 +135,10 @@ photo_exif_values_to() {
             # shellcheck disable=SC2034
             output_ref["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
         elif [[ "$line" =~ ^[[:space:]]*Geometry:[[:space:]]*(.*)$ ]]; then
-            # shellcheck disable=SC2034
+            # __geometry is a literal array key, not a variable; --check-sourced
+            # nameref aliasing across modules misreads it (SC2154). SC2034 covers
+            # the caller-owned array write.
+            # shellcheck disable=SC2034,SC2154
             output_ref[__geometry]="${BASH_REMATCH[1]}"
         fi
     done

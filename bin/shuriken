@@ -1290,7 +1290,11 @@ prepare_template_render_var__config_html() {
             context_value="${THUMBHEIGHT:-}"
             ;;
         TITLE)
-            context_value="$TITLE"
+            # Always defaulted by apply_config_defaults; degrade to empty if
+            # somehow unset, matching the other config cases above. The :-
+            # default also silences SC2153 (a lowercase "title" local in another
+            # --check-sourced module makes shellcheck suspect a misspelling).
+            context_value="${TITLE:-}"
             ;;
         *)
             config_error "unknown template render config $source_name"
@@ -2190,7 +2194,10 @@ photo_exif_values_to() {
             # shellcheck disable=SC2034
             output_ref["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
         elif [[ "$line" =~ ^[[:space:]]*Geometry:[[:space:]]*(.*)$ ]]; then
-            # shellcheck disable=SC2034
+            # __geometry is a literal array key, not a variable; --check-sourced
+            # nameref aliasing across modules misreads it (SC2154). SC2034 covers
+            # the caller-owned array write.
+            # shellcheck disable=SC2034,SC2154
             output_ref[__geometry]="${BASH_REMATCH[1]}"
         fi
     done
@@ -2336,15 +2343,22 @@ photo_exif_details_html() {
     printf '</table>\n'
 }
 
+# output_ref is a string nameref here. Other modules (e.g.
+# metadata-cache.source.sh) reuse the name "output_ref" as an associative array,
+# so --check-sourced cross-file nameref aliasing misreports each string write as
+# an array assignment (SC2178). Both writes below are correct string nameref
+# assignments, so SC2178 is suppressed at each one.
 _first_exif_value_to() {
+    # shellcheck disable=SC2178
     local -n output_ref="$1"; shift
     local -n exif_ref="$1"; shift
     local key
 
+    # shellcheck disable=SC2178
     output_ref=''
     for key in "$@"; do
         if [ -n "${exif_ref[$key]:-}" ]; then
-            # shellcheck disable=SC2034
+            # shellcheck disable=SC2034,SC2178
             output_ref="${exif_ref[$key]}"
             return
         fi
@@ -4725,7 +4739,7 @@ _stats_max_count() {
     local -i max=0
 
     for key in "${!counts_ref[@]}"; do
-        if (( counts_ref[$key] > max )); then
+        if (( counts_ref[key] > max )); then
             max=${counts_ref[$key]}
         fi
     done
@@ -5034,10 +5048,15 @@ _stats_random_background() {
 # namespace is unchanged so selection is identical to the former inline code.
 _stats_pick_background() {
     local -r context="$1"; shift
+    # photos is a newline-joined string of photo paths, not an array. Other
+    # modules reuse the name "photos" as an array, so --check-sourced nameref
+    # aliasing misreports SC2178/SC2128; both are false positives here.
+    # shellcheck disable=SC2178
     local -r photos="$1"; shift
     local -a list=()
     local photo
 
+    # shellcheck disable=SC2128
     while IFS= read -r photo; do
         [ -n "$photo" ] && list+=("$photo")
     done <<< "$photos"
@@ -5126,11 +5145,16 @@ declare -gr STATS_FILTER_BACKHREF='../..'
 # <div class="thumbs-grid"> container the main pages use.
 _stats_build_filter_thumbs() {
     local -r backhref_html="$1"; shift
+    # photos is a newline-joined string of photo paths, not an array. Other
+    # modules reuse the name "photos" as an array, so --check-sourced nameref
+    # aliasing misreports SC2178/SC2128; both are false positives here.
+    # shellcheck disable=SC2178
     local -r photos="$1"; shift
     local -a photo_list=()
     local photo
     local thumbs=''
 
+    # shellcheck disable=SC2128
     while IFS= read -r photo; do
         [ -n "$photo" ] && photo_list+=("$photo")
     done <<< "$photos"

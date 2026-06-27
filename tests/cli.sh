@@ -6701,6 +6701,59 @@ test_camera_label_from_make_model() {
     _assert_camera_label 'canon Canon EOS 5D' 'canon' 'Canon EOS 5D'
 }
 
+# Guards against drift between the hand-maintained 'source ...' lines inside the
+# SHURIKEN_LIB_SOURCES_BEGIN/END marker block of src/shuriken.sh and the
+# authoritative Justfile LIB_SOURCES list. 'just build' regenerates bin/shuriken
+# by replacing that marker block with LIB_SOURCES, so the installed bin/ never
+# reveals divergence; only direct execution of src/shuriken.sh sources the
+# hand-maintained list. This test asserts both lists carry the same module names
+# in the same order, so a missing or misordered source line fails CI.
+test_lib_sources_match_justfile_lib_sources() {
+    local src_modules justfile_modules
+
+    # Module basenames from the marker block in src/shuriken.sh, in file order.
+    src_modules=$(
+        awk '
+            /# SHURIKEN_LIB_SOURCES_BEGIN/ { inside = 1; next }
+            /# SHURIKEN_LIB_SOURCES_END/   { inside = 0 }
+            inside && /^source / {
+                line = $0
+                sub(/.*\/lib\//, "", line)
+                sub(/".*/, "", line)
+                print line
+            }
+        ' "$TEST_REPO_ROOT/src/shuriken.sh"
+    )
+
+    # Module basenames from the Justfile LIB_SOURCES assignment, in list order.
+    justfile_modules=$(
+        awk '
+            /^LIB_SOURCES :=/ {
+                n = split($0, parts, /"/)
+                list = parts[2]
+                m = split(list, words, /[ \t]+/)
+                for (i = 1; i <= m; i++) {
+                    word = words[i]
+                    if (word == "") continue
+                    sub(/.*\/lib\//, "", word)
+                    print word
+                }
+                exit
+            }
+        ' "$TEST_REPO_ROOT/Justfile"
+    )
+
+    if [ "$src_modules" != "$justfile_modules" ]; then
+        echo 'FAIL: src/shuriken.sh lib source list diverged from Justfile LIB_SOURCES' >&2
+        echo '--- src/shuriken.sh marker block ---' >&2
+        echo "$src_modules" >&2
+        echo '--- Justfile LIB_SOURCES ---' >&2
+        echo "$justfile_modules" >&2
+        diff <(echo "$src_modules") <(echo "$justfile_modules") >&2 || true
+        exit 1
+    fi
+}
+
 main() {
     trap test::teardown EXIT
 
@@ -7119,6 +7172,9 @@ main() {
     test::run_case \
         'GNU-tool guard rejects non-GNU stat' \
         test_gnu_tool_guard_rejects_non_gnu_stat
+    test::run_case \
+        'src/shuriken.sh lib source list matches Justfile LIB_SOURCES' \
+        test_lib_sources_match_justfile_lib_sources
 }
 
 main "$@"

@@ -60,15 +60,22 @@ photo_exif_details_html() {
     printf '</table>\n'
 }
 
+# output_ref is a string nameref here. Other modules (e.g.
+# metadata-cache.source.sh) reuse the name "output_ref" as an associative array,
+# so --check-sourced cross-file nameref aliasing misreports each string write as
+# an array assignment (SC2178). Both writes below are correct string nameref
+# assignments, so SC2178 is suppressed at each one.
 _first_exif_value_to() {
+    # shellcheck disable=SC2178
     local -n output_ref="$1"; shift
     local -n exif_ref="$1"; shift
     local key
 
+    # shellcheck disable=SC2178
     output_ref=''
     for key in "$@"; do
         if [ -n "${exif_ref[$key]:-}" ]; then
-            # shellcheck disable=SC2034
+            # shellcheck disable=SC2034,SC2178
             output_ref="${exif_ref[$key]}"
             return
         fi
