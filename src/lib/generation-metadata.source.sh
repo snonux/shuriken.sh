@@ -29,6 +29,11 @@ _collect_generation_metadata() {
     )
     _GENERATION_METADATA["tarball_included"]="$TARBALL_INCLUDE"
     _GENERATION_METADATA["tarball_file"]="$tarball_file"
+    # SC2153: a lowercase "title" local in the --check-sourced stats modules
+    # makes shellcheck suspect $TITLE is a misspelling. The config global is
+    # correct here; the suppression used to ride on a literal ${TITLE:-} in
+    # template.source.sh, which is now an indirect expansion, so disable it here.
+    # shellcheck disable=SC2153
     _GENERATION_METADATA["settings_title"]="$TITLE"
     _GENERATION_METADATA["settings_height"]="$HEIGHT"
     _GENERATION_METADATA["settings_thumbheight"]="$THUMBHEIGHT"

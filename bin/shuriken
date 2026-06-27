@@ -1252,55 +1252,33 @@ prepare_template_render_var__current_date_html() {
     html_escape_to out_ref "$context_value"
 }
 
-# config_html resolves its value from a named config variable. The inner
-# source_name dispatch (HEIGHT/MAXPREVIEWS/TITLE/etc.) stays here so config
-# handling is self-contained; its behavior is identical to the old arm.
+# config_html resolves its value from the config variable named by the spec's
+# source_name (HEIGHT/MAXPREVIEWS/ORIGINAL_BASEPATH/SOURCE_URL/STATS_PAGE/
+# THUMBHEIGHT/TITLE), then HTML-escapes it. The value is fetched by indirect
+# expansion of source_name -- ${!source_name-} -- so this handler stays fully
+# data-driven and never has to be edited when a new config render-var is added
+# (Open/Closed): the spec's source_name is the single source of truth.
+#
+# The "-" default keeps the read unset-safe under set -u and makes an unset
+# config var render as empty. That is byte-identical to the previous per-name
+# case for every reachable state:
+#   - apply_config_defaults (action.source.sh) always runs before any render,
+#     so HEIGHT/ORIGINAL_BASEPATH/SOURCE_URL/STATS_PAGE/TITLE are always set --
+#     the old "degrade if somehow unset" fallbacks (e.g. STATS_PAGE :-no) were
+#     defensive and unreachable, so dropping them changes no produced output.
+#   - MAXPREVIEWS/THUMBHEIGHT are not defaulted (refresh-only configs omit the
+#     generation sizing fields); an unset value renders as empty, exactly as the
+#     old ${MAXPREVIEWS:-}/${THUMBHEIGHT:-} arms did.
+# Indirect expansion also sidesteps the SC2153 false positive the old literal
+# $TITLE arm needed a :- default to silence (a lowercase "title" local in
+# another --check-sourced module made shellcheck suspect a misspelling).
 # shellcheck disable=SC2317  # called dynamically by prepare_template_render_vars
 prepare_template_render_var__config_html() {
     local -n out_ref="$1"; shift
     local -r _context_name="$1"; shift
     local -r source_name="$1"; shift
-    local context_value
+    local -r context_value="${!source_name-}"
 
-    case "$source_name" in
-        HEIGHT)
-            context_value="$HEIGHT"
-            ;;
-        MAXPREVIEWS)
-            # Refresh-only configs do not require generation
-            # sizing fields; render absent values as empty.
-            context_value="${MAXPREVIEWS:-}"
-            ;;
-        ORIGINAL_BASEPATH)
-            context_value="$ORIGINAL_BASEPATH"
-            ;;
-        SOURCE_URL)
-            # Always defaulted by apply_config_defaults (footer credit link).
-            context_value="${SOURCE_URL:-}"
-            ;;
-        STATS_PAGE)
-            # Always defaulted by apply_config_defaults; degrade to
-            # "no" (link hidden) if somehow unset so the header bar
-            # never references a stats page that was not generated.
-            context_value="${STATS_PAGE:-no}"
-            ;;
-        THUMBHEIGHT)
-            # Refresh-only configs do not require generation
-            # sizing fields; render absent values as empty.
-            context_value="${THUMBHEIGHT:-}"
-            ;;
-        TITLE)
-            # Always defaulted by apply_config_defaults; degrade to empty if
-            # somehow unset, matching the other config cases above. The :-
-            # default also silences SC2153 (a lowercase "title" local in another
-            # --check-sourced module makes shellcheck suspect a misspelling).
-            context_value="${TITLE:-}"
-            ;;
-        *)
-            config_error "unknown template render config $source_name"
-            return 1
-            ;;
-    esac
     html_escape_to out_ref "$context_value"
 }
 
@@ -2476,6 +2454,11 @@ _collect_generation_metadata() {
     )
     _GENERATION_METADATA["tarball_included"]="$TARBALL_INCLUDE"
     _GENERATION_METADATA["tarball_file"]="$tarball_file"
+    # SC2153: a lowercase "title" local in the --check-sourced stats modules
+    # makes shellcheck suspect $TITLE is a misspelling. The config global is
+    # correct here; the suppression used to ride on a literal ${TITLE:-} in
+    # template.source.sh, which is now an indirect expansion, so disable it here.
+    # shellcheck disable=SC2153
     _GENERATION_METADATA["settings_title"]="$TITLE"
     _GENERATION_METADATA["settings_height"]="$HEIGHT"
     _GENERATION_METADATA["settings_thumbheight"]="$THUMBHEIGHT"
