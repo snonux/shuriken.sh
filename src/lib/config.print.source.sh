@@ -46,6 +46,7 @@ print_config() {
     print_shell_assignment TAR_TIMEOUT "$TAR_TIMEOUT"
     print_shell_array_assignment TAR_OPTS "${tar_opts[@]}"
     print_shell_assignment SYNC_DELETE "$SYNC_DELETE"
+    print_shell_assignment SYNC_TIMEOUT "$SYNC_TIMEOUT"
     print_shell_array_assignment SYNC_DESTINATIONS "${sync_destinations[@]}"
     print_shell_assignment ORIGINAL_BASEPATH "$ORIGINAL_BASEPATH"
 }

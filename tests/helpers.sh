@@ -674,6 +674,38 @@ RSYNC
     chmod 0755 "$bin_dir/rsync"
 }
 
+# An rsync spy that logs every invocation (like install_rsync_spy) but exits
+# non-zero when the destination (last argument) equals TEST_RSYNC_FAIL_DEST.
+# Used to prove sync_dist isolates a failing destination: it must still attempt
+# the remaining mirrors and report overall failure.
+test::install_rsync_spy_failing_one() {
+    local -r bin_dir="$1"; shift
+
+    mkdir -p "$bin_dir"
+
+    cat > "$bin_dir/rsync" <<'RSYNC'
+#!/usr/bin/env bash
+set -euo pipefail
+
+{
+    printf 'argc=%s\n' "$#"
+    i=0
+    for arg in "$@"; do
+        printf 'arg%s=%q\n' "$i" "$arg"
+        i=$(( i + 1 ))
+    done
+} >> "$TEST_RSYNC_LOG"
+
+# The destination is the final positional argument.
+dest="${@: -1}"
+if [[ "$dest" == "${TEST_RSYNC_FAIL_DEST:-}" ]]; then
+    printf 'rsync: simulated failure for %s\n' "$dest" >&2
+    exit 23
+fi
+RSYNC
+    chmod 0755 "$bin_dir/rsync"
+}
+
 test::install_hanging_tar() {
     local -r bin_dir="$1"; shift
 

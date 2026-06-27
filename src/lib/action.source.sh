@@ -163,6 +163,7 @@ log_configured_action() {
     log_verbose "Effective stats page setting: $STATS_PAGE"
     log_verbose "Effective tarball setting: $TARBALL_INCLUDE"
     log_verbose "Effective sync delete setting: $SYNC_DELETE"
+    log_verbose "Effective sync timeout: ${SYNC_TIMEOUT}s"
     log_verbose "Effective force generation setting: $SHURIKEN_FORCE_GENERATE"
 }
 

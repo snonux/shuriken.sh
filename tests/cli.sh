@@ -1494,6 +1494,7 @@ TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 SYNC_DELETE=yes
+SYNC_TIMEOUT=300
 SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
@@ -1545,6 +1546,7 @@ TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 SYNC_DELETE=yes
+SYNC_TIMEOUT=300
 SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
@@ -1689,6 +1691,7 @@ TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 SYNC_DELETE=yes
+SYNC_TIMEOUT=300
 SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
@@ -1735,6 +1738,7 @@ TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 SYNC_DELETE=yes
+SYNC_TIMEOUT=300
 SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
@@ -1808,6 +1812,7 @@ TARBALL_SUFFIX=.tar
 TAR_TIMEOUT=120
 TAR_OPTS=( -c )
 SYNC_DELETE=yes
+SYNC_TIMEOUT=300
 SYNC_DESTINATIONS=( )
 ORIGINAL_BASEPATH=''
 EOF
@@ -6155,6 +6160,85 @@ test_sync_array_destination_preserves_spaces() {
     test::teardown
 }
 
+test_sync_isolates_failing_destination_and_reports_failure() {
+    # Regression for qr0: a failed destination must NOT abort the loop. The first
+    # destination fails, but rsync must still be invoked for the second, and the
+    # overall --sync must exit non-zero with a clear pass/fail summary.
+    local config_file
+    local dist_dir
+    local fake_bin
+    local rsync_log
+    local rsync_output
+    local sync_output
+    local fail_dest='admin@one.example:/var/www/one/'
+    local ok_dest='admin@two.example:/var/www/two/'
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+    rsync_log="$TEST_TMPDIR/rsync.log"
+
+    test::install_rsync_spy_failing_one "$fake_bin"
+    mkdir -p "$dist_dir"
+    printf 'generated\n' > "$dist_dir/index.html"
+    {
+        printf 'DIST_DIR=%q\n' "$dist_dir"
+        printf 'SYNC_DESTINATIONS=(\n'
+        printf '    %q\n' "$fail_dest"
+        printf '    %q\n' "$ok_dest"
+        printf ')\n'
+    } > "$config_file"
+
+    sync_output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$rsync_log" \
+            TEST_RSYNC_FAIL_DEST="$fail_dest" \
+            test::capture_failure_output "$TEST_SHURIKEN" --sync
+    )
+
+    # Both destinations were attempted despite the first one failing.
+    rsync_output=$(<"$rsync_log")
+    test::assert_contains "arg3=$fail_dest" "$rsync_output"
+    test::assert_contains "arg3=$ok_dest" "$rsync_output"
+    # The summary reports the successful and failed mirrors.
+    test::assert_contains "Sync succeeded for: $ok_dest" "$sync_output"
+    test::assert_contains "Sync failed for: $fail_dest" "$sync_output"
+    test::teardown
+}
+
+test_sync_timeout_rejects_non_positive_integer() {
+    # SYNC_TIMEOUT is validated as a positive integer like TAR_TIMEOUT.
+    local config_file
+    local dist_dir
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+
+    test::install_rsync_spy "$fake_bin"
+    mkdir -p "$dist_dir"
+    printf 'generated\n' > "$dist_dir/index.html"
+    {
+        printf 'DIST_DIR=%q\n' "$dist_dir"
+        printf 'SYNC_TIMEOUT=%q\n' '0'
+        printf 'SYNC_DESTINATIONS=(%q)\n' 'admin@one.example:/var/www/one/'
+    } > "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" TEST_RSYNC_LOG="$TEST_TMPDIR/rsync.log" \
+            test::capture_failure_output "$TEST_SHURIKEN" --sync
+    )
+
+    test::assert_contains 'SYNC_TIMEOUT' "$output"
+    test::assert_path_absent "$TEST_TMPDIR/rsync.log"
+    test::teardown
+}
+
 test_positional_commands_fail_without_deprecation() {
     local output
     local old_command
@@ -7157,6 +7241,12 @@ main() {
     test::run_case \
         '--sync array destination preserves spaces' \
         test_sync_array_destination_preserves_spaces
+    test::run_case \
+        '--sync isolates a failing destination and reports failure' \
+        test_sync_isolates_failing_destination_and_reports_failure
+    test::run_case \
+        '--sync rejects non-positive SYNC_TIMEOUT' \
+        test_sync_timeout_rejects_non_positive_integer
     test::run_case \
         'positional commands fail without deprecation output' \
         test_positional_commands_fail_without_deprecation

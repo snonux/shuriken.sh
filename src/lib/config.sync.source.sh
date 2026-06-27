@@ -40,6 +40,9 @@ sync_dist() {
     local destination
     local -a rsync_args=(-av)
     local -a sync_destinations=()
+    local -a succeeded=()
+    local -a failed=()
+    local -i status=0
 
     resolve_sync_destinations sync_destinations
 
@@ -47,8 +50,41 @@ sync_dist() {
         rsync_args+=(--delete)
     fi
 
+    # Mirror to every destination with per-destination isolation: a timeout or
+    # rsync error on one mirror must NOT abort the others (under the top-level
+    # "set -euo pipefail" a bare failing rsync would otherwise kill the loop and
+    # silently skip the remaining destinations). We wrap each rsync in
+    # run_with_timeout (SYNC_TIMEOUT) like every other external call, and use the
+    # project's localized "set +e" idiom (see refresh_splash / bash-best-
+    # practices) to capture each destination's status instead of aborting. The
+    # "if ! run_with_timeout ...; then" form is avoided here because its non-zero
+    # branch would still leave $? ambiguous for the summary; the explicit status
+    # capture keeps the per-destination result unambiguous.
     for destination in "${sync_destinations[@]}"; do
         log_info "Syncing $DIST_DIR/ to $destination"
-        rsync "${rsync_args[@]}" "$DIST_DIR/" "$destination"
+        set +e
+        run_with_timeout "rsync to $destination" "$SYNC_TIMEOUT" \
+            rsync "${rsync_args[@]}" "$DIST_DIR/" "$destination"
+        status=$?
+        set -e
+        if (( status == 0 )); then
+            succeeded+=("$destination")
+        else
+            # run_with_timeout already prints a timeout/error line; add a
+            # per-destination notice so the operator sees which mirror failed.
+            failed+=("$destination")
+            log_warning "Sync to $destination failed (status $status)"
+        fi
     done
+
+    # Log a clear pass/fail summary and return non-zero if ANY destination
+    # failed, while having ATTEMPTED all of them.
+    if (( ${#succeeded[@]} > 0 )); then
+        log_info "Sync succeeded for: ${succeeded[*]}"
+    fi
+    if (( ${#failed[@]} > 0 )); then
+        log_warning "Sync failed for: ${failed[*]}"
+        return 1
+    fi
+    return 0
 }

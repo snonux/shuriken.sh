@@ -52,6 +52,10 @@ apply_config_defaults() {
     THUMB_SUBDIVIDE_PERCENT="${THUMB_SUBDIVIDE_PERCENT:-30}"
     THUMB_FEATURE_PERCENT="${THUMB_FEATURE_PERCENT:-10}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
+    # Per-destination rsync timeout (seconds), mirroring TAR_TIMEOUT/
+    # IMAGEMAGICK_TIMEOUT. Each destination in sync_dist is wrapped in
+    # run_with_timeout so a hung/unreachable mirror cannot block the whole sync.
+    SYNC_TIMEOUT="${SYNC_TIMEOUT:-300}"
     # Default 'yes': a tarball of the incoming dir is included in the dist unless
     # disabled. This must match the documented default in shuriken.default.conf
     # (TARBALL_INCLUDE=yes) -- it previously drifted to 'no' here. 'yes' is the

@@ -5399,6 +5399,10 @@ apply_config_defaults() {
     THUMB_SUBDIVIDE_PERCENT="${THUMB_SUBDIVIDE_PERCENT:-30}"
     THUMB_FEATURE_PERCENT="${THUMB_FEATURE_PERCENT:-10}"
     SYNC_DELETE="${SYNC_DELETE:-yes}"
+    # Per-destination rsync timeout (seconds), mirroring TAR_TIMEOUT/
+    # IMAGEMAGICK_TIMEOUT. Each destination in sync_dist is wrapped in
+    # run_with_timeout so a hung/unreachable mirror cannot block the whole sync.
+    SYNC_TIMEOUT="${SYNC_TIMEOUT:-300}"
     # Default 'yes': a tarball of the incoming dir is included in the dist unless
     # disabled. This must match the documented default in shuriken.default.conf
     # (TARBALL_INCLUDE=yes) -- it previously drifted to 'no' here. 'yes' is the
@@ -5463,6 +5467,7 @@ print_config() {
     print_shell_assignment TAR_TIMEOUT "$TAR_TIMEOUT"
     print_shell_array_assignment TAR_OPTS "${tar_opts[@]}"
     print_shell_assignment SYNC_DELETE "$SYNC_DELETE"
+    print_shell_assignment SYNC_TIMEOUT "$SYNC_TIMEOUT"
     print_shell_array_assignment SYNC_DESTINATIONS "${sync_destinations[@]}"
     print_shell_assignment ORIGINAL_BASEPATH "$ORIGINAL_BASEPATH"
 }
@@ -5510,6 +5515,9 @@ sync_dist() {
     local destination
     local -a rsync_args=(-av)
     local -a sync_destinations=()
+    local -a succeeded=()
+    local -a failed=()
+    local -i status=0
 
     resolve_sync_destinations sync_destinations
 
@@ -5517,10 +5525,43 @@ sync_dist() {
         rsync_args+=(--delete)
     fi
 
+    # Mirror to every destination with per-destination isolation: a timeout or
+    # rsync error on one mirror must NOT abort the others (under the top-level
+    # "set -euo pipefail" a bare failing rsync would otherwise kill the loop and
+    # silently skip the remaining destinations). We wrap each rsync in
+    # run_with_timeout (SYNC_TIMEOUT) like every other external call, and use the
+    # project's localized "set +e" idiom (see refresh_splash / bash-best-
+    # practices) to capture each destination's status instead of aborting. The
+    # "if ! run_with_timeout ...; then" form is avoided here because its non-zero
+    # branch would still leave $? ambiguous for the summary; the explicit status
+    # capture keeps the per-destination result unambiguous.
     for destination in "${sync_destinations[@]}"; do
         log_info "Syncing $DIST_DIR/ to $destination"
-        rsync "${rsync_args[@]}" "$DIST_DIR/" "$destination"
+        set +e
+        run_with_timeout "rsync to $destination" "$SYNC_TIMEOUT" \
+            rsync "${rsync_args[@]}" "$DIST_DIR/" "$destination"
+        status=$?
+        set -e
+        if (( status == 0 )); then
+            succeeded+=("$destination")
+        else
+            # run_with_timeout already prints a timeout/error line; add a
+            # per-destination notice so the operator sees which mirror failed.
+            failed+=("$destination")
+            log_warning "Sync to $destination failed (status $status)"
+        fi
     done
+
+    # Log a clear pass/fail summary and return non-zero if ANY destination
+    # failed, while having ATTEMPTED all of them.
+    if (( ${#succeeded[@]} > 0 )); then
+        log_info "Sync succeeded for: ${succeeded[*]}"
+    fi
+    if (( ${#failed[@]} > 0 )); then
+        log_warning "Sync failed for: ${failed[*]}"
+        return 1
+    fi
+    return 0
 }
 
 # Inlined from src/lib/config.staging.source.sh
@@ -6045,6 +6086,7 @@ validate_common_config() {
     validate_positive_integer_config_var IMAGE_JOBS || return
     validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
     validate_positive_integer_config_var TAR_TIMEOUT || return
+    validate_positive_integer_config_var SYNC_TIMEOUT || return
     validate_yes_no_config_var SHUFFLE || return
     validate_yes_no_config_var SPLASH_PAGE || return
     validate_yes_no_config_var STATS_PAGE || return
@@ -6120,6 +6162,11 @@ validate_rsync() {
 validate_sync_config() {
     require_config_var DIST_DIR || return
     validate_yes_no_config_var SYNC_DELETE || return
+    # SYNC_TIMEOUT bounds each per-destination rsync in sync_dist, so it must be
+    # a positive integer on the sync path too (the generate path validates it via
+    # validate_config). Without this, a bogus value would only surface as a
+    # confusing "timeout: invalid time interval" at run time.
+    validate_positive_integer_config_var SYNC_TIMEOUT || return
     validate_sync_destinations || return
 
     if [[ ! -d "$DIST_DIR" || ! -r "$DIST_DIR" || ! -x "$DIST_DIR" ]]; then
@@ -6440,6 +6487,7 @@ log_configured_action() {
     log_verbose "Effective stats page setting: $STATS_PAGE"
     log_verbose "Effective tarball setting: $TARBALL_INCLUDE"
     log_verbose "Effective sync delete setting: $SYNC_DELETE"
+    log_verbose "Effective sync timeout: ${SYNC_TIMEOUT}s"
     log_verbose "Effective force generation setting: $SHURIKEN_FORCE_GENERATE"
 }
 

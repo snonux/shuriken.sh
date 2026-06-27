@@ -291,6 +291,7 @@ validate_common_config() {
     validate_positive_integer_config_var IMAGE_JOBS || return
     validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
     validate_positive_integer_config_var TAR_TIMEOUT || return
+    validate_positive_integer_config_var SYNC_TIMEOUT || return
     validate_yes_no_config_var SHUFFLE || return
     validate_yes_no_config_var SPLASH_PAGE || return
     validate_yes_no_config_var STATS_PAGE || return
@@ -366,6 +367,11 @@ validate_rsync() {
 validate_sync_config() {
     require_config_var DIST_DIR || return
     validate_yes_no_config_var SYNC_DELETE || return
+    # SYNC_TIMEOUT bounds each per-destination rsync in sync_dist, so it must be
+    # a positive integer on the sync path too (the generate path validates it via
+    # validate_config). Without this, a bogus value would only surface as a
+    # confusing "timeout: invalid time interval" at run time.
+    validate_positive_integer_config_var SYNC_TIMEOUT || return
     validate_sync_destinations || return
 
     if [[ ! -d "$DIST_DIR" || ! -r "$DIST_DIR" || ! -x "$DIST_DIR" ]]; then
