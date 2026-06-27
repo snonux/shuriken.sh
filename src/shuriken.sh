@@ -160,8 +160,6 @@ source "$SHURIKEN_SOURCE_DIR/lib/action.source.sh"
 # SHURIKEN_LIB_SOURCES_END
 
 main() {
-    local -i status=0
-
     SHURIKEN_CLI_ACTION=''
     SHURIKEN_CLI_CONFIG_FILE=''
     SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
@@ -173,23 +171,16 @@ main() {
         exit 1
     fi
 
+    # Each step is a bare call under errexit (set -euo pipefail): a non-zero
+    # status aborts main with that exact code, so no explicit status check is
+    # needed. We deliberately do NOT wrap these in "|| return $?": the called
+    # functions (e.g. run_action -> run_configured_action -> generate_staged)
+    # rely on errexit staying active so their own internal "set -e" failure
+    # detection fires. A "||" list would suppress inner errexit and let a failing
+    # parallel job sail past (see album.source.sh's splash-render note).
     parse_cli_arguments "$@"
-    status=$?
-    if (( status != 0 )); then
-        return "$status"
-    fi
-
     require_gnu_tools
-    status=$?
-    if (( status != 0 )); then
-        return "$status"
-    fi
-
     run_action
-    status=$?
-    if (( status != 0 )); then
-        return "$status"
-    fi
 }
 
 main "$@"

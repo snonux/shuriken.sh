@@ -289,20 +289,22 @@ run_configured_action() {
 run_action() {
     local -r action="$SHURIKEN_CLI_ACTION"
     local requires_config
-    local -i status=0
 
     if ! requires_config=$(action_spec_field "$action" 2); then
         usage
         exit 1
     fi
 
+    # The chosen runner is a bare call under errexit (set -euo pipefail): a
+    # non-zero status aborts with that exact code, so no explicit status check is
+    # needed. We deliberately do NOT use "|| return $?" here: run_configured_action
+    # runs generate_staged, which relies on errexit staying active so its internal
+    # "set -e" parallel-job failure detection fires. A "||" list would suppress
+    # inner errexit and let a failing job sail past (see album.source.sh's
+    # splash-render note).
     if [ "$requires_config" = no ]; then
         run_unconfigured_action "$action"
     else
         run_configured_action
-    fi
-    status=$?
-    if (( status != 0 )); then
-        return "$status"
     fi
 }

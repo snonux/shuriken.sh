@@ -6613,29 +6613,29 @@ run_configured_action() {
 run_action() {
     local -r action="$SHURIKEN_CLI_ACTION"
     local requires_config
-    local -i status=0
 
     if ! requires_config=$(action_spec_field "$action" 2); then
         usage
         exit 1
     fi
 
+    # The chosen runner is a bare call under errexit (set -euo pipefail): a
+    # non-zero status aborts with that exact code, so no explicit status check is
+    # needed. We deliberately do NOT use "|| return $?" here: run_configured_action
+    # runs generate_staged, which relies on errexit staying active so its internal
+    # "set -e" parallel-job failure detection fires. A "||" list would suppress
+    # inner errexit and let a failing job sail past (see album.source.sh's
+    # splash-render note).
     if [ "$requires_config" = no ]; then
         run_unconfigured_action "$action"
     else
         run_configured_action
-    fi
-    status=$?
-    if (( status != 0 )); then
-        return "$status"
     fi
 }
 
 # SHURIKEN_LIB_SOURCES_END
 
 main() {
-    local -i status=0
-
     SHURIKEN_CLI_ACTION=''
     SHURIKEN_CLI_CONFIG_FILE=''
     SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
@@ -6647,23 +6647,16 @@ main() {
         exit 1
     fi
 
+    # Each step is a bare call under errexit (set -euo pipefail): a non-zero
+    # status aborts main with that exact code, so no explicit status check is
+    # needed. We deliberately do NOT wrap these in "|| return $?": the called
+    # functions (e.g. run_action -> run_configured_action -> generate_staged)
+    # rely on errexit staying active so their own internal "set -e" failure
+    # detection fires. A "||" list would suppress inner errexit and let a failing
+    # parallel job sail past (see album.source.sh's splash-render note).
     parse_cli_arguments "$@"
-    status=$?
-    if (( status != 0 )); then
-        return "$status"
-    fi
-
     require_gnu_tools
-    status=$?
-    if (( status != 0 )); then
-        return "$status"
-    fi
-
     run_action
-    status=$?
-    if (( status != 0 )); then
-        return "$status"
-    fi
 }
 
 main "$@"
