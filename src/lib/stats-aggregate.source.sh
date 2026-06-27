@@ -50,20 +50,24 @@
 # TEMPLATE_RENDER_FIELD_SPECS) holding everything the generic reset, recording
 # dispatch and render loops need:
 #
-#   count_array|prefix|heading|render_kind
+#   count_array|prefix|heading|render_kind[|list_class]
 #
 #   count_array  the STATS_* associative array holding this category's counts;
 #                also the array reset_photo_exif_stats clears each run.
 #   prefix       the namespace passed to _stats_tally / _stats_filter_link (and
 #                the filter-page slug prefix, e.g. "iso" -> iso-400).
 #   heading      the <h2> shown on the overview (and the per-section title).
-#   render_kind  how the overview renders this category's bars:
-#                  camera  - count-desc leaderboard (extra 'stats-leaderboard'
-#                            <ul> class); only the camera category uses it.
-#                  ranked  - count-desc bars (years, lenses, decoded enums).
+#   render_kind  how the overview renders this category's bars; resolved by name
+#                to a _stats_render_section__<render_kind> handler (declare -F
+#                dispatch in stats-render.source.sh):
+#                  ranked  - count-desc bars (camera leaderboard, years, lenses,
+#                            decoded enums).
 #                  ordered - fixed bucket-ladder order from
 #                            STATS_CATEGORY_BUCKETS (apertures wide->narrow, ...).
 #                  month   - calendar Jan..Dec order with English month names.
+#   list_class   optional extra <ul> CSS class for the 'ranked' kind. The camera
+#                leaderboard passes 'stats-leaderboard' (data-only difference, so
+#                no separate camera render kind); other ranked categories omit it.
 #
 # The array order IS the overview/body display order, so it must reproduce the
 # historical _stats_build_body sequence exactly (camera, year, month, the four
@@ -79,7 +83,7 @@
 # harness sources the lib via test::source_shuriken_lib); a plain `declare -r`
 # would be function-local and vanish on return.
 declare -gra STATS_CATEGORIES=(
-    'STATS_CAMERAS|camera|Camera leaderboard|camera'
+    'STATS_CAMERAS|camera|Camera leaderboard|ranked|stats-leaderboard'
     'STATS_YEARS|year|Photos per year|ranked'
     'STATS_MONTHS|month|Photos per month|month'
     'STATS_APERTURE|aperture|Aperture|ordered'

@@ -134,8 +134,10 @@ _stats_keys_by_count_desc() {
 # bucket ladder is read from STATS_CATEGORY_BUCKETS[array_name] (tab-delimited).
 # Only buckets that actually occurred are emitted, and the whole section is
 # skipped when none did. Bucket labels are internal/trusted but still escaped for
-# safety.
-_stats_render_ordered_section() {
+# safety. Reached dynamically as the 'ordered' render kind via the declare -F
+# dispatch in _stats_render_category; it ignores the optional trailing list_class
+# (only 'ranked' uses it) so all handlers share one call signature.
+_stats_render_section__ordered() {
     local -r heading="$1"; shift
     local -r array_name="$1"; shift
     local -r prefix="$1"; shift
@@ -165,8 +167,12 @@ _stats_render_ordered_section() {
 # Render a section ranked by count. Used where there is no natural axis order:
 # the camera leaderboard, years, lenses, and the decoded enum categories. An
 # optional list_class adds an extra CSS class to the <ul> (the camera leaderboard
-# passes 'stats-leaderboard' to space out its long, wrapping camera names).
-_stats_render_ranked_section() {
+# passes 'stats-leaderboard' to space out its long, wrapping camera names) -- this
+# is the only difference between the camera leaderboard and an ordinary ranked
+# section, so both share this one handler with the class coming from the registry
+# spec. Reached dynamically as the 'ranked' render kind via the declare -F
+# dispatch in _stats_render_category.
+_stats_render_section__ranked() {
     local -r heading="$1"; shift
     local -r array_name="$1"; shift
     local -r prefix="$1"; shift
@@ -193,8 +199,9 @@ _stats_render_ranked_section() {
 # by zero-padded number (01..12); this maps each to its English name so the axis
 # is readable, and reuses the ordered-section omit-when-empty behaviour inline.
 # Signature matches the other render kinds (heading array_name prefix total) so
-# the registry dispatcher can call it uniformly.
-_stats_render_month_section() {
+# the declare -F dispatcher can call it uniformly; reached as the 'month' render
+# kind. It ignores the optional trailing list_class (only 'ranked' uses it).
+_stats_render_section__month() {
     local -r heading="$1"; shift
     local -r array_name="$1"; shift
     local -r prefix="$1"; shift
@@ -224,11 +231,18 @@ _stats_render_month_section() {
     _stats_section_close
 }
 
-# Render one category from its registry spec. Dispatches on the spec's
-# render_kind to the matching section renderer, all of which self-skip when their
-# array is empty. This is the single per-category render path: a new category
-# just needs a STATS_CATEGORIES entry (no new render branch here unless it needs
-# a brand-new kind).
+# Render one category from its registry spec. Resolves the spec's render_kind to
+# a _stats_render_section__<render_kind> handler BY NAME via declare -F and calls
+# it, mirroring template.source.sh's prepare_template_render_var__<kind> dispatch
+# and the STATS_RECORD_FUNCTIONS registry -- so a new render kind just adds a
+# matching handler function, with no switch to edit here. Every handler self-skips
+# when its array is empty. The optional 5th spec field (list_class) is passed
+# through; only the 'ranked' handler uses it (the camera leaderboard's extra
+# 'stats-leaderboard' <ul> class), the others ignore the trailing argument so all
+# handlers share one call signature. An unknown render_kind has no handler, so we
+# fail loudly rather than silently dropping a category. declare -F returns
+# non-zero when the function is absent, so it is tested in an `if` to keep
+# set -euo pipefail's errexit from tripping on a legitimately-missing handler.
 _stats_render_category() {
     local -r spec="$1"; shift
     local -ri total="$1"; shift
@@ -239,30 +253,15 @@ _stats_render_category() {
     local -r prefix="${fields[1]}"
     local -r heading="${fields[2]}"
     local -r render_kind="${fields[3]}"
+    local -r list_class="${fields[4]:-}"
+    local -r handler="_stats_render_section__$render_kind"
 
-    case "$render_kind" in
-        camera)
-            _stats_render_ranked_section "$heading" "$array_name" "$prefix" \
-                "$total" stats-leaderboard
-            ;;
-        ranked)
-            _stats_render_ranked_section "$heading" "$array_name" "$prefix" \
-                "$total"
-            ;;
-        ordered)
-            _stats_render_ordered_section "$heading" "$array_name" "$prefix" \
-                "$total"
-            ;;
-        month)
-            _stats_render_month_section "$heading" "$array_name" "$prefix" \
-                "$total"
-            ;;
-        *)
-            printf 'ERROR: unknown stats render kind %q for %s\n' \
-                "$render_kind" "$array_name" >&2
-            return 1
-            ;;
-    esac
+    if ! declare -F "$handler" > /dev/null; then
+        printf 'ERROR: unknown stats render kind %q for %s\n' \
+            "$render_kind" "$array_name" >&2
+        return 1
+    fi
+    "$handler" "$heading" "$array_name" "$prefix" "$total" "$list_class"
 }
 
 # Assemble the full stats body by iterating STATS_CATEGORIES in registry order
