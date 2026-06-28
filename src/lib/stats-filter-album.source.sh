@@ -2,11 +2,15 @@
 # so this concern is separate from the EXIF aggregation (stats-aggregate.source.sh)
 # and the stats overview page (stats-render.source.sh). Every tallied bucket
 # becomes a clickable mini album under dist/stats/<pagebase>/. This module reads
-# the STATS_FILTER_* globals filled by collect_photo_exif_stats and resolves each
-# photo's album view page through the album_view_page_for_photo accessor (task
-# pn0) instead of indexing the album's private ALBUM_VIEW_PAGE_BY_PHOTO global,
-# so stats stays decoupled from album-internal page naming/caching. All libs are
-# sourced before run so cross-module references resolve.
+# the aggregated filter data filled by collect_photo_exif_stats -- through the
+# stats-aggregate.source.sh accessors (stats_filter_count, stats_filter_pagebases,
+# stats_filter_photos, stats_filter_title), never by indexing the aggregator's
+# private STATS_FILTER_* maps directly -- and resolves each photo's album view
+# page through the album_view_page_for_photo accessor (task pn0) instead of
+# indexing the album's private ALBUM_VIEW_PAGE_BY_PHOTO global, so stats stays
+# decoupled from both the aggregator's key conventions and album-internal page
+# naming/caching. All libs are sourced before run so cross-module references
+# resolve.
 
 # ----------------------------------------------------------------------------
 # Filter mini-album pages
@@ -89,14 +93,15 @@ _stats_render_filter_gallery() {
     local -r html_dir="$STATS_DIR/$pagebase"
     local -r backhref="$STATS_FILTER_BACKHREF"
     local -r backhref_html="$STATS_FILTER_BACKHREF"
-    local -r title="${STATS_FILTER_TITLE[$pagebase]:-}"
+    local title
 
+    title=$(stats_filter_title "$pagebase")
     thumbs=$(_stats_build_filter_thumbs \
-        "$backhref_html" "${STATS_FILTER_PHOTOS[$pagebase]}")
+        "$backhref_html" "$(stats_filter_photos "$pagebase")")
     # Background fits the category: a random photo from this filter's own set,
     # mirroring how the album preview pages pick a random album photo.
     background_image=$(_stats_pick_background \
-        "$pagebase" "${STATS_FILTER_PHOTOS[$pagebase]}")
+        "$pagebase" "$(stats_filter_photos "$pagebase")")
     template header index.html \
         html_dir "$html_dir" backhref "$backhref" \
         blurs_dir "$STATS_BLURS_DIR" background_image "$background_image" \
@@ -210,7 +215,7 @@ _stats_enqueue_filter_album() {
 
     while IFS= read -r photo; do
         [ -n "$photo" ] && photo_list+=("$photo")
-    done <<< "${STATS_FILTER_PHOTOS[$pagebase]}"
+    done <<< "$(stats_filter_photos "$pagebase")"
     n=${#photo_list[@]}
 
     job_pool_submit "$pool" "filter gallery $pagebase" \
@@ -236,7 +241,7 @@ _stats_enqueue_filter_album() {
 render_filter_pages() {
     local pagebase
 
-    if (( ${#STATS_FILTER_PHOTOS[@]} == 0 )); then
+    if (( $(stats_filter_count) == 0 )); then
         return
     fi
 
@@ -244,9 +249,11 @@ render_filter_pages() {
     # "render_jobs". job_pool_wait returns 1 if any render job failed.
     job_pool_init render_jobs
 
+    # stats_filter_pagebases yields the pagebases in LC_ALL=C-sorted order, so the
+    # enqueue order is reproducible.
     while IFS= read -r pagebase; do
         _stats_enqueue_filter_album "$pagebase" render_jobs
-    done < <(printf '%s\n' "${!STATS_FILTER_PHOTOS[@]}" | LC_ALL=C sort)
+    done < <(stats_filter_pagebases)
 
     job_pool_wait render_jobs
 }

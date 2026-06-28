@@ -1,11 +1,15 @@
 # Stats overview page rendering. Split out of stats.source.sh (task cn0) so the
 # HTML/layout concern lives apart from the EXIF aggregation/bucketing (now in
 # stats-aggregate.source.sh) and the per-filter mini-albums (now in
-# stats-filter-album.source.sh). This module reads the STATS_* globals filled by
-# collect_photo_exif_stats and turns them into the static stats overview page
-# (bar charts, sections, camera leaderboard). All libs are sourced before run,
-# so the STATS_* maps and the STATS_*_DIR constants defined in the sibling
-# modules are available here at runtime.
+# stats-filter-album.source.sh). This module reads the aggregated stats filled by
+# collect_photo_exif_stats -- through the stats-aggregate.source.sh accessor
+# functions (stats_total_photos, stats_filter_pagebase, stats_category_*), never
+# by indexing the aggregator's private STATS_* maps directly -- and turns them
+# into the static stats overview page (bar charts, sections, camera leaderboard).
+# It still reads the shared registry constants it owns a stake in (STATS_CATEGORIES,
+# STATS_CATEGORY_BUCKETS) and the STATS_*_DIR layout constants from the sibling
+# modules. All libs are sourced before run, so the accessors and constants are
+# available here at runtime.
 
 # ----------------------------------------------------------------------------
 # Rendering (task pm0)
@@ -19,23 +23,9 @@
 # it with the shared header/footer chrome. Bars are plain CSS (width as a percent
 # of the section's top bucket) so the output stays JavaScript-free.
 
-# Print the largest counter in the named stats array, or 0 when it is empty.
-# Used to scale each section's bars relative to its own busiest bucket.
-_stats_max_count() {
-    local -n counts_ref="$1"; shift
-    local key
-    local -i max=0
-
-    for key in "${!counts_ref[@]}"; do
-        if (( counts_ref[key] > max )); then
-            max=${counts_ref[$key]}
-        fi
-    done
-    printf '%d' "$max"
-}
-
 # Print the integer percentage count/total (0 when total is 0). awk keeps the
-# rounding off bash integer math; STATS_TOTALS[photos] is the denominator.
+# rounding off bash integer math; the denominator is the photo total the caller
+# obtained from the stats_total_photos accessor.
 _stats_percent() {
     local -ri count="$1"; shift
     local -ri total="$1"; shift
@@ -95,18 +85,18 @@ _stats_section_close() {
 }
 
 # Wrap an escaped label in a link to its filter mini-album. Every tallied bucket
-# has a pagebase recorded in STATS_FILTER_PAGEBASE during aggregation, keyed by
-# "<prefix>\x1f<label>"; if one is (unexpectedly) absent, the plain label is
-# returned so the row still renders. The stats page and the filter pages share
-# the dist root, so the href is just "<pagebase>.html".
+# has a pagebase recorded during aggregation; the stats_filter_pagebase accessor
+# resolves the (prefix, label) bucket to it (encapsulating the aggregator's catkey
+# encoding). If one is (unexpectedly) absent, the accessor returns the empty
+# string and the plain label is returned so the row still renders. The stats page
+# and the filter pages share the dist root, so the href is just "<pagebase>.html".
 _stats_filter_link() {
     local -r prefix="$1"; shift
     local -r label="$1"; shift
     local -r label_html="$1"; shift
-    local -r catkey="$prefix$STATS_FILTER_KEYSEP$label"
     local pagebase
 
-    pagebase="${STATS_FILTER_PAGEBASE[$catkey]:-}"
+    pagebase=$(stats_filter_pagebase "$prefix" "$label")
     if [ -n "$pagebase" ]; then
         # The stats overview lives at stats/index.html and each mini-album at
         # stats/<pagebase>/index.html, so link relative to the overview.
@@ -114,19 +104,6 @@ _stats_filter_link() {
     else
         printf '%s' "$label_html"
     fi
-}
-
-# Print an array's keys ordered by descending count (ties broken by key) so the
-# busiest bucket leads. Used for the leaderboard and other count-ranked sections.
-# LC_ALL=C pins the tie-break collation so the generated page is byte-identical
-# across locales/machines (reproducible static output).
-_stats_keys_by_count_desc() {
-    local -n counts_ref="$1"; shift
-    local key
-
-    for key in "${!counts_ref[@]}"; do
-        printf '%d\t%s\n' "${counts_ref[$key]}" "$key"
-    done | LC_ALL=C sort -t $'\t' -k1,1nr -k2,2 | cut -f2-
 }
 
 # Render a histogram section using an explicit bucket order (e.g. apertures from
@@ -142,24 +119,24 @@ _stats_render_section__ordered() {
     local -r array_name="$1"; shift
     local -r prefix="$1"; shift
     local -ri total="$1"; shift
-    local -n counts_ref="$array_name"
-    local bucket
+    local bucket count
     local row_html
     local -a buckets=()
     local -i max
 
-    if (( ${#counts_ref[@]} == 0 )); then
+    if (( $(stats_category_size "$array_name") == 0 )); then
         return
     fi
     IFS=$'\t' read -r -a buckets <<< "${STATS_CATEGORY_BUCKETS[$array_name]}"
-    max=$(_stats_max_count "$array_name")
+    max=$(stats_category_max "$array_name")
     _stats_section_open "$heading"
     for bucket in "${buckets[@]}"; do
-        if [ -z "${counts_ref[$bucket]:-}" ]; then
+        count=$(stats_category_count "$array_name" "$bucket")
+        if [ -z "$count" ]; then
             continue
         fi
         row_html=$(_stats_filter_link "$prefix" "$bucket" "$(html_escape "$bucket")")
-        _stats_bar_row "$row_html" "${counts_ref[$bucket]}" "$total" "$max"
+        _stats_bar_row "$row_html" "$count" "$total" "$max"
     done
     _stats_section_close
 }
@@ -178,20 +155,20 @@ _stats_render_section__ranked() {
     local -r prefix="$1"; shift
     local -ri total="$1"; shift
     local -r list_class="${1:-}"
-    local -n counts_ref="$array_name"
     local key
     local row_html
     local -i max
 
-    if (( ${#counts_ref[@]} == 0 )); then
+    if (( $(stats_category_size "$array_name") == 0 )); then
         return
     fi
-    max=$(_stats_max_count "$array_name")
+    max=$(stats_category_max "$array_name")
     _stats_section_open "$heading" "$list_class"
     while IFS= read -r key; do
         row_html=$(_stats_filter_link "$prefix" "$key" "$(html_escape "$key")")
-        _stats_bar_row "$row_html" "${counts_ref[$key]}" "$total" "$max"
-    done < <(_stats_keys_by_count_desc "$array_name")
+        _stats_bar_row "$row_html" \
+            "$(stats_category_count "$array_name" "$key")" "$total" "$max"
+    done < <(stats_category_keys_by_count_desc "$array_name")
     _stats_section_close
 }
 
@@ -206,27 +183,27 @@ _stats_render_section__month() {
     local -r array_name="$1"; shift
     local -r prefix="$1"; shift
     local -ri total="$1"; shift
-    local -n counts_ref="$array_name"
     local -ra month_names=(
         '' January February March April May June July August
         September October November December )
     local -i month
-    local key
+    local key count
     local -i max
 
-    if (( ${#counts_ref[@]} == 0 )); then
+    if (( $(stats_category_size "$array_name") == 0 )); then
         return
     fi
-    max=$(_stats_max_count "$array_name")
+    max=$(stats_category_max "$array_name")
     _stats_section_open "$heading"
     for (( month = 1; month <= 12; month++ )); do
         key=$(printf '%02d' "$month")
-        if [ -z "${counts_ref[$key]:-}" ]; then
+        count=$(stats_category_count "$array_name" "$key")
+        if [ -z "$count" ]; then
             continue
         fi
         _stats_bar_row \
             "$(_stats_filter_link "$prefix" "$key" "${month_names[$month]}")" \
-            "${counts_ref[$key]}" "$total" "$max"
+            "$count" "$total" "$max"
     done
     _stats_section_close
 }
@@ -269,9 +246,10 @@ _stats_render_category() {
 # captures it into the stats_body context var. Adding a category appends one
 # registry entry -- no edit here.
 _stats_build_body() {
-    local -ri total="${STATS_TOTALS[photos]:-0}"
+    local -i total
     local spec
 
+    total=$(stats_total_photos)
     printf '<p class="stats-total">%d photos analysed.</p>\n' "$total"
     for spec in "${STATS_CATEGORIES[@]}"; do
         _stats_render_category "$spec" "$total"

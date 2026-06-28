@@ -12,8 +12,13 @@
 # Public API / handoff contract
 # ----------------------------------------------------------------------------
 # collect_photo_exif_stats iterates the album's photos and fills these globals
-# (all declared with `declare -gA` so the render tasks can read them after the
-# call without namerefs):
+# (all declared with `declare -gA`). They are this module's PRIVATE backing
+# store: the reader modules (stats-render.source.sh, stats-filter-album.source.sh)
+# do NOT index them directly -- they go through the accessor functions at the end
+# of this file (stats_total_photos, stats_filter_pagebase, stats_filter_title,
+# stats_filter_photos, stats_filter_count, stats_filter_pagebases, and the
+# stats_category_* count accessors). That keeps the readers decoupled from the
+# key conventions used below. The arrays filled here are:
 #
 #   STATS_CAMERAS[<camera label>]      = count          (camera leaderboard)
 #   STATS_LENSES[<lens model>]         = count           (sparse; may be empty)
@@ -661,4 +666,131 @@ collect_photo_exif_stats() {
         accumulate_photo_stats "$photo" \
             < <(cached_photo_identify_output "$photo" "$INCOMING_DIR/$photo")
     done < <(incoming_image_files)
+}
+
+# ----------------------------------------------------------------------------
+# Public read API (task or0)
+# ----------------------------------------------------------------------------
+# The STATS_* maps above are this module's PRIVATE backing store. The reader
+# modules (stats-render.source.sh, stats-filter-album.source.sh) must NOT index
+# them directly: they call the accessors below instead. Keeping the maps private
+# behind documented functions decouples the readers from the aggregator's key
+# conventions (the "<prefix>\x1f<label>" pagebase keys, the per-category count
+# arrays, the photos-total counter), so a change to how a key is built or a map
+# is named stays contained in this module -- mirroring album-render's
+# ALBUM_VIEW_PAGE_BY_PHOTO / album_view_page_for_photo split.
+
+# Print the number of photos analysed (the percentage/scale denominator), or 0
+# before any aggregation ran. Encapsulates STATS_TOTALS[photos]; matches the
+# render side's former "${STATS_TOTALS[photos]:-0}" missing-key default.
+stats_total_photos() {
+    printf '%d' "${STATS_TOTALS[photos]:-0}"
+}
+
+# Print the filename-safe pagebase for a (prefix, label) filter bucket, or the
+# empty string when that bucket was never tallied. Encapsulates both the
+# STATS_FILTER_KEYSEP catkey encoding and the STATS_FILTER_PAGEBASE map, so the
+# stats overview can link each bar to its mini-album without knowing how keys are
+# built. Matches the former "${STATS_FILTER_PAGEBASE[$catkey]:-}" lookup.
+stats_filter_pagebase() {
+    local -r prefix="$1"; shift
+    local -r label="$1"; shift
+    local -r catkey="$prefix$STATS_FILTER_KEYSEP$label"
+
+    printf '%s' "${STATS_FILTER_PAGEBASE[$catkey]:-}"
+}
+
+# Print the human gallery heading recorded for a filter pagebase, or the empty
+# string when unknown. Encapsulates STATS_FILTER_TITLE; matches the filter
+# module's former "${STATS_FILTER_TITLE[$pagebase]:-}" lookup.
+stats_filter_title() {
+    local -r pagebase="$1"; shift
+
+    printf '%s' "${STATS_FILTER_TITLE[$pagebase]:-}"
+}
+
+# Print the newline-separated photo list recorded for a filter pagebase.
+# Encapsulates STATS_FILTER_PHOTOS for the per-pagebase read sites. Callers that
+# always pass a known pagebase relied on the bare "${STATS_FILTER_PHOTOS[...]}"
+# (no :- default); under set -u an unknown pagebase would have errored, so this
+# preserves that by also using the bare lookup.
+stats_filter_photos() {
+    local -r pagebase="$1"; shift
+
+    printf '%s' "${STATS_FILTER_PHOTOS[$pagebase]}"
+}
+
+# Print the number of filter mini-albums tallied (0 when none). Encapsulates the
+# "${#STATS_FILTER_PHOTOS[@]}" size read render_filter_pages uses to skip work
+# when there is nothing to render.
+stats_filter_count() {
+    printf '%d' "${#STATS_FILTER_PHOTOS[@]}"
+}
+
+# Print every filter pagebase, one per line, in LC_ALL=C-sorted order so the
+# enqueue order is reproducible. Encapsulates the "${!STATS_FILTER_PHOTOS[@]}"
+# key enumeration; the sort is pinned here (not in the caller) so the order is
+# owned alongside the data, and reproduces render_filter_pages's former
+# "printf ... "${!STATS_FILTER_PHOTOS[@]}" | LC_ALL=C sort" exactly.
+stats_filter_pagebases() {
+    printf '%s\n' "${!STATS_FILTER_PHOTOS[@]}" | LC_ALL=C sort
+}
+
+# ----------------------------------------------------------------------------
+# Per-category count accessors (task or0)
+# ----------------------------------------------------------------------------
+# The stats overview renders each category from its STATS_CATEGORIES spec, whose
+# first field names that category's count array (STATS_CAMERAS, STATS_ISO, ...).
+# The render handlers used to nameref that array directly; they now ask the
+# aggregator through these accessors, so the count arrays stay private here.
+# array_name is the registry's count_array field (a trusted internal name); the
+# accessors index it via a local nameref.
+
+# Print the count stored for one bucket key, or the empty string when the bucket
+# never occurred. Mirrors the render side's former "${counts_ref[$key]:-}" lookup
+# so an absent bucket reads as empty (skipped) and a present one reads as its
+# positive count.
+stats_category_count() {
+    local -n _stats_counts_ref="$1"; shift
+    local -r key="$1"; shift
+
+    printf '%s' "${_stats_counts_ref[$key]:-}"
+}
+
+# Print the number of buckets that occurred in a category's count array (0 when
+# empty). Encapsulates the "${#counts_ref[@]}" size read the render handlers use
+# to skip an empty category's whole section.
+stats_category_size() {
+    local -n _stats_counts_ref="$1"; shift
+
+    printf '%d' "${#_stats_counts_ref[@]}"
+}
+
+# Print the largest count in a category's array, or 0 when it is empty. Used to
+# scale each section's bars relative to its own busiest bucket. Encapsulates the
+# render side's former _stats_max_count loop over the array's values.
+stats_category_max() {
+    local -n _stats_counts_ref="$1"; shift
+    local key
+    local -i max=0
+
+    for key in "${!_stats_counts_ref[@]}"; do
+        if (( _stats_counts_ref[key] > max )); then
+            max=${_stats_counts_ref[$key]}
+        fi
+    done
+    printf '%d' "$max"
+}
+
+# Print a category's bucket keys ordered by descending count (ties broken by key)
+# so the busiest bucket leads. Encapsulates the render side's former
+# _stats_keys_by_count_desc. LC_ALL=C pins the tie-break collation so the
+# generated page is byte-identical across locales/machines.
+stats_category_keys_by_count_desc() {
+    local -n _stats_counts_ref="$1"; shift
+    local key
+
+    for key in "${!_stats_counts_ref[@]}"; do
+        printf '%d\t%s\n' "${_stats_counts_ref[$key]}" "$key"
+    done | LC_ALL=C sort -t $'\t' -k1,1nr -k2,2 | cut -f2-
 }
