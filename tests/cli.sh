@@ -669,6 +669,31 @@ test_generate_preview_grid_emits_every_tile_shape() {
     test::assert_contains 'grid-template-columns: repeat(4, 1fr)' "$page_html"
     test::assert_contains 'grid-template-columns: repeat(6, 1fr)' "$page_html"
 
+    # Flush PROPERTY (the guarantee behind the fixed-column grid): the generated
+    # page's total grid cells must be a positive multiple of 12 (LCM of 2/3/4/6)
+    # so it tiles into a complete rectangle -- no ragged/cut-off bottom at any
+    # breakpoint. Cell footprint: a 2x2 feature is 4 cells, every other top-level
+    # tile (single / subdivided) is 1. The unit test exercises the alignment
+    # helper in isolation; this asserts a real GENERATED page actually lands on a
+    # multiple of 12. The feature/subdivided counts being non-zero also guards
+    # that the pinned seed still produces both shapes (so the markup assertions
+    # below stay meaningful if the roll logic ever changes).
+    local -i grid_thumbs grid_features grid_tiles grid_cells
+    grid_thumbs=$(grep -o "class='thumb " <<< "$page_html" | wc -l)
+    grid_features=$(grep -o "class='feature'" <<< "$page_html" | wc -l)
+    grid_tiles=$(grep -o "<div class='tile'>" <<< "$page_html" | wc -l)
+    grid_cells=$(( grid_thumbs + 3 * grid_features + grid_tiles ))
+    if (( grid_features == 0 || grid_tiles == 0 )); then
+        printf 'FAIL: pinned seed no longer yields a feature AND a subdivided tile (feat=%d tiles=%d)\n' \
+            "$grid_features" "$grid_tiles" >&2
+        exit 1
+    fi
+    if (( grid_cells == 0 || grid_cells % 12 != 0 )); then
+        printf 'FAIL: generated page-1 grid cells %d is not a positive multiple of 12 (ragged page)\n' \
+            "$grid_cells" >&2
+        exit 1
+    fi
+
     # (1) Single thumbnail: a plain anchor (no anchor class) wrapping an
     # <img class='thumb ...'> linking to its view page.
     test::assert_contains "<a id='photo-03.jpg' href='1-3.html'>" "$page_html"
