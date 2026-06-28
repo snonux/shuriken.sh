@@ -6396,6 +6396,31 @@ test::source_shuriken_lib() {
     source <(sed '$d' "$TEST_SHURIKEN")
 }
 
+# pr0: the EXIF cache dir is computed once via exif_cache_dir() (= working_dir()/
+# cache/exif, where working_dir() is dirname "$DIST_DIR"). Both the cache
+# reader/writer and the --force/--clean cleaner route through this single helper,
+# so they can never point at different directories. Assert the helpers agree and
+# resolve to the documented "sibling of dist" path for a few DIST_DIR shapes.
+test_exif_cache_dir_resolves_beside_dist() {
+    test::setup
+    test::source_shuriken_lib
+
+    DIST_DIR='/home/u/site/dist'
+    test "$(working_dir)" = '/home/u/site'
+    test "$(exif_cache_dir)" = '/home/u/site/cache/exif'
+
+    # Relative DIST_DIR keeps dirname semantics (parent is ".").
+    DIST_DIR='dist'
+    test "$(working_dir)" = '.'
+    test "$(exif_cache_dir)" = './cache/exif'
+
+    # A trailing slash is collapsed exactly as dirname collapses it.
+    DIST_DIR='a/b/dist/'
+    test "$(exif_cache_dir)" = 'a/b/cache/exif'
+
+    test::teardown
+}
+
 test_stats_aggregates_synthetic_exif_fixtures() {
     local fixture
 
@@ -7187,6 +7212,9 @@ main() {
     test::run_case \
         '--generate reuses cached EXIF details unless forced' \
         test_generate_reuses_cached_exif_details_unless_forced
+    test::run_case \
+        'EXIF cache dir resolves beside dist' \
+        test_exif_cache_dir_resolves_beside_dist
     test::run_case \
         'stats aggregate synthetic EXIF fixtures' \
         test_stats_aggregates_synthetic_exif_fixtures

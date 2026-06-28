@@ -10,6 +10,22 @@
 # dependency, it does not affect availability. Behaviour and signatures are
 # unchanged by the move.
 
+# The volatile EXIF cache directory: ./cache/exif parallel to ./dist. Computed
+# once here (task pr0) from working_dir() (the parent of DIST_DIR) so the path is
+# defined in exactly ONE place. It was previously recomputed inline -- byte for
+# byte identically -- in both cached_photo_identify_output (read/write) and
+# clear_exif_cache (remove for --force/--clean); a single source for it keeps
+# those two in lockstep so the reader and the cleaner can never drift apart and
+# point at different directories. The path is deliberately a sibling of DIST_DIR
+# (working_dir()/cache/exif): the staging dir is a sibling of the final dist, so
+# this resolves to the working dir in both staging and direct contexts, lives
+# outside dist (surviving a fresh/cleared dist and never deployed), and lets an
+# unchanged photo skip the slow `identify -verbose` on every regenerate.
+# printf (no echo) keeps it safe under `set -euo pipefail`.
+exif_cache_dir() {
+    printf '%s\n' "$(working_dir)/cache/exif"
+}
+
 # Build the cache signature line ("<photo>:<size>:<mtime>") used to decide
 # whether a cache entry is still valid for the source file. Kept private to this
 # module alongside its only consumers, plus the stats test that pre-seeds caches.
@@ -49,12 +65,11 @@ cached_photo_identify_output() {
     local current_signature
     local identify_status
 
-    # Persist the EXIF cache in a volatile ./cache directory parallel to ./dist
-    # (the staging dir is a sibling of the final dist, so dirname "$DIST_DIR" is
-    # the working dir in both staging and direct contexts). Keeping it outside
-    # dist means it survives a fresh/cleared dist and is never deployed, so an
-    # unchanged photo skips the slow `identify -verbose` on every regenerate.
-    cache_dir="$(dirname "$DIST_DIR")/cache/exif"
+    # Resolve the volatile EXIF cache dir via the shared exif_cache_dir() helper
+    # (see its definition above for why it sits parallel to ./dist and survives a
+    # cleared dist) so the reader/writer here and clear_exif_cache below always
+    # agree on the same directory.
+    cache_dir="$(exif_cache_dir)"
     cache_file="$cache_dir/$photo.txt"
     current_signature=$(photo_cache_signature "$photo" "$photo_path")
 
@@ -151,7 +166,7 @@ photo_exif_values_to() {
 # lifecycle counterpart of cached_photo_identify_output above, so the cache's
 # creation and destruction now live in the same module.
 clear_exif_cache() {
-    local -r cache_dir="$(dirname "$DIST_DIR")/cache/exif"
+    local -r cache_dir="$(exif_cache_dir)"
 
     log_verbose "Force generation; clearing EXIF cache $cache_dir"
     rm -rf "$cache_dir"

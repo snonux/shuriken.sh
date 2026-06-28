@@ -179,14 +179,15 @@ log_configured_action() {
 # Safety: callers MUST run validate_clean_dist_dir first so a dangerous DIST_DIR
 # aborts before any deletion. We only match shuriken's own, basename-specific
 # staging/backup prefixes (never a loose ".shuriken.*" or arbitrary dotfiles),
-# derive the parent exactly as the staging code does (dirname "$DIST_DIR"), and
-# use nullglob so a missing match never expands to a literal pattern to rm.
+# derive the parent via working_dir() (the shared plain `dirname "$DIST_DIR"`,
+# exactly the parent the staging code stages into), and use nullglob so a missing
+# match never expands to a literal pattern to rm.
 clean_generation_staging_artifacts() {
     local final_base final_parent artifact
     local -a artifacts=()
 
     final_base=$(basename "$DIST_DIR")
-    final_parent=$(dirname "$DIST_DIR")
+    final_parent=$(working_dir)
 
     # nullglob: a non-matching glob expands to nothing rather than to the
     # literal pattern, so we never accidentally rm a path called "*".
