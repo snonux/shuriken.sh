@@ -10,7 +10,7 @@ if (( BASH_VERSINFO[0] < 5 \
     exit 1
 fi
 
-declare -r VERSION='0.12.1'
+declare -r VERSION='0.12.2'
 declare -r DEFAULTRC="${SHURIKEN_DEFAULT_RC:-/etc/default/shuriken}"
 declare -r PACKAGED_TEMPLATE_DIR='/usr/share/shuriken/templates/default'
 declare -r PACKAGED_ASSET_DIR='/usr/share/shuriken/assets'
