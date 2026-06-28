@@ -28,26 +28,14 @@ SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
 declare -A SHURIKEN_CLI_OVERRIDES=()
 declare -a SHURIKEN_CLI_SYNC_DESTINATIONS=()
 
-declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
-    INCOMING_DIR
-    DIST_DIR
-    TEMPLATE_DIR
-    FAVICON
-    TITLE
-    HEIGHT
-    THUMBHEIGHT
-    MAXPREVIEWS
-    THUMB_SUBDIVIDE_PERCENT
-    THUMB_FEATURE_PERCENT
-    IMAGE_JOBS
-    RANDOM_SEED
-    SHUFFLE
-    SOURCE_URL
-    SPLASH_PAGE
-    STATS_PAGE
-    SYNC_DELETE
-    TARBALL_INCLUDE
-)
+# CLI_CONFIG_OVERRIDE_TARGETS (the set of config vars a CLI flag may override) is
+# no longer hand-listed here: it is derived from CONFIG_SPECS (cli_overridable=yes
+# facet) by build_cli_config_override_targets, called from config.spec.source.sh
+# once the registry is sourced. This removes the redundant copy of CLI_OPTION_SPEC's
+# config= targets that used to drift (task mr0). CLI_OPTION_SPEC below stays the
+# authoritative per-flag table (argument names, flag/value pairs, action flags);
+# only the override-target list is registry-derived.
+declare -a CLI_CONFIG_OVERRIDE_TARGETS=()
 declare -Ar CLI_OPTION_SPEC=(
     [--config]='kind=value target=SHURIKEN_CLI_CONFIG_FILE argument=path'
     [--favicon]='kind=value config=FAVICON argument=path'
@@ -143,6 +131,8 @@ source "$SHURIKEN_SOURCE_DIR/lib/stats-aggregate.source.sh"
 source "$SHURIKEN_SOURCE_DIR/lib/stats-render.source.sh"
 # shellcheck source=src/lib/stats-filter-album.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/stats-filter-album.source.sh"
+# shellcheck source=src/lib/config.spec.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/config.spec.source.sh"
 # shellcheck source=src/lib/config.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/config.source.sh"
 # shellcheck source=src/lib/config.print.source.sh

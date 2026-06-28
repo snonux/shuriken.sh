@@ -2486,6 +2486,11 @@ test_config_validators_fail_fast_without_errexit() {
     local output
     local -i status=0
 
+    # validate_common_config derives its required set and per-field rules from
+    # CONFIG_SPECS (task mr0), so the registry module must be sourced alongside
+    # the validators when exercising it in isolation.
+    # shellcheck source=src/lib/config.spec.source.sh
+    source "$TEST_REPO_ROOT/src/lib/config.spec.source.sh"
     # shellcheck source=src/lib/config.validate.source.sh
     source "$TEST_REPO_ROOT/src/lib/config.validate.source.sh"
 

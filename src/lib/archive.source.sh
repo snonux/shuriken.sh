@@ -12,6 +12,10 @@ tarball_name_plan() {
     local base
 
     base=$(basename "$INCOMING_DIR")
+    # TARBALL_SUFFIX is assigned by apply_config_defaults via the CONFIG_SPECS
+    # registry loop (printf -v "$name"), so shellcheck no longer sees a literal
+    # assignment and mistakes the uppercase name for a misspelling of a local.
+    # shellcheck disable=SC2153
     printf '%s-<timestamp>%s\n' "$base" "$TARBALL_SUFFIX"
 }
 

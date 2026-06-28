@@ -16,37 +16,50 @@ print_shell_array_assignment() {
     printf ' )\n'
 }
 
+# Emit the effective config as a re-sourceable block, driven by CONFIG_SPECS
+# (task mr0): the field set and their print order are the registry order, and
+# each field's print_kind facet selects scalar (%s=%q) vs array (%s=( ... ))
+# output. This replaces the hand-kept print list that had to stay in lockstep
+# with apply_config_defaults. CONFIG_SOURCE is printed first and is NOT a
+# registry entry: it is the resolved config path, not a config variable.
+#
+# The two array fields are not plain shell variables at print time -- they are
+# normalised through resolve_tar_opts / resolve_sync_destinations (which fill an
+# unset/empty array with its default) -- so the loop dispatches array fields to
+# those resolved local copies rather than reading the raw global.
 print_config() {
     local -a tar_opts=()
     local -a sync_destinations=()
+    local spec
+    local -a fields=()
+    local name print_kind
 
     resolve_tar_opts tar_opts
     resolve_sync_destinations sync_destinations
 
     print_shell_assignment CONFIG_SOURCE "$SHURIKEN_CONFIG_SOURCE"
-    print_shell_assignment INCOMING_DIR "$INCOMING_DIR"
-    print_shell_assignment DIST_DIR "$DIST_DIR"
-    print_shell_assignment TEMPLATE_DIR "$TEMPLATE_DIR"
-    print_shell_assignment FAVICON "$FAVICON"
-    print_shell_assignment SOURCE_URL "$SOURCE_URL"
-    print_shell_assignment TITLE "$TITLE"
-    print_shell_assignment HEIGHT "$HEIGHT"
-    print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
-    print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
-    print_shell_assignment THUMB_SUBDIVIDE_PERCENT "$THUMB_SUBDIVIDE_PERCENT"
-    print_shell_assignment THUMB_FEATURE_PERCENT "$THUMB_FEATURE_PERCENT"
-    print_shell_assignment IMAGE_JOBS "$IMAGE_JOBS"
-    print_shell_assignment IMAGEMAGICK_TIMEOUT "$IMAGEMAGICK_TIMEOUT"
-    print_shell_assignment RANDOM_SEED "$RANDOM_SEED"
-    print_shell_assignment SHUFFLE "$SHUFFLE"
-    print_shell_assignment SPLASH_PAGE "$SPLASH_PAGE"
-    print_shell_assignment STATS_PAGE "$STATS_PAGE"
-    print_shell_assignment TARBALL_INCLUDE "$TARBALL_INCLUDE"
-    print_shell_assignment TARBALL_SUFFIX "$TARBALL_SUFFIX"
-    print_shell_assignment TAR_TIMEOUT "$TAR_TIMEOUT"
-    print_shell_array_assignment TAR_OPTS "${tar_opts[@]}"
-    print_shell_assignment SYNC_DELETE "$SYNC_DELETE"
-    print_shell_assignment SYNC_TIMEOUT "$SYNC_TIMEOUT"
-    print_shell_array_assignment SYNC_DESTINATIONS "${sync_destinations[@]}"
-    print_shell_assignment ORIGINAL_BASEPATH "$ORIGINAL_BASEPATH"
+
+    for spec in "${CONFIG_SPECS[@]}"; do
+        config_spec_split "$spec" fields
+        name="${fields[0]}"
+        print_kind="${fields[5]}"
+
+        case "$print_kind" in
+            scalar)
+                print_shell_assignment "$name" "${!name}"
+                ;;
+            array)
+                case "$name" in
+                    TAR_OPTS)
+                        print_shell_array_assignment TAR_OPTS \
+                            "${tar_opts[@]}"
+                        ;;
+                    SYNC_DESTINATIONS)
+                        print_shell_array_assignment SYNC_DESTINATIONS \
+                            "${sync_destinations[@]}"
+                        ;;
+                esac
+                ;;
+        esac
+    done
 }

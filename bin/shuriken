@@ -28,26 +28,14 @@ SHURIKEN_CLI_HAS_CONFIG_OVERRIDES='no'
 declare -A SHURIKEN_CLI_OVERRIDES=()
 declare -a SHURIKEN_CLI_SYNC_DESTINATIONS=()
 
-declare -ra CLI_CONFIG_OVERRIDE_TARGETS=(
-    INCOMING_DIR
-    DIST_DIR
-    TEMPLATE_DIR
-    FAVICON
-    TITLE
-    HEIGHT
-    THUMBHEIGHT
-    MAXPREVIEWS
-    THUMB_SUBDIVIDE_PERCENT
-    THUMB_FEATURE_PERCENT
-    IMAGE_JOBS
-    RANDOM_SEED
-    SHUFFLE
-    SOURCE_URL
-    SPLASH_PAGE
-    STATS_PAGE
-    SYNC_DELETE
-    TARBALL_INCLUDE
-)
+# CLI_CONFIG_OVERRIDE_TARGETS (the set of config vars a CLI flag may override) is
+# no longer hand-listed here: it is derived from CONFIG_SPECS (cli_overridable=yes
+# facet) by build_cli_config_override_targets, called from config.spec.source.sh
+# once the registry is sourced. This removes the redundant copy of CLI_OPTION_SPEC's
+# config= targets that used to drift (task mr0). CLI_OPTION_SPEC below stays the
+# authoritative per-flag table (argument names, flag/value pairs, action flags);
+# only the override-target list is registry-derived.
+declare -a CLI_CONFIG_OVERRIDE_TARGETS=()
 declare -Ar CLI_OPTION_SPEC=(
     [--config]='kind=value target=SHURIKEN_CLI_CONFIG_FILE argument=path'
     [--favicon]='kind=value config=FAVICON argument=path'
@@ -542,6 +530,10 @@ tarball_name_plan() {
     local base
 
     base=$(basename "$INCOMING_DIR")
+    # TARBALL_SUFFIX is assigned by apply_config_defaults via the CONFIG_SPECS
+    # registry loop (printf -v "$name"), so shellcheck no longer sees a literal
+    # assignment and mistakes the uppercase name for a misspelling of a local.
+    # shellcheck disable=SC2153
     printf '%s-<timestamp>%s\n' "$base" "$TARBALL_SUFFIX"
 }
 
@@ -5518,6 +5510,134 @@ render_filter_pages() {
     job_pool_wait render_jobs
 }
 
+# Inlined from src/lib/config.spec.source.sh
+# ----------------------------------------------------------------------------
+# Config field registry (single source of truth, task mr0)
+# ----------------------------------------------------------------------------
+# CONFIG_SPECS is the one place a config field's cross-cutting facts are
+# declared. Before mr0 the same knowledge (default value, CLI-overridability,
+# validation rule, how it prints) was restated in ~6 hand-maintained lists --
+# apply_config_defaults, CLI_CONFIG_OVERRIDE_TARGETS, validate_common_config,
+# print_config, and parts of log_configured_action / the dry-run plan -- so
+# adding or renaming an option was shotgun surgery and the lists drifted (the
+# TARBALL_INCLUDE default once flipped to 'no' here while shuriken.default.conf
+# still said 'yes', fixed in 7r0). Those consumers now DERIVE from this registry,
+# so a field's facts live in exactly one entry.
+#
+# Each entry is a '|'-delimited spec, the same encoding used by ACTION_SPECS
+# (action.source.sh) and TEMPLATE_RENDER_FIELD_SPECS (template.source.sh):
+#
+#   name|default|has_default|cli_overridable|validation|print_kind
+#
+#   name            the config variable name (also the env/override key).
+#   default         the value apply_config_defaults applies via
+#                   VAR="${VAR:-$default}" when has_default=yes. May be empty
+#                   (e.g. FAVICON, HEIGHT default to the empty string).
+#   has_default     yes -> apply the scalar default above. no -> never apply a
+#                   scalar default: either a required var (TITLE, THUMBHEIGHT,
+#                   ...) that must be set in the config, or an array
+#                   (TAR_OPTS / SYNC_DESTINATIONS) defaulted separately via a
+#                   `declare -p` guard in apply_config_defaults.
+#   cli_overridable yes -> the field appears in CLI_CONFIG_OVERRIDE_TARGETS, i.e.
+#                   a CLI flag (declared in CLI_OPTION_SPEC) can override it. The
+#                   rich per-flag table (argument names, flag/value pairs) stays
+#                   in CLI_OPTION_SPEC; this facet only drives the override-target
+#                   list that used to be a separate hand-kept copy of it.
+#   validation      the rule validate_common_config applies. Empty means
+#                   validate_common_config does not check this field (SYNC_DELETE,
+#                   the timeouts only checked on their own paths, etc. are
+#                   validated elsewhere). One of:
+#                     required        require_config_var (non-empty)
+#                     required-posint require_config_var + positive integer
+#                     posint          positive integer (no non-empty requirement)
+#                     opt-posint      positive integer only if set (HEIGHT)
+#                     percentage      integer 0..100
+#                     yesno           literal yes or no
+#                     favicon         validate_favicon_config (readable file/empty)
+#   print_kind      how print_config emits the field. scalar -> %s=%q. array ->
+#                   %s=( ... ) via the resolve_*-fed array printer. Empty means
+#                   print_config does not emit it (none today). CONFIG_SOURCE is
+#                   printed separately (it is the resolved config path, not a
+#                   config variable) and so is not a registry entry.
+#
+# Entry order is the canonical print order (print_config emits in this order).
+# validate_common_config does NOT reuse this order directly: it runs all
+# `required*` checks before any kind check (so a missing required var is reported
+# before a malformed one -- see test_config_validators_fail_fast_without_errexit),
+# which it achieves with two filtered passes over the registry.
+#
+# Declared -g so it survives being sourced from inside a function (the test
+# harness sources the lib via test::source_shuriken_lib); a plain `declare -r`
+# would be function-local and vanish on return.
+declare -gra CONFIG_SPECS=(
+    'INCOMING_DIR||no|yes|required|scalar'
+    'DIST_DIR||no|yes|required|scalar'
+    'TEMPLATE_DIR||no|yes|required|scalar'
+    'FAVICON||yes|yes|favicon|scalar'
+    'SOURCE_URL|https://codeberg.org/snonux/shuriken.sh|yes|yes||scalar'
+    'TITLE||no|yes|required|scalar'
+    'HEIGHT||yes|yes|opt-posint|scalar'
+    'THUMBHEIGHT||no|yes|required-posint|scalar'
+    'MAXPREVIEWS||no|yes|required-posint|scalar'
+    'THUMB_SUBDIVIDE_PERCENT|30|yes|yes|percentage|scalar'
+    'THUMB_FEATURE_PERCENT|10|yes|yes|percentage|scalar'
+    'IMAGE_JOBS|3|yes|yes|required-posint|scalar'
+    'IMAGEMAGICK_TIMEOUT|60|yes|no|posint|scalar'
+    'RANDOM_SEED||yes|yes||scalar'
+    'SHUFFLE|no|yes|yes|yesno|scalar'
+    'SPLASH_PAGE|yes|yes|yes|yesno|scalar'
+    'STATS_PAGE|no|yes|yes|yesno|scalar'
+    'TARBALL_INCLUDE|yes|yes|yes|yesno|scalar'
+    'TARBALL_SUFFIX|.tar|yes|no||scalar'
+    'TAR_TIMEOUT|120|yes|no|posint|scalar'
+    'TAR_OPTS||no|no||array'
+    'SYNC_DELETE|yes|yes|yes||scalar'
+    'SYNC_TIMEOUT|300|yes|no|posint|scalar'
+    'SYNC_DESTINATIONS||no|no||array'
+    'ORIGINAL_BASEPATH||yes|no||scalar'
+)
+
+# Split one CONFIG_SPECS entry into the caller's named array (IFS='|' read), the
+# same accessor pattern action_spec_field uses for ACTION_SPECS. Field indices:
+#   0 name  1 default  2 has_default  3 cli_overridable  4 validation  5 print_kind
+config_spec_split() {
+    local -r spec="$1"; shift
+    # shellcheck disable=SC2178
+    local -n fields_ref="$1"; shift
+
+    # fields_ref is a nameref output array filled for the caller; shellcheck
+    # cannot see the indirect use through the nameref.
+    # shellcheck disable=SC2034
+    IFS='|' read -r -a fields_ref <<< "$spec"
+}
+
+# Populate CLI_CONFIG_OVERRIDE_TARGETS from the registry: every field marked
+# cli_overridable=yes. This is the list apply_cli_overrides iterates to copy
+# parsed --flag values onto their config var. Declared (empty) in src/shuriken.sh
+# before the libs are sourced; filled here, once CONFIG_SPECS exists. Replaces the
+# hand-kept copy of CLI_OPTION_SPEC's config= targets that used to drift (mr0).
+# Iteration order is registry order; it is unobservable because each override
+# targets a distinct variable, so no field can shadow another.
+build_cli_config_override_targets() {
+    local spec
+    local -a fields=()
+
+    CLI_CONFIG_OVERRIDE_TARGETS=()
+    for spec in "${CONFIG_SPECS[@]}"; do
+        config_spec_split "$spec" fields
+        if [ "${fields[3]}" = yes ]; then
+            CLI_CONFIG_OVERRIDE_TARGETS+=("${fields[0]}")
+        fi
+    done
+}
+
+# Build the override-target list at source time so it is ready before any CLI
+# parsing. Guarded so sourcing this module without the shuriken.sh-level
+# declaration (e.g. a narrowly scoped unit test) is a no-op rather than an error.
+if declare -p CLI_CONFIG_OVERRIDE_TARGETS >/dev/null 2>&1; then
+    build_cli_config_override_targets
+fi
+
 # Inlined from src/lib/config.source.sh
 existing_parent_dir() {
     local -r path="$1"; shift
@@ -5564,40 +5684,41 @@ missing_config() {
     exit 1
 }
 
+# Apply the documented defaults for every config field that has one. Driven
+# entirely by CONFIG_SPECS (task mr0): each scalar entry with has_default=yes
+# gets VAR="${VAR:-$default}" applied, so a field's default value lives in
+# exactly one place (the registry) instead of being restated here. This is what
+# eliminates the default-drift class of bug (TARBALL_INCLUDE once read 'no' here
+# while the registry/default-conf said 'yes', fixed in 7r0): the default and the
+# documented value can no longer disagree because they are the same datum.
+#
+# Notes:
+#   - Empty defaults are intentional and applied verbatim (e.g. FAVICON='' means
+#     "use the bundled default favicon"; HEIGHT/RANDOM_SEED/ORIGINAL_BASEPATH
+#     default to the empty string).
+#   - has_default=no scalars (TITLE, THUMBHEIGHT, MAXPREVIEWS, ...) are required
+#     and deliberately get no default; validate_common_config rejects them when
+#     unset.
+#   - The two array fields (TAR_OPTS, SYNC_DESTINATIONS) cannot use the scalar
+#     "${VAR:-...}" form, so they keep their `declare -p` guards below. They are
+#     marked print_kind=array / has_default=no in the registry so this loop
+#     skips them.
 apply_config_defaults() {
-    # Empty FAVICON means use the bundled default favicon; otherwise it is a path
-    # to a custom favicon file copied into the album as favicon.ico.
-    FAVICON="${FAVICON:-}"
-    HEIGHT="${HEIGHT:-}"
-    IMAGE_JOBS="${IMAGE_JOBS:-3}"
-    IMAGEMAGICK_TIMEOUT="${IMAGEMAGICK_TIMEOUT:-60}"
-    ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
-    RANDOM_SEED="${RANDOM_SEED:-}"
-    SHUFFLE="${SHUFFLE:-no}"
-    # SOURCE_URL is the project/source link shown in the page header bar ("Site
-    # generated ... with <SOURCE_URL>"). Defaults to the shuriken.sh repo;
-    # override it per site (e.g. to the album's own repo) via config or
-    # --source-url. The header bar derives the displayed text from the URL itself.
-    SOURCE_URL="${SOURCE_URL:-https://codeberg.org/snonux/shuriken.sh}"
-    SPLASH_PAGE="${SPLASH_PAGE:-yes}"
-    STATS_PAGE="${STATS_PAGE:-no}"
-    # Optional with a default (unlike the required THUMBHEIGHT): the percent
-    # chance a preview tile is subdivided into smaller thumbnails, and the
-    # percent chance it becomes a large 2x2 "feature" tile. 0 disables either.
-    THUMB_SUBDIVIDE_PERCENT="${THUMB_SUBDIVIDE_PERCENT:-30}"
-    THUMB_FEATURE_PERCENT="${THUMB_FEATURE_PERCENT:-10}"
-    SYNC_DELETE="${SYNC_DELETE:-yes}"
-    # Per-destination rsync timeout (seconds), mirroring TAR_TIMEOUT/
-    # IMAGEMAGICK_TIMEOUT. Each destination in sync_dist is wrapped in
-    # run_with_timeout so a hung/unreachable mirror cannot block the whole sync.
-    SYNC_TIMEOUT="${SYNC_TIMEOUT:-300}"
-    # Default 'yes': a tarball of the incoming dir is included in the dist unless
-    # disabled. This must match the documented default in shuriken.default.conf
-    # (TARBALL_INCLUDE=yes) -- it previously drifted to 'no' here. 'yes' is the
-    # original, authoritative default (tarball inclusion was on from the start).
-    TARBALL_INCLUDE="${TARBALL_INCLUDE:-yes}"
-    TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
-    TAR_TIMEOUT="${TAR_TIMEOUT:-120}"
+    local spec
+    local -a fields=()
+    local name default has_default
+
+    for spec in "${CONFIG_SPECS[@]}"; do
+        config_spec_split "$spec" fields
+        name="${fields[0]}"
+        default="${fields[1]}"
+        has_default="${fields[2]}"
+
+        if [ "$has_default" = yes ]; then
+            printf -v "$name" '%s' "${!name:-$default}"
+        fi
+    done
+
     if ! declare -p TAR_OPTS >/dev/null 2>&1; then
         TAR_OPTS=(-c)
     fi
@@ -5625,39 +5746,52 @@ print_shell_array_assignment() {
     printf ' )\n'
 }
 
+# Emit the effective config as a re-sourceable block, driven by CONFIG_SPECS
+# (task mr0): the field set and their print order are the registry order, and
+# each field's print_kind facet selects scalar (%s=%q) vs array (%s=( ... ))
+# output. This replaces the hand-kept print list that had to stay in lockstep
+# with apply_config_defaults. CONFIG_SOURCE is printed first and is NOT a
+# registry entry: it is the resolved config path, not a config variable.
+#
+# The two array fields are not plain shell variables at print time -- they are
+# normalised through resolve_tar_opts / resolve_sync_destinations (which fill an
+# unset/empty array with its default) -- so the loop dispatches array fields to
+# those resolved local copies rather than reading the raw global.
 print_config() {
     local -a tar_opts=()
     local -a sync_destinations=()
+    local spec
+    local -a fields=()
+    local name print_kind
 
     resolve_tar_opts tar_opts
     resolve_sync_destinations sync_destinations
 
     print_shell_assignment CONFIG_SOURCE "$SHURIKEN_CONFIG_SOURCE"
-    print_shell_assignment INCOMING_DIR "$INCOMING_DIR"
-    print_shell_assignment DIST_DIR "$DIST_DIR"
-    print_shell_assignment TEMPLATE_DIR "$TEMPLATE_DIR"
-    print_shell_assignment FAVICON "$FAVICON"
-    print_shell_assignment SOURCE_URL "$SOURCE_URL"
-    print_shell_assignment TITLE "$TITLE"
-    print_shell_assignment HEIGHT "$HEIGHT"
-    print_shell_assignment THUMBHEIGHT "$THUMBHEIGHT"
-    print_shell_assignment MAXPREVIEWS "$MAXPREVIEWS"
-    print_shell_assignment THUMB_SUBDIVIDE_PERCENT "$THUMB_SUBDIVIDE_PERCENT"
-    print_shell_assignment THUMB_FEATURE_PERCENT "$THUMB_FEATURE_PERCENT"
-    print_shell_assignment IMAGE_JOBS "$IMAGE_JOBS"
-    print_shell_assignment IMAGEMAGICK_TIMEOUT "$IMAGEMAGICK_TIMEOUT"
-    print_shell_assignment RANDOM_SEED "$RANDOM_SEED"
-    print_shell_assignment SHUFFLE "$SHUFFLE"
-    print_shell_assignment SPLASH_PAGE "$SPLASH_PAGE"
-    print_shell_assignment STATS_PAGE "$STATS_PAGE"
-    print_shell_assignment TARBALL_INCLUDE "$TARBALL_INCLUDE"
-    print_shell_assignment TARBALL_SUFFIX "$TARBALL_SUFFIX"
-    print_shell_assignment TAR_TIMEOUT "$TAR_TIMEOUT"
-    print_shell_array_assignment TAR_OPTS "${tar_opts[@]}"
-    print_shell_assignment SYNC_DELETE "$SYNC_DELETE"
-    print_shell_assignment SYNC_TIMEOUT "$SYNC_TIMEOUT"
-    print_shell_array_assignment SYNC_DESTINATIONS "${sync_destinations[@]}"
-    print_shell_assignment ORIGINAL_BASEPATH "$ORIGINAL_BASEPATH"
+
+    for spec in "${CONFIG_SPECS[@]}"; do
+        config_spec_split "$spec" fields
+        name="${fields[0]}"
+        print_kind="${fields[5]}"
+
+        case "$print_kind" in
+            scalar)
+                print_shell_assignment "$name" "${!name}"
+                ;;
+            array)
+                case "$name" in
+                    TAR_OPTS)
+                        print_shell_array_assignment TAR_OPTS \
+                            "${tar_opts[@]}"
+                        ;;
+                    SYNC_DESTINATIONS)
+                        print_shell_array_assignment SYNC_DESTINATIONS \
+                            "${sync_destinations[@]}"
+                        ;;
+                esac
+                ;;
+        esac
+    done
 }
 
 # Inlined from src/lib/config.sync.source.sh
@@ -6273,8 +6407,86 @@ validate_imagemagick() {
     return 1
 }
 
+# Look up a config field's validation facet (index 4) from CONFIG_SPECS. Prints
+# the validation token (e.g. required-posint, percentage, yesno) or empty if the
+# field is unknown / has no validation rule. The single place validate_*
+# dispatchers learn which rule a field uses (task mr0).
+config_spec_validation() {
+    local -r name="$1"; shift
+    local spec
+    local -a fields=()
+
+    for spec in "${CONFIG_SPECS[@]}"; do
+        config_spec_split "$spec" fields
+        if [ "${fields[0]}" = "$name" ]; then
+            printf '%s\n' "${fields[4]}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Run a config field's "required" check based on its registry validation facet.
+# Only required / required-posint fields are required-to-be-set; everything else
+# is a no-op here. Used by validate_common_config's required pass so the set of
+# required vars derives from the registry instead of a separate hand-kept list.
+validate_config_field_required() {
+    local -r name="$1"; shift
+    local validation
+
+    validation=$(config_spec_validation "$name")
+    case "$validation" in
+        required|required-posint)
+            require_config_var "$name" || return 1
+            ;;
+    esac
+}
+
+# Run a config field's "kind" check based on its registry validation facet,
+# dispatching to the matching validator. This is the single source for "which
+# rule validates which field" (task mr0): validate_common_config calls this per
+# field in its historical order, so the rule lives in CONFIG_SPECS while the
+# error-reporting order stays byte-identical. The required-only facet has no kind
+# check (the required pass covers it); required-posint additionally enforces a
+# positive integer here.
+validate_config_field_kind() {
+    local -r name="$1"; shift
+    local validation
+
+    validation=$(config_spec_validation "$name")
+    case "$validation" in
+        required)
+            ;;
+        required-posint|posint)
+            validate_positive_integer_config_var "$name" || return 1
+            ;;
+        opt-posint)
+            validate_optional_positive_integer_config_var "$name" || return 1
+            ;;
+        percentage)
+            validate_percentage_config_var "$name" || return 1
+            ;;
+        yesno)
+            validate_yes_no_config_var "$name" || return 1
+            ;;
+        favicon)
+            validate_favicon_config || return 1
+            ;;
+    esac
+}
+
+# Validate the config fields shared by every action that needs a loaded config.
+# The set of required vars and each field's validation rule come from CONFIG_SPECS
+# via the dispatchers above (task mr0). The two phases (all required checks, then
+# all kind checks) are preserved deliberately: a missing required var must be
+# reported before a malformed one (test_config_validators_fail_fast_without_errexit
+# proves an unset TITLE is reported while a bad THUMBHEIGHT is not). The per-field
+# call order below is the historical reporting order, so error messages for a
+# config with several problems appear in the same sequence as before.
 validate_common_config() {
     local required_var
+    local kind_var
     local -a required_vars=(
         TITLE
         THUMBHEIGHT
@@ -6284,25 +6496,30 @@ validate_common_config() {
         DIST_DIR
         TEMPLATE_DIR
     )
+    local -a kind_vars=(
+        HEIGHT
+        THUMBHEIGHT
+        MAXPREVIEWS
+        THUMB_SUBDIVIDE_PERCENT
+        THUMB_FEATURE_PERCENT
+        IMAGE_JOBS
+        IMAGEMAGICK_TIMEOUT
+        TAR_TIMEOUT
+        SYNC_TIMEOUT
+        SHUFFLE
+        SPLASH_PAGE
+        STATS_PAGE
+        TARBALL_INCLUDE
+        FAVICON
+    )
 
     for required_var in "${required_vars[@]}"; do
-        require_config_var "$required_var" || return
+        validate_config_field_required "$required_var" || return
     done
 
-    validate_optional_positive_integer_config_var HEIGHT || return
-    validate_positive_integer_config_var THUMBHEIGHT || return
-    validate_positive_integer_config_var MAXPREVIEWS || return
-    validate_percentage_config_var THUMB_SUBDIVIDE_PERCENT || return
-    validate_percentage_config_var THUMB_FEATURE_PERCENT || return
-    validate_positive_integer_config_var IMAGE_JOBS || return
-    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
-    validate_positive_integer_config_var TAR_TIMEOUT || return
-    validate_positive_integer_config_var SYNC_TIMEOUT || return
-    validate_yes_no_config_var SHUFFLE || return
-    validate_yes_no_config_var SPLASH_PAGE || return
-    validate_yes_no_config_var STATS_PAGE || return
-    validate_yes_no_config_var TARBALL_INCLUDE || return
-    validate_favicon_config || return
+    for kind_var in "${kind_vars[@]}"; do
+        validate_config_field_kind "$kind_var" || return
+    done
 }
 
 # A custom FAVICON (when set) must be a readable file; empty means the bundled

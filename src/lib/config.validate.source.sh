@@ -189,8 +189,86 @@ validate_imagemagick() {
     return 1
 }
 
+# Look up a config field's validation facet (index 4) from CONFIG_SPECS. Prints
+# the validation token (e.g. required-posint, percentage, yesno) or empty if the
+# field is unknown / has no validation rule. The single place validate_*
+# dispatchers learn which rule a field uses (task mr0).
+config_spec_validation() {
+    local -r name="$1"; shift
+    local spec
+    local -a fields=()
+
+    for spec in "${CONFIG_SPECS[@]}"; do
+        config_spec_split "$spec" fields
+        if [ "${fields[0]}" = "$name" ]; then
+            printf '%s\n' "${fields[4]}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Run a config field's "required" check based on its registry validation facet.
+# Only required / required-posint fields are required-to-be-set; everything else
+# is a no-op here. Used by validate_common_config's required pass so the set of
+# required vars derives from the registry instead of a separate hand-kept list.
+validate_config_field_required() {
+    local -r name="$1"; shift
+    local validation
+
+    validation=$(config_spec_validation "$name")
+    case "$validation" in
+        required|required-posint)
+            require_config_var "$name" || return 1
+            ;;
+    esac
+}
+
+# Run a config field's "kind" check based on its registry validation facet,
+# dispatching to the matching validator. This is the single source for "which
+# rule validates which field" (task mr0): validate_common_config calls this per
+# field in its historical order, so the rule lives in CONFIG_SPECS while the
+# error-reporting order stays byte-identical. The required-only facet has no kind
+# check (the required pass covers it); required-posint additionally enforces a
+# positive integer here.
+validate_config_field_kind() {
+    local -r name="$1"; shift
+    local validation
+
+    validation=$(config_spec_validation "$name")
+    case "$validation" in
+        required)
+            ;;
+        required-posint|posint)
+            validate_positive_integer_config_var "$name" || return 1
+            ;;
+        opt-posint)
+            validate_optional_positive_integer_config_var "$name" || return 1
+            ;;
+        percentage)
+            validate_percentage_config_var "$name" || return 1
+            ;;
+        yesno)
+            validate_yes_no_config_var "$name" || return 1
+            ;;
+        favicon)
+            validate_favicon_config || return 1
+            ;;
+    esac
+}
+
+# Validate the config fields shared by every action that needs a loaded config.
+# The set of required vars and each field's validation rule come from CONFIG_SPECS
+# via the dispatchers above (task mr0). The two phases (all required checks, then
+# all kind checks) are preserved deliberately: a missing required var must be
+# reported before a malformed one (test_config_validators_fail_fast_without_errexit
+# proves an unset TITLE is reported while a bad THUMBHEIGHT is not). The per-field
+# call order below is the historical reporting order, so error messages for a
+# config with several problems appear in the same sequence as before.
 validate_common_config() {
     local required_var
+    local kind_var
     local -a required_vars=(
         TITLE
         THUMBHEIGHT
@@ -200,25 +278,30 @@ validate_common_config() {
         DIST_DIR
         TEMPLATE_DIR
     )
+    local -a kind_vars=(
+        HEIGHT
+        THUMBHEIGHT
+        MAXPREVIEWS
+        THUMB_SUBDIVIDE_PERCENT
+        THUMB_FEATURE_PERCENT
+        IMAGE_JOBS
+        IMAGEMAGICK_TIMEOUT
+        TAR_TIMEOUT
+        SYNC_TIMEOUT
+        SHUFFLE
+        SPLASH_PAGE
+        STATS_PAGE
+        TARBALL_INCLUDE
+        FAVICON
+    )
 
     for required_var in "${required_vars[@]}"; do
-        require_config_var "$required_var" || return
+        validate_config_field_required "$required_var" || return
     done
 
-    validate_optional_positive_integer_config_var HEIGHT || return
-    validate_positive_integer_config_var THUMBHEIGHT || return
-    validate_positive_integer_config_var MAXPREVIEWS || return
-    validate_percentage_config_var THUMB_SUBDIVIDE_PERCENT || return
-    validate_percentage_config_var THUMB_FEATURE_PERCENT || return
-    validate_positive_integer_config_var IMAGE_JOBS || return
-    validate_positive_integer_config_var IMAGEMAGICK_TIMEOUT || return
-    validate_positive_integer_config_var TAR_TIMEOUT || return
-    validate_positive_integer_config_var SYNC_TIMEOUT || return
-    validate_yes_no_config_var SHUFFLE || return
-    validate_yes_no_config_var SPLASH_PAGE || return
-    validate_yes_no_config_var STATS_PAGE || return
-    validate_yes_no_config_var TARBALL_INCLUDE || return
-    validate_favicon_config || return
+    for kind_var in "${kind_vars[@]}"; do
+        validate_config_field_kind "$kind_var" || return
+    done
 }
 
 # A custom FAVICON (when set) must be a readable file; empty means the bundled

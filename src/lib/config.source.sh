@@ -43,40 +43,41 @@ missing_config() {
     exit 1
 }
 
+# Apply the documented defaults for every config field that has one. Driven
+# entirely by CONFIG_SPECS (task mr0): each scalar entry with has_default=yes
+# gets VAR="${VAR:-$default}" applied, so a field's default value lives in
+# exactly one place (the registry) instead of being restated here. This is what
+# eliminates the default-drift class of bug (TARBALL_INCLUDE once read 'no' here
+# while the registry/default-conf said 'yes', fixed in 7r0): the default and the
+# documented value can no longer disagree because they are the same datum.
+#
+# Notes:
+#   - Empty defaults are intentional and applied verbatim (e.g. FAVICON='' means
+#     "use the bundled default favicon"; HEIGHT/RANDOM_SEED/ORIGINAL_BASEPATH
+#     default to the empty string).
+#   - has_default=no scalars (TITLE, THUMBHEIGHT, MAXPREVIEWS, ...) are required
+#     and deliberately get no default; validate_common_config rejects them when
+#     unset.
+#   - The two array fields (TAR_OPTS, SYNC_DESTINATIONS) cannot use the scalar
+#     "${VAR:-...}" form, so they keep their `declare -p` guards below. They are
+#     marked print_kind=array / has_default=no in the registry so this loop
+#     skips them.
 apply_config_defaults() {
-    # Empty FAVICON means use the bundled default favicon; otherwise it is a path
-    # to a custom favicon file copied into the album as favicon.ico.
-    FAVICON="${FAVICON:-}"
-    HEIGHT="${HEIGHT:-}"
-    IMAGE_JOBS="${IMAGE_JOBS:-3}"
-    IMAGEMAGICK_TIMEOUT="${IMAGEMAGICK_TIMEOUT:-60}"
-    ORIGINAL_BASEPATH="${ORIGINAL_BASEPATH:-}"
-    RANDOM_SEED="${RANDOM_SEED:-}"
-    SHUFFLE="${SHUFFLE:-no}"
-    # SOURCE_URL is the project/source link shown in the page header bar ("Site
-    # generated ... with <SOURCE_URL>"). Defaults to the shuriken.sh repo;
-    # override it per site (e.g. to the album's own repo) via config or
-    # --source-url. The header bar derives the displayed text from the URL itself.
-    SOURCE_URL="${SOURCE_URL:-https://codeberg.org/snonux/shuriken.sh}"
-    SPLASH_PAGE="${SPLASH_PAGE:-yes}"
-    STATS_PAGE="${STATS_PAGE:-no}"
-    # Optional with a default (unlike the required THUMBHEIGHT): the percent
-    # chance a preview tile is subdivided into smaller thumbnails, and the
-    # percent chance it becomes a large 2x2 "feature" tile. 0 disables either.
-    THUMB_SUBDIVIDE_PERCENT="${THUMB_SUBDIVIDE_PERCENT:-30}"
-    THUMB_FEATURE_PERCENT="${THUMB_FEATURE_PERCENT:-10}"
-    SYNC_DELETE="${SYNC_DELETE:-yes}"
-    # Per-destination rsync timeout (seconds), mirroring TAR_TIMEOUT/
-    # IMAGEMAGICK_TIMEOUT. Each destination in sync_dist is wrapped in
-    # run_with_timeout so a hung/unreachable mirror cannot block the whole sync.
-    SYNC_TIMEOUT="${SYNC_TIMEOUT:-300}"
-    # Default 'yes': a tarball of the incoming dir is included in the dist unless
-    # disabled. This must match the documented default in shuriken.default.conf
-    # (TARBALL_INCLUDE=yes) -- it previously drifted to 'no' here. 'yes' is the
-    # original, authoritative default (tarball inclusion was on from the start).
-    TARBALL_INCLUDE="${TARBALL_INCLUDE:-yes}"
-    TARBALL_SUFFIX="${TARBALL_SUFFIX:-.tar}"
-    TAR_TIMEOUT="${TAR_TIMEOUT:-120}"
+    local spec
+    local -a fields=()
+    local name default has_default
+
+    for spec in "${CONFIG_SPECS[@]}"; do
+        config_spec_split "$spec" fields
+        name="${fields[0]}"
+        default="${fields[1]}"
+        has_default="${fields[2]}"
+
+        if [ "$has_default" = yes ]; then
+            printf -v "$name" '%s' "${!name:-$default}"
+        fi
+    done
+
     if ! declare -p TAR_OPTS >/dev/null 2>&1; then
         TAR_OPTS=(-c)
     fi
