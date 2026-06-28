@@ -592,6 +592,222 @@ test_generate_cli_overrides_config_values() {
     test::teardown
 }
 
+# Create COUNT stub photos (photo-01.jpg ..) in a directory via the fake
+# ImageMagick on PATH, for tile-layout integration tests that need a photo count
+# large/specific enough to drive a deterministic grid. The fake magick just
+# writes a placeholder file, so this is fast even for dozens of photos.
+test::generate_numbered_fixture_images() {
+    local -r incoming_dir="$1"; shift
+    local -ri count="$1"; shift
+    local -i n
+
+    mkdir -p "$incoming_dir"
+    for (( n = 1; n <= count; n++ )); do
+        "$TEST_IMAGEMAGICK" -size 160x90 xc:red \
+            "$(printf '%s/photo-%02d.jpg' "$incoming_dir" "$n")"
+    done
+}
+
+# Integration coverage for the four distinct preview-grid tile shapes plus the
+# grid container/breakpoint CSS, the view page body and its nav arrows. The
+# tile-layout deciders are seeded-random (random.source.sh), so this drives a
+# 30-photo album with RANDOM_SEED pinned and THUMB_FEATURE_PERCENT /
+# THUMB_SUBDIVIDE_PERCENT cranked high so BOTH a 2x2 feature tile AND a
+# subdivided tile are GUARANTEED to appear on page-1 (the seed/percent combo was
+# chosen by probing locally, then hard-coded). These assert the MEANINGFUL markup
+# of each generated tile/page kind -- not a render-equality or existence check --
+# which is exactly the class of gap the gauge-bar (width:0%) regression slipped
+# through. The unit test test_album_grid_cells_align_to_multiple_of_12 only
+# checks the alignment helper; here we assert the markup actually reaches a
+# generated page-*.html.
+test_generate_preview_grid_emits_every_tile_shape() {
+    local config_file
+    local fake_bin
+    local page_html
+    local view_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_numbered_fixture_images "$TEST_TMPDIR/incoming" 30
+
+    {
+        printf 'TITLE=%q\n' 'Tile shapes'
+        printf 'THUMBHEIGHT=30\n'
+        printf 'HEIGHT=120\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'IMAGE_JOBS=3\n'
+        printf 'INCOMING_DIR=%q/incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$TEST_REPO_ROOT"
+        printf 'SPLASH_PAGE=no\n'
+        printf 'TARBALL_INCLUDE=no\n'
+        printf 'SHUFFLE=no\n'
+        # Pinned so the seeded tile rolls are reproducible; the high percents
+        # guarantee at least one feature AND one subdivided tile land on page-1.
+        printf 'RANDOM_SEED=seed-1\n'
+        printf 'THUMB_FEATURE_PERCENT=60\n'
+        printf 'THUMB_SUBDIVIDE_PERCENT=70\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate --config "$config_file"
+    )
+
+    page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
+    view_html=$(<"$TEST_TMPDIR/dist/1-1.html")
+
+    # The grid container wraps the whole tile grid; its fixed 2/3/4/6-column
+    # breakpoints keep every page a flush rectangle.
+    test::assert_contains '<div class="thumbs-grid">' "$page_html"
+    test::assert_contains 'grid-template-columns: repeat(2, 1fr)' "$page_html"
+    test::assert_contains 'grid-template-columns: repeat(3, 1fr)' "$page_html"
+    test::assert_contains 'grid-template-columns: repeat(4, 1fr)' "$page_html"
+    test::assert_contains 'grid-template-columns: repeat(6, 1fr)' "$page_html"
+
+    # (1) Single thumbnail: a plain anchor (no anchor class) wrapping an
+    # <img class='thumb ...'> linking to its view page.
+    test::assert_contains "<a id='photo-03.jpg' href='1-3.html'>" "$page_html"
+    test::assert_contains \
+        "<img class='thumb animate-zoom-slow' alt='photo-03.jpg' src='./thumbs/photo-03.jpg'>" \
+        "$page_html"
+
+    # (2) 2x2 feature tile: the 'feature' anchor class that CSS spans across a
+    # 2x2 block (grid-column/grid-row: span 2).
+    test::assert_contains "<a id='photo-01.jpg' class='feature' href='1-1.html'>" \
+        "$page_html"
+    test::assert_contains 'div.thumbs-grid a.feature {' "$page_html"
+    test::assert_contains 'grid-column: span 2;' "$page_html"
+    test::assert_contains 'grid-row: span 2;' "$page_html"
+
+    # (3) Subdivided tile: a <div class='tile'> wrapping smaller 'subthumb'
+    # images (each still its own clickable view page).
+    test::assert_contains "<div class='tile'>" "$page_html"
+    test::assert_contains "<img class='subthumb" "$page_html"
+
+    # The view page body and its prev/next nav arrows. The first view page's
+    # prev arrow points at the page's redirect (1-0.html) and next at 1-2.html.
+    test::assert_contains "<div class='view'>" "$view_html"
+    test::assert_contains \
+        "<img class='view animate-flash-in-fast' alt='photo-01.jpg' src='./photos/photo-01.jpg'>" \
+        "$view_html"
+    test::assert_contains '<a href="1-0.html" class="arrow">&lArr;</a>' "$view_html"
+    test::assert_contains '<a href="1-2.html" class="arrow">&rArr;</a>' "$view_html"
+
+    test::teardown
+}
+
+# Integration coverage for the fill-row tile: the album's SHORT final page (fewer
+# than 12 leftover photos) widens each tile into a full-width banner so the bottom
+# edge stays flush. With MAXPREVIEWS=10 and 13 photos, page-2 gets 3 leftover
+# photos -> a short final page -> three 'fill-row' tiles. Features/subdivisions
+# are disabled (percent 0) so the only special tile is the fill-row, and the
+# layout is otherwise plain singles. Asserts the 'fill-row' anchor class AND its
+# whole-row CSS span actually reach the generated page.
+test_generate_short_final_page_emits_fill_row_tiles() {
+    local config_file
+    local fake_bin
+    local page_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_numbered_fixture_images "$TEST_TMPDIR/incoming" 13
+
+    {
+        printf 'TITLE=%q\n' 'Fill row'
+        printf 'THUMBHEIGHT=30\n'
+        printf 'HEIGHT=120\n'
+        # 13 photos over 10-per-page leaves a 3-photo (short, <12) final page.
+        printf 'MAXPREVIEWS=10\n'
+        printf 'IMAGE_JOBS=3\n'
+        printf 'INCOMING_DIR=%q/incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$TEST_REPO_ROOT"
+        printf 'SPLASH_PAGE=no\n'
+        printf 'TARBALL_INCLUDE=no\n'
+        printf 'SHUFFLE=no\n'
+        printf 'RANDOM_SEED=fill-seed\n'
+        # No features/subdivisions, so the short final page is plain singles
+        # until the fill-row widening kicks in.
+        printf 'THUMB_FEATURE_PERCENT=0\n'
+        printf 'THUMB_SUBDIVIDE_PERCENT=0\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate --config "$config_file"
+    )
+
+    test::assert_file_exists "$TEST_TMPDIR/dist/page-2.html"
+    page_html=$(<"$TEST_TMPDIR/dist/page-2.html")
+
+    # The leftover photos each become a full-width 'fill-row' banner.
+    test::assert_contains \
+        "<a id='photo-11.jpg' class='fill-row' href='2-1.html'>" "$page_html"
+    test::assert_contains 'div.thumbs-grid a.fill-row {' "$page_html"
+    test::assert_contains 'grid-column: 1 / -1;' "$page_html"
+    # The first (full) page is NOT a short final page, so it must not be filled.
+    page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
+    test::assert_not_contains "class='fill-row'" "$page_html"
+
+    test::teardown
+}
+
+# Integration coverage for the splash page body (index.html when SPLASH_PAGE=yes).
+# It is a distinct page kind with its own <main class="splash"> structure: the
+# album title, a splash photo, and an "Enter album" link into page-1. Asserts the
+# meaningful structural markup rather than mere file existence.
+test_generate_splash_page_renders_enter_link_and_photo() {
+    local config_file
+    local fake_bin
+    local splash_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_numbered_fixture_images "$TEST_TMPDIR/incoming" 5
+
+    {
+        printf 'TITLE=%q\n' 'Splashy title'
+        printf 'THUMBHEIGHT=30\n'
+        printf 'HEIGHT=120\n'
+        printf 'MAXPREVIEWS=40\n'
+        printf 'IMAGE_JOBS=3\n'
+        printf 'INCOMING_DIR=%q/incoming\n' "$TEST_TMPDIR"
+        printf 'DIST_DIR=%q/dist\n' "$TEST_TMPDIR"
+        printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$TEST_REPO_ROOT"
+        printf 'SPLASH_PAGE=yes\n'
+        printf 'TARBALL_INCLUDE=no\n'
+        printf 'SHUFFLE=no\n'
+        printf 'RANDOM_SEED=splash-seed\n'
+    } > "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate --config "$config_file"
+    )
+
+    splash_html=$(<"$TEST_TMPDIR/dist/index.html")
+
+    test::assert_contains '<main class="splash">' "$splash_html"
+    test::assert_contains '<h1>Splashy title</h1>' "$splash_html"
+    test::assert_contains 'class="splash-photo"' "$splash_html"
+    test::assert_contains '<a href="page-1.html">Enter album</a>' "$splash_html"
+
+    test::teardown
+}
+
 # SOURCE_URL controls the footer "Site generated ... with <link>". The href uses
 # the configured URL verbatim and the displayed text is that URL without its
 # scheme, so a custom SOURCE_URL replaces the default shuriken.sh credit link.
@@ -7216,6 +7432,15 @@ main() {
     test::run_case \
         'current_date_text caches and matches nameref form' \
         test_template_current_date_text_caches_and_matches_nameref
+    test::run_case \
+        '--generate emits every preview-grid tile shape' \
+        test_generate_preview_grid_emits_every_tile_shape
+    test::run_case \
+        '--generate short final page emits fill-row tiles' \
+        test_generate_short_final_page_emits_fill_row_tiles
+    test::run_case \
+        '--generate splash page renders enter link and photo' \
+        test_generate_splash_page_renders_enter_link_and_photo
     test::run_case \
         '--generate escapes generated HTML values' \
         test_generate_escapes_html_values
