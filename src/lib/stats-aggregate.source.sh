@@ -772,11 +772,19 @@ stats_category_size() {
 stats_category_max() {
     local -n _stats_counts_ref="$1"; shift
     local key
+    local -i value
     local -i max=0
 
     for key in "${!_stats_counts_ref[@]}"; do
-        if (( _stats_counts_ref[key] > max )); then
-            max=${_stats_counts_ref[$key]}
+        # Read the value through a quoted ${assoc[$key]} expansion FIRST, then
+        # compare. Do NOT write "(( _stats_counts_ref[key] > max ))": inside an
+        # arithmetic context an associative subscript is itself arithmetic-
+        # evaluated, so a string key (e.g. "sony") resolves to an unset var -> 0,
+        # i.e. it would always read index 0 and report max 0 (broken zero-width
+        # bars). The string-keyed expansion below is the only correct read.
+        value=${_stats_counts_ref[$key]}
+        if (( value > max )); then
+            max=$value
         fi
     done
     printf '%d' "$max"

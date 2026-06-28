@@ -4799,6 +4799,14 @@ BASH
     test::assert_contains \
         '<a href="camera-canon-eos-5d/index.html">Canon EOS 5D</a>' "$html"
     test::assert_contains '2 (67%)' "$html"
+    # Gauge bars scale each bucket to its section's busiest bucket: with 2 Canon
+    # vs 1 Nikon the camera bars are 100% and 50% wide. Regression guard: a prior
+    # stats_category_max bug (arithmetic subscript on an associative-array nameref
+    # resolving the string key to 0) returned max 0, collapsing EVERY bar to
+    # width:0%. Asserting the non-zero widths catches that; the byte-identical
+    # double-render test could not (both renders were equally broken).
+    test::assert_contains 'class="stats-bar-fill" style="width:100%"' "$html"
+    test::assert_contains 'class="stats-bar-fill" style="width:50%"' "$html"
     # A histogram section is present.
     test::assert_contains '<h2>ISO</h2>' "$html"
     test::assert_contains '400' "$html"
