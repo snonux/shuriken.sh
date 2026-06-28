@@ -20,12 +20,32 @@ album_photo_files() {
         | maybe_shuffle
 }
 
+# Pagination single source of truth (task nr0): how many preview pages a given
+# number of album photos splits into, with at most MAXPREVIEWS photos per page.
+# album_page_records below realises exactly this many records by grouping the
+# actual (shuffled) photo list, and the dry-run plan calls this helper to predict
+# the page count from the incoming-image tally WITHOUT enumerating dist files. So
+# the preview and a real --generate can never disagree on the page count: both
+# express "ceil(image_count / MAXPREVIEWS)" through this one definition. An empty
+# album yields 0 pages.
+album_page_count_for_image_count() {
+    local -ri image_count="$1"; shift
+
+    if (( image_count <= 0 )); then
+        printf '0\n'
+        return
+    fi
+    printf '%d\n' "$(( (image_count + MAXPREVIEWS - 1) / MAXPREVIEWS ))"
+}
+
 # Group the album's photos into pages of at most MAXPREVIEWS, in their final
 # (shuffled/sorted) order. The result is emitted one line per page as a
 # tab-separated record "<page_num>\t<photo>\t<photo>..." so the caller can walk
 # pages without keeping every page in memory at once. Order is fully
 # deterministic (album_photo_files already applies the seeded shuffle), so the
-# downstream parallelism only changes timing, never which photo lands where.
+# downstream parallelism only changes timing, never which photo lands where. The
+# number of records produced here equals album_page_count_for_image_count of the
+# photo count (same MAXPREVIEWS-per-page grouping); see that helper.
 album_page_records() {
     local -r photos_dir="$1"; shift
     local photo

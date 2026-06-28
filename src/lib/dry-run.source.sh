@@ -30,8 +30,15 @@ collect_dry_run_page_plan() {
     plan_ref["details_count"]=0
 
     if (( image_count > 0 )); then
-        page_count=$(( (image_count + MAXPREVIEWS - 1) / MAXPREVIEWS ))
-        redirect_count=$(( page_count * 4 + 2 ))
+        # Predict the page and redirect counts from the SAME helpers a real
+        # --generate uses (task nr0), so the preview can't drift from the actual
+        # output. album_page_count_for_image_count (album-photo-select) owns the
+        # MAXPREVIEWS-per-page grouping that album_page_records realises, and
+        # album_redirect_count_for_page_count (album-render) owns the per-page +
+        # last-page redirect tally that render_page_view_redirects emits. No dist
+        # files are touched here, so dry-run stays side-effect free.
+        page_count=$(album_page_count_for_image_count "$image_count")
+        redirect_count=$(album_redirect_count_for_page_count "$page_count")
         plan_ref["details_count"]="$image_count"
         plan_ref["page_count"]="$page_count"
         plan_ref["redirect_count"]="$redirect_count"

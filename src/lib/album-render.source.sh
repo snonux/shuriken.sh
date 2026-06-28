@@ -310,13 +310,42 @@ record_rendered_view_page() {
     last_views_ref["$page"]="$preview"
 }
 
+# Navigation-redirect count single source of truth (task nr0). Every view page
+# gets ALBUM_REDIRECTS_PER_PAGE wrap-around redirect files: the prev stub
+# (N-0.html) and its details twin, plus the next stub (N-(last+1).html) and its
+# details twin -- four files, emitted by render_page_view_redirects below for
+# every page. The LAST page additionally emits ALBUM_REDIRECTS_LAST_PAGE_EXTRA
+# files: the 0-MAXPREVIEWS / 0-MAXPREVIEWS-details entry stubs that bounce into
+# the album. Keep these two numbers in lockstep with render_page_view_redirects;
+# the dry-run plan predicts redirect_count from them via
+# album_redirect_count_for_page_count instead of a magic "*4+2".
+declare -gri ALBUM_REDIRECTS_PER_PAGE=4
+declare -gri ALBUM_REDIRECTS_LAST_PAGE_EXTRA=2
+
+# Total navigation redirects a run produces for a given number of preview pages:
+# four per page plus the last page's extra entry stubs. Zero pages -> zero
+# redirects (render_view_redirects returns early on an empty album). This is the
+# count render_page_view_redirects actually writes across all pages, expressed
+# once so the dry-run plan cannot drift from real generation.
+album_redirect_count_for_page_count() {
+    local -ri page_count="$1"; shift
+
+    if (( page_count <= 0 )); then
+        printf '0\n'
+        return
+    fi
+    printf '%d\n' "$(( page_count * ALBUM_REDIRECTS_PER_PAGE \
+        + ALBUM_REDIRECTS_LAST_PAGE_EXTRA ))"
+}
+
 # Render every navigation redirect for a single view page (the prev/next
 # wrap-around stubs that bounce N-0 / N-(last+1) to the neighbouring page).
 # Each redirect is its own self-contained file (the template overwrites it), so
 # this whole group is safe to run as one independent background job; only the
 # files for distinct pages are produced here. The wrap-around redirects for the
 # very last page (0-MAXPREVIEWS and the loop-to-1 links) are emitted as part of
-# that page's group.
+# that page's group. Per-page / last-page file counts are fixed by
+# ALBUM_REDIRECTS_PER_PAGE / ALBUM_REDIRECTS_LAST_PAGE_EXTRA above.
 render_page_view_redirects() {
     local -r html_dir="$1"; shift
     local -ri page="$1"; shift
