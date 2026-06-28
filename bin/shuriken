@@ -2092,7 +2092,6 @@ cached_photo_identify_output() {
     local cache_file
     local cached_signature=''
     local current_signature
-    local identify_status
 
     # Resolve the volatile EXIF cache dir via the shared exif_cache_dir() helper
     # (see its definition above for why it sits parallel to ./dist and survives a
@@ -2114,6 +2113,33 @@ cached_photo_identify_output() {
         fi
     fi
 
+    if ! _rebuild_photo_identify_cache "$photo" "$photo_path" \
+        "$cache_dir" "$cache_file" "$current_signature"; then
+        # Rebuild reported a failed identify: it already warned and removed the
+        # cache file, so there is nothing to print for this photo. Return 0 so
+        # one unreadable photo does not abort the backgrounded render job under
+        # `set -euo pipefail` (see the rebuild helper for the data-loss rationale).
+        return 0
+    fi
+
+    print_cached_photo_identify_output "$cache_file"
+}
+
+# Rebuild the identify cache file for one photo: write the signature line, then
+# append `identify -verbose` output. Returns 0 on success (cache_file now holds a
+# usable entry) and 1 on a failed identify, having warned and removed the
+# half-written cache file. Removing it is essential: a file holding only the
+# signature line is a valid-looking cache hit, so the next run would silently
+# reuse the empty result forever -- never retrying identify and never warning
+# again (the original data-loss bug). Deleting it makes the next run retry+warn.
+_rebuild_photo_identify_cache() {
+    local -r photo="$1"; shift
+    local -r photo_path="$1"; shift
+    local -r cache_dir="$1"; shift
+    local -r cache_file="$1"; shift
+    local -r current_signature="$1"; shift
+    local identify_status
+
     mkdir -p "$cache_dir"
     printf '%s\n' "$current_signature" > "$cache_file"
 
@@ -2127,24 +2153,17 @@ cached_photo_identify_output() {
 
     if [ "$identify_status" -ne 0 ]; then
         # Failed identify (corrupt photo, timeout, missing binary, ...): warn
-        # naming the photo and remove the cache file. Removing it is essential:
-        # a file holding only the signature line is a valid-looking cache hit,
-        # so the next run would silently reuse the empty result forever -- never
-        # retrying identify and never warning again (the original data-loss bug).
-        # Deleting it makes the next run retry and warn.
-        #
-        # We deliberately do NOT abort: this runs inside backgrounded render jobs
-        # under `set -euo pipefail`, and one unreadable photo must not kill the
-        # whole generation. The photo still renders, just with empty tooltip and
-        # stats, now accompanied by a warning.
+        # naming the photo and remove the cache file (see this function's header
+        # for why removal matters). The caller turns our non-zero return into a
+        # graceful "skip this photo" so the whole generation is not killed.
         rm -f "$cache_file"
         log_warning \
             "could not read EXIF for $photo (ImageMagick identify failed);" \
             "tooltip/stats will be missing"
-        return 0
+        return 1
     fi
 
-    print_cached_photo_identify_output "$cache_file"
+    return 0
 }
 
 # Canonical `identify -verbose` stream parser. Reads an identify stream from
@@ -2365,22 +2384,27 @@ _photo_exif_values_to() {
         < <(cached_photo_identify_output "$photo" "$photo_path")
 }
 
-_photo_exif_tooltip_text_from_values() {
+# Build the ordered "Label: value" tooltip parts from a parsed EXIF values map.
+# Reads the values map by NAME (exif_name) and appends to the parts array passed
+# by NAME (parts_name); only present fields are added, preserving the original
+# Camera/Aperture/ISO/Shutter speed/Taken order. The nameref names are unique so
+# they cannot collide with the caller's own variable names.
+_collect_exif_tooltip_parts() {
     local -r exif_name="$1"; shift
-    local -n values_ref="$exif_name"
+    local -r parts_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n collect_parts_ref="$parts_name"
+    local -n collect_values_ref="$exif_name"
     local aperture
     local camera
     local date_time
     local iso
-    local key
     local make
     local model
-    local separator=''
     local shutter_speed
-    local -a tooltip_parts=()
 
-    make="${values_ref[Make]:-}"
-    model="${values_ref[Model]:-}"
+    make="${collect_values_ref[Make]:-}"
+    model="${collect_values_ref[Model]:-}"
     # Dedup the manufacturer prefix via the shared helper (task mn0) so this
     # tooltip and the stats leaderboard derive identical camera labels.
     camera=$(camera_label_from_make_model "$make" "$model")
@@ -2394,28 +2418,51 @@ _photo_exif_tooltip_text_from_values() {
         DateTimeOriginal DateTimeDigitized DateTime
 
     if [ -n "$camera" ]; then
-        tooltip_parts+=("Camera: $camera")
+        collect_parts_ref+=("Camera: $camera")
     fi
     if [ -n "$aperture" ]; then
-        tooltip_parts+=("Aperture: $aperture")
+        collect_parts_ref+=("Aperture: $aperture")
     fi
     if [ -n "$iso" ]; then
-        tooltip_parts+=("ISO: $iso")
+        collect_parts_ref+=("ISO: $iso")
     fi
     if [ -n "$shutter_speed" ]; then
-        tooltip_parts+=("Shutter speed: $shutter_speed")
+        collect_parts_ref+=("Shutter speed: $shutter_speed")
     fi
     if [ -n "$date_time" ]; then
-        tooltip_parts+=("Taken: $date_time")
+        collect_parts_ref+=("Taken: $date_time")
     fi
+}
 
-    for key in "${tooltip_parts[@]}"; do
+# Print the collected tooltip parts joined by "; ", with a trailing newline only
+# when at least one part exists (so an EXIF-less photo prints nothing). Reads the
+# parts array by NAME.
+_emit_exif_tooltip_parts() {
+    local -r parts_name="$1"; shift
+    local -n emit_parts_ref="$parts_name"
+    local key
+    local separator=''
+
+    for key in "${emit_parts_ref[@]}"; do
         printf '%s%s' "$separator" "$key"
         separator='; '
     done
-    if (( ${#tooltip_parts[@]} > 0 )); then
+    if (( ${#emit_parts_ref[@]} > 0 )); then
         printf '\n'
     fi
+}
+
+# Thin orchestrator: collect the EXIF tooltip parts from a parsed values map,
+# then emit them. Output is byte-identical to the previous single function.
+_photo_exif_tooltip_text_from_values() {
+    local -r exif_name="$1"; shift
+    # Populated by _collect_exif_tooltip_parts via nameref; shellcheck cannot see
+    # that cross-function write.
+    # shellcheck disable=SC2034
+    local -a tooltip_parts=()
+
+    _collect_exif_tooltip_parts "$exif_name" tooltip_parts
+    _emit_exif_tooltip_parts tooltip_parts
 }
 
 photo_exif_tooltip_text() {
@@ -2480,7 +2527,10 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_original_basepath"]="$ORIGINAL_BASEPATH"
 }
 
-_generation_metadata_json() {
+# Emit the generator/generated_at/config_source/template/source/generated/tarball
+# JSON sections (everything before "settings"). All read the _GENERATION_METADATA
+# global the collector populated; split out only to keep the serialiser short.
+_generation_metadata_json_head() {
     printf '{\n'
     printf '  "generator": {\n'
     printf '    "name": %s,\n' \
@@ -2518,6 +2568,11 @@ _generation_metadata_json() {
     printf '    "file": %s\n' \
         "$(json_string "${_GENERATION_METADATA["tarball_file"]}")"
     printf '  },\n'
+}
+
+# Emit the "settings" object and the closing brace. Split from the head so each
+# half stays around 30 lines; identical byte output to the original one-shot.
+_generation_metadata_json_settings() {
     printf '  "settings": {\n'
     printf '    "title": %s,\n' \
         "$(json_string "${_GENERATION_METADATA["settings_title"]}")"
@@ -2545,6 +2600,13 @@ _generation_metadata_json() {
         "$(json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
     printf '  }\n'
     printf '}\n'
+}
+
+# Serialise _GENERATION_METADATA to the dist/shuriken.json layout. Thin
+# orchestrator over the head + settings emitters above.
+_generation_metadata_json() {
+    _generation_metadata_json_head
+    _generation_metadata_json_settings
 }
 
 write_generation_metadata() {
@@ -2657,7 +2719,9 @@ collect_dry_run_plan() {
     collect_dry_run_page_plan "$plan_name" "$image_count"
 }
 
-print_dry_run_plan() {
+# Print the scalar settings block (config source through tarball name plan).
+# Takes the plan array NAME and re-binds its own nameref so callers stay simple.
+_print_dry_run_settings() {
     local -r plan_name="$1"; shift
     # shellcheck disable=SC2178
     local -n plan_ref="$plan_name"
@@ -2681,6 +2745,14 @@ print_dry_run_plan() {
     printf 'Image count: %s\n' "${plan_ref["image_count"]}"
     printf 'Tarball setting: %s\n' "${plan_ref["tarball_include"]}"
     printf 'Tarball name plan: %s\n' "${plan_ref["tarball_name_plan"]}"
+}
+
+# Print the planned directories and generated-files listing (index/favicon/json,
+# image dirs, page/view/details/redirect counts, optional stats + tarball lines).
+_print_dry_run_files() {
+    local -r plan_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n plan_ref="$plan_name"
 
     printf 'Planned directories:\n'
     printf '  %s\n' "${plan_ref["dist_dir"]}"
@@ -2724,6 +2796,15 @@ print_dry_run_plan() {
         printf '  %s/%s\n' \
             "${plan_ref["dist_dir"]}" "${plan_ref["tarball_name_plan"]}"
     fi
+}
+
+# Thin orchestrator: print the settings block then the planned files listing.
+# Output is byte-identical to the previous single-function version.
+print_dry_run_plan() {
+    local -r plan_name="$1"; shift
+
+    _print_dry_run_settings "$plan_name"
+    _print_dry_run_files "$plan_name"
 }
 
 # Inlined from src/lib/album-tile-layout.source.sh
@@ -3107,22 +3188,29 @@ build_subdivided_tile() {
 # the fixed 2/3/4/6-column grid is a complete rectangle -- a flush last row -- at
 # every width; (3) emit the (possibly merged) tiles. Splitting decide-from-emit
 # is what lets pass 2 adjust the layout before any HTML is built.
-append_preview_grid() {
-    local -n buffer_ref="$1"; shift
-    local -r thumbs_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r href_prefix="$1"; shift
-    # 'yes' only for the main album's LAST page: when such a page cannot be
-    # aligned to a multiple of 12 (a short final page with a leftover photo), its
-    # final single tile is widened to span the whole row so the bottom stays
-    # flush. Callers that must not do this (stats mini-albums) pass 'no'.
-    local -r fill_last="$1"; shift
-    local -a photos=("$@")
+# Pass 1 + pass 2 for a normal (non-short-final) page: roll the photo list into
+# tiles, then align the cell total to a multiple of 12. Reads the photos array by
+# NAME (photos_name) and fills the three parallel tile arrays (layouts/starts/
+# counts) by NAME -- the names are unique so they cannot collide with the caller's
+# locals. Self-contained pass-1 state (features_used, total_cells) stays local
+# here; only the aligned tile arrays escape. Identical tile decisions to the old
+# inline code, so the flush-grid layout is unchanged.
+_roll_and_align_page_tiles() {
+    local -r photos_name="$1"; shift
+    local -r layouts_name="$1"; shift
+    local -r starts_name="$1"; shift
+    local -r counts_name="$1"; shift
+    local -n roll_photos_ref="$photos_name"
+    # shellcheck disable=SC2178
+    local -n roll_layouts_ref="$layouts_name"
+    # shellcheck disable=SC2178
+    local -n roll_starts_ref="$starts_name"
+    # shellcheck disable=SC2178
+    local -n roll_counts_ref="$counts_name"
     local -i i=0
     local -i count
     local -i total_cells=0
     local layout
-    local block
     # Cap the big 2x2 feature tiles at this many per page; once reached, later
     # tiles are no longer offered the "feature" layout (they fall back to
     # subdivided/single), so a page never gets crowded with hero tiles.
@@ -3136,12 +3224,87 @@ append_preview_grid() {
     # column count. This also disables features on pages too short to host one
     # safely (a feature needs >= feature_tail_margin photos after it).
     local -ri feature_tail_margin=16
-    # Parallel records of the page's tiles: layout, the first photo's 0-based
-    # index, and how many photos the tile spans.
-    local -a tile_layouts=()
-    local -a tile_starts=()
-    local -a tile_counts=()
+
+    # Pass 1: decide every tile (deterministic, seeded off each tile's first
+    # photo name). A 2x2 feature occupies 4 grid cells; every other tile 1.
+    while (( i < ${#roll_photos_ref[@]} )); do
+        read -r layout count < <(
+            tile_layout_for "$(( ${#roll_photos_ref[@]} - i ))" \
+                "${roll_photos_ref[i]}" \
+                "$(( features_used < max_features \
+                    && i + feature_tail_margin < ${#roll_photos_ref[@]} ? 1 : 0 ))"
+        )
+        if [ "$layout" = feature ]; then
+            (( ++features_used ))
+            (( total_cells += 4 ))
+        else
+            (( ++total_cells ))
+        fi
+        roll_layouts_ref+=("$layout")
+        roll_starts_ref+=("$i")
+        roll_counts_ref+=("$count")
+        (( i += count ))
+    done
+
+    # Pass 2: force the cell total onto a multiple of 12 so the grid is flush
+    # at every column breakpoint. Per-photo preview numbers are preserved.
+    _align_page_tiles_to_grid \
+        "$layouts_name" "$starts_name" "$counts_name" "$total_cells"
+}
+
+# Pass 3: emit the decided tile blocks in order into the buffer (passed by NAME).
+# Tile blocks are separated by a single newline; the first block is assigned, the
+# rest appended -- byte-identical to the old inline emit loop.
+_emit_page_tiles() {
+    local -r buffer_name="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r href_prefix="$1"; shift
+    local -r photos_name="$1"; shift
+    local -r layouts_name="$1"; shift
+    local -r starts_name="$1"; shift
+    local -r counts_name="$1"; shift
+    local -n emit_buffer_ref="$buffer_name"
+    local -n emit_photos_ref="$photos_name"
+    local -n emit_layouts_ref="$layouts_name"
+    local -n emit_starts_ref="$starts_name"
+    local -n emit_counts_ref="$counts_name"
+    local block
     local -i t
+
+    for (( t = 0; t < ${#emit_layouts_ref[@]}; t++ )); do
+        block=$(build_tile_block \
+            "$thumbs_dir" "$backhref" "$href_prefix" "${emit_layouts_ref[t]}" \
+            "$(( emit_starts_ref[t] + 1 ))" \
+            "${emit_photos_ref[@]:${emit_starts_ref[t]}:${emit_counts_ref[t]}}")
+        if [ -z "$emit_buffer_ref" ]; then
+            emit_buffer_ref="$block"
+        else
+            emit_buffer_ref+=$'\n'"$block"
+        fi
+    done
+}
+
+append_preview_grid() {
+    local -r buffer_name="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r href_prefix="$1"; shift
+    # 'yes' only for the main album's LAST page: when such a page cannot be
+    # aligned to a multiple of 12 (a short final page with a leftover photo), its
+    # final single tile is widened to span the whole row so the bottom stays
+    # flush. Callers that must not do this (stats mini-albums) pass 'no'.
+    local -r fill_last="$1"; shift
+    local -a photos=("$@")
+    # Parallel records of the page's tiles: layout, the first photo's 0-based
+    # index, and how many photos the tile spans. Filled and read by the tile
+    # helpers below via nameref, which shellcheck cannot see from here.
+    # shellcheck disable=SC2034
+    local -a tile_layouts=()
+    # shellcheck disable=SC2034
+    local -a tile_starts=()
+    # shellcheck disable=SC2034
+    local -a tile_counts=()
 
     # A SHORT final page (the album's last page with too few photos to tile into
     # a clean rectangle) is built by a dedicated all-singles helper that is
@@ -3153,44 +3316,14 @@ append_preview_grid() {
         _build_final_page_tiles \
             tile_layouts tile_starts tile_counts "${#photos[@]}"
     else
-        # Pass 1: decide every tile (deterministic, seeded off each tile's first
-        # photo name). A 2x2 feature occupies 4 grid cells; every other tile 1.
-        while (( i < ${#photos[@]} )); do
-            read -r layout count < <(
-                tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}" \
-                    "$(( features_used < max_features \
-                        && i + feature_tail_margin < ${#photos[@]} ? 1 : 0 ))"
-            )
-            if [ "$layout" = feature ]; then
-                (( ++features_used ))
-                (( total_cells += 4 ))
-            else
-                (( ++total_cells ))
-            fi
-            tile_layouts+=("$layout")
-            tile_starts+=("$i")
-            tile_counts+=("$count")
-            (( i += count ))
-        done
-
-        # Pass 2: force the cell total onto a multiple of 12 so the grid is flush
-        # at every column breakpoint. Per-photo preview numbers are preserved.
-        _align_page_tiles_to_grid \
-            tile_layouts tile_starts tile_counts "$total_cells"
+        _roll_and_align_page_tiles \
+            photos tile_layouts tile_starts tile_counts
     fi
 
-    # Pass 3: emit the tile blocks in order.
-    for (( t = 0; t < ${#tile_layouts[@]}; t++ )); do
-        block=$(build_tile_block \
-            "$thumbs_dir" "$backhref" "$href_prefix" "${tile_layouts[t]}" \
-            "$(( tile_starts[t] + 1 ))" \
-            "${photos[@]:${tile_starts[t]}:${tile_counts[t]}}")
-        if [ -z "$buffer_ref" ]; then
-            buffer_ref="$block"
-        else
-            buffer_ref+=$'\n'"$block"
-        fi
-    done
+    # Pass 3: emit the (possibly merged) tiles into the caller's buffer.
+    _emit_page_tiles \
+        "$buffer_name" "$thumbs_dir" "$backhref" "$href_prefix" \
+        photos tile_layouts tile_starts tile_counts
 }
 
 # Render the HTML for a single preview thumbnail (HTML-escaping every value the
@@ -3880,6 +4013,66 @@ _album_record_view_photo() {
     ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$page_num-$preview_num"
 }
 
+# Process one page record: queue every photo's view+details render job, record
+# the view pages (into the rendered_view_pages / rendered_last_views arrays passed
+# by NAME), then queue the preview-page render. total_pages and prev_name decide
+# the "prev"/"next" links and whether the header bar shows (first page only).
+# Side effects only -- run in the same order as the original inline loop body.
+_render_album_page() {
+    local -r record="$1"; shift
+    local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    local -ri total_pages="$1"; shift
+    local -r prev_name="$1"; shift
+    local -r view_pages_name="$1"; shift
+    local -r last_views_name="$1"; shift
+
+    local header_bar
+    local name
+    local next_name
+    local -ri page_num=${record%%$'\t'*}
+    local photo
+    local -i preview_num
+    local -a page_photos=()
+
+    name=$(album_page_name "$page_num")
+    # The first page shows the header bar; later pages do not (matches the
+    # previous start_preview_page calls): prev_name is empty only on page 1.
+    if [ -z "$prev_name" ]; then
+        header_bar='yes'
+    else
+        header_bar='no'
+    fi
+
+    # Split the tab-separated photo list for this page into an array.
+    IFS=$'\t' read -r -a page_photos <<< "${record#*$'\t'}"
+
+    preview_num=0
+    for photo in "${page_photos[@]}"; do
+        (( ++preview_num ))
+        _album_record_view_photo \
+            "$photos_dir" "$blurs_dir" "$html_dir" "$backhref" \
+            "$tarball_name" "$page_num" "$preview_num" "$photo" \
+            render_jobs "$view_pages_name" "$last_views_name"
+    done
+
+    # A page has a "next" link unless it is the last record.
+    next_name=''
+    if (( page_num < total_pages )); then
+        next_name=$(album_page_name "$(( page_num + 1 ))")
+    fi
+    queue_preview_page_render_job \
+        "$photos_dir" "$html_dir" "$thumbs_dir" "$blurs_dir" "$backhref" \
+        "$tarball_name" "$name" "$page_num" "$header_bar" \
+        "$prev_name" "$next_name" \
+        render_jobs \
+        "${page_photos[@]}"
+}
+
 render_album_pages() {
     local -r photos_dir="$1"; shift
     local -r html_dir="$1"; shift
@@ -3888,20 +4081,13 @@ render_album_pages() {
     local -r backhref="$1"; shift
     local -r tarball_name="$1"; shift
 
-    local header_bar
-    local name
-    local next_name
-    local page_num
-    local photo
     local prev_name=''
     local record
-    local -i preview_num
     # Passed by name to record_rendered_view_page and render_view_redirects.
     # shellcheck disable=SC2034
     local -A rendered_last_views=()
     # shellcheck disable=SC2034
     local -a rendered_view_pages=()
-    local -a page_photos=()
     local -a page_records=()
 
     # Render job pool (max IMAGE_JOBS concurrent), addressed by the single handle
@@ -3919,42 +4105,15 @@ render_album_pages() {
     # knows up front whether it has a following page (and thus a "next" link).
     mapfile -t page_records < <(album_page_records "$photos_dir")
 
+    # Walk the page records in order, threading prev_name from page to page so
+    # each page's "prev" link points at the one before it. _render_album_page does
+    # all the per-page work; the carried prev_name is just the previous page name.
     for record in "${page_records[@]}"; do
-        page_num=${record%%$'\t'*}
-        name=$(album_page_name "$page_num")
-        # The first page shows the header bar; later pages do not (matches the
-        # previous start_preview_page calls).
-        if [ -z "$prev_name" ]; then
-            header_bar='yes'
-        else
-            header_bar='no'
-        fi
-
-        # Split the tab-separated photo list for this page into an array.
-        IFS=$'\t' read -r -a page_photos <<< "${record#*$'\t'}"
-
-        preview_num=0
-        for photo in "${page_photos[@]}"; do
-            (( ++preview_num ))
-            _album_record_view_photo \
-                "$photos_dir" "$blurs_dir" "$html_dir" "$backhref" \
-                "$tarball_name" "$page_num" "$preview_num" "$photo" \
-                render_jobs rendered_view_pages rendered_last_views
-        done
-
-        # A page has a "next" link unless it is the last record.
-        next_name=''
-        if (( page_num < ${#page_records[@]} )); then
-            next_name=$(album_page_name "$(( page_num + 1 ))")
-        fi
-        queue_preview_page_render_job \
-            "$photos_dir" "$html_dir" "$thumbs_dir" "$blurs_dir" "$backhref" \
-            "$tarball_name" "$name" "$page_num" "$header_bar" \
-            "$prev_name" "$next_name" \
-            render_jobs \
-            "${page_photos[@]}"
-
-        prev_name="$name"
+        _render_album_page \
+            "$record" "$photos_dir" "$html_dir" "$thumbs_dir" "$blurs_dir" \
+            "$backhref" "$tarball_name" "${#page_records[@]}" "$prev_name" \
+            rendered_view_pages rendered_last_views
+        prev_name=$(album_page_name "${record%%$'\t'*}")
     done
 
     if ! job_pool_wait render_jobs; then

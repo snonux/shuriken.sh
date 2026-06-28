@@ -48,7 +48,10 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_original_basepath"]="$ORIGINAL_BASEPATH"
 }
 
-_generation_metadata_json() {
+# Emit the generator/generated_at/config_source/template/source/generated/tarball
+# JSON sections (everything before "settings"). All read the _GENERATION_METADATA
+# global the collector populated; split out only to keep the serialiser short.
+_generation_metadata_json_head() {
     printf '{\n'
     printf '  "generator": {\n'
     printf '    "name": %s,\n' \
@@ -86,6 +89,11 @@ _generation_metadata_json() {
     printf '    "file": %s\n' \
         "$(json_string "${_GENERATION_METADATA["tarball_file"]}")"
     printf '  },\n'
+}
+
+# Emit the "settings" object and the closing brace. Split from the head so each
+# half stays around 30 lines; identical byte output to the original one-shot.
+_generation_metadata_json_settings() {
     printf '  "settings": {\n'
     printf '    "title": %s,\n' \
         "$(json_string "${_GENERATION_METADATA["settings_title"]}")"
@@ -113,6 +121,13 @@ _generation_metadata_json() {
         "$(json_string "${_GENERATION_METADATA["settings_original_basepath"]}")"
     printf '  }\n'
     printf '}\n'
+}
+
+# Serialise _GENERATION_METADATA to the dist/shuriken.json layout. Thin
+# orchestrator over the head + settings emitters above.
+_generation_metadata_json() {
+    _generation_metadata_json_head
+    _generation_metadata_json_settings
 }
 
 write_generation_metadata() {

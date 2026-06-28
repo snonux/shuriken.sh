@@ -97,22 +97,27 @@ _photo_exif_values_to() {
         < <(cached_photo_identify_output "$photo" "$photo_path")
 }
 
-_photo_exif_tooltip_text_from_values() {
+# Build the ordered "Label: value" tooltip parts from a parsed EXIF values map.
+# Reads the values map by NAME (exif_name) and appends to the parts array passed
+# by NAME (parts_name); only present fields are added, preserving the original
+# Camera/Aperture/ISO/Shutter speed/Taken order. The nameref names are unique so
+# they cannot collide with the caller's own variable names.
+_collect_exif_tooltip_parts() {
     local -r exif_name="$1"; shift
-    local -n values_ref="$exif_name"
+    local -r parts_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n collect_parts_ref="$parts_name"
+    local -n collect_values_ref="$exif_name"
     local aperture
     local camera
     local date_time
     local iso
-    local key
     local make
     local model
-    local separator=''
     local shutter_speed
-    local -a tooltip_parts=()
 
-    make="${values_ref[Make]:-}"
-    model="${values_ref[Model]:-}"
+    make="${collect_values_ref[Make]:-}"
+    model="${collect_values_ref[Model]:-}"
     # Dedup the manufacturer prefix via the shared helper (task mn0) so this
     # tooltip and the stats leaderboard derive identical camera labels.
     camera=$(camera_label_from_make_model "$make" "$model")
@@ -126,28 +131,51 @@ _photo_exif_tooltip_text_from_values() {
         DateTimeOriginal DateTimeDigitized DateTime
 
     if [ -n "$camera" ]; then
-        tooltip_parts+=("Camera: $camera")
+        collect_parts_ref+=("Camera: $camera")
     fi
     if [ -n "$aperture" ]; then
-        tooltip_parts+=("Aperture: $aperture")
+        collect_parts_ref+=("Aperture: $aperture")
     fi
     if [ -n "$iso" ]; then
-        tooltip_parts+=("ISO: $iso")
+        collect_parts_ref+=("ISO: $iso")
     fi
     if [ -n "$shutter_speed" ]; then
-        tooltip_parts+=("Shutter speed: $shutter_speed")
+        collect_parts_ref+=("Shutter speed: $shutter_speed")
     fi
     if [ -n "$date_time" ]; then
-        tooltip_parts+=("Taken: $date_time")
+        collect_parts_ref+=("Taken: $date_time")
     fi
+}
 
-    for key in "${tooltip_parts[@]}"; do
+# Print the collected tooltip parts joined by "; ", with a trailing newline only
+# when at least one part exists (so an EXIF-less photo prints nothing). Reads the
+# parts array by NAME.
+_emit_exif_tooltip_parts() {
+    local -r parts_name="$1"; shift
+    local -n emit_parts_ref="$parts_name"
+    local key
+    local separator=''
+
+    for key in "${emit_parts_ref[@]}"; do
         printf '%s%s' "$separator" "$key"
         separator='; '
     done
-    if (( ${#tooltip_parts[@]} > 0 )); then
+    if (( ${#emit_parts_ref[@]} > 0 )); then
         printf '\n'
     fi
+}
+
+# Thin orchestrator: collect the EXIF tooltip parts from a parsed values map,
+# then emit them. Output is byte-identical to the previous single function.
+_photo_exif_tooltip_text_from_values() {
+    local -r exif_name="$1"; shift
+    # Populated by _collect_exif_tooltip_parts via nameref; shellcheck cannot see
+    # that cross-function write.
+    # shellcheck disable=SC2034
+    local -a tooltip_parts=()
+
+    _collect_exif_tooltip_parts "$exif_name" tooltip_parts
+    _emit_exif_tooltip_parts tooltip_parts
 }
 
 photo_exif_tooltip_text() {

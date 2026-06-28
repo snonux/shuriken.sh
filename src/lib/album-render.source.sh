@@ -524,6 +524,66 @@ _album_record_view_photo() {
     ALBUM_VIEW_PAGE_BY_PHOTO["$photo"]="$page_num-$preview_num"
 }
 
+# Process one page record: queue every photo's view+details render job, record
+# the view pages (into the rendered_view_pages / rendered_last_views arrays passed
+# by NAME), then queue the preview-page render. total_pages and prev_name decide
+# the "prev"/"next" links and whether the header bar shows (first page only).
+# Side effects only -- run in the same order as the original inline loop body.
+_render_album_page() {
+    local -r record="$1"; shift
+    local -r photos_dir="$1"; shift
+    local -r html_dir="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r blurs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r tarball_name="$1"; shift
+    local -ri total_pages="$1"; shift
+    local -r prev_name="$1"; shift
+    local -r view_pages_name="$1"; shift
+    local -r last_views_name="$1"; shift
+
+    local header_bar
+    local name
+    local next_name
+    local -ri page_num=${record%%$'\t'*}
+    local photo
+    local -i preview_num
+    local -a page_photos=()
+
+    name=$(album_page_name "$page_num")
+    # The first page shows the header bar; later pages do not (matches the
+    # previous start_preview_page calls): prev_name is empty only on page 1.
+    if [ -z "$prev_name" ]; then
+        header_bar='yes'
+    else
+        header_bar='no'
+    fi
+
+    # Split the tab-separated photo list for this page into an array.
+    IFS=$'\t' read -r -a page_photos <<< "${record#*$'\t'}"
+
+    preview_num=0
+    for photo in "${page_photos[@]}"; do
+        (( ++preview_num ))
+        _album_record_view_photo \
+            "$photos_dir" "$blurs_dir" "$html_dir" "$backhref" \
+            "$tarball_name" "$page_num" "$preview_num" "$photo" \
+            render_jobs "$view_pages_name" "$last_views_name"
+    done
+
+    # A page has a "next" link unless it is the last record.
+    next_name=''
+    if (( page_num < total_pages )); then
+        next_name=$(album_page_name "$(( page_num + 1 ))")
+    fi
+    queue_preview_page_render_job \
+        "$photos_dir" "$html_dir" "$thumbs_dir" "$blurs_dir" "$backhref" \
+        "$tarball_name" "$name" "$page_num" "$header_bar" \
+        "$prev_name" "$next_name" \
+        render_jobs \
+        "${page_photos[@]}"
+}
+
 render_album_pages() {
     local -r photos_dir="$1"; shift
     local -r html_dir="$1"; shift
@@ -532,20 +592,13 @@ render_album_pages() {
     local -r backhref="$1"; shift
     local -r tarball_name="$1"; shift
 
-    local header_bar
-    local name
-    local next_name
-    local page_num
-    local photo
     local prev_name=''
     local record
-    local -i preview_num
     # Passed by name to record_rendered_view_page and render_view_redirects.
     # shellcheck disable=SC2034
     local -A rendered_last_views=()
     # shellcheck disable=SC2034
     local -a rendered_view_pages=()
-    local -a page_photos=()
     local -a page_records=()
 
     # Render job pool (max IMAGE_JOBS concurrent), addressed by the single handle
@@ -563,42 +616,15 @@ render_album_pages() {
     # knows up front whether it has a following page (and thus a "next" link).
     mapfile -t page_records < <(album_page_records "$photos_dir")
 
+    # Walk the page records in order, threading prev_name from page to page so
+    # each page's "prev" link points at the one before it. _render_album_page does
+    # all the per-page work; the carried prev_name is just the previous page name.
     for record in "${page_records[@]}"; do
-        page_num=${record%%$'\t'*}
-        name=$(album_page_name "$page_num")
-        # The first page shows the header bar; later pages do not (matches the
-        # previous start_preview_page calls).
-        if [ -z "$prev_name" ]; then
-            header_bar='yes'
-        else
-            header_bar='no'
-        fi
-
-        # Split the tab-separated photo list for this page into an array.
-        IFS=$'\t' read -r -a page_photos <<< "${record#*$'\t'}"
-
-        preview_num=0
-        for photo in "${page_photos[@]}"; do
-            (( ++preview_num ))
-            _album_record_view_photo \
-                "$photos_dir" "$blurs_dir" "$html_dir" "$backhref" \
-                "$tarball_name" "$page_num" "$preview_num" "$photo" \
-                render_jobs rendered_view_pages rendered_last_views
-        done
-
-        # A page has a "next" link unless it is the last record.
-        next_name=''
-        if (( page_num < ${#page_records[@]} )); then
-            next_name=$(album_page_name "$(( page_num + 1 ))")
-        fi
-        queue_preview_page_render_job \
-            "$photos_dir" "$html_dir" "$thumbs_dir" "$blurs_dir" "$backhref" \
-            "$tarball_name" "$name" "$page_num" "$header_bar" \
-            "$prev_name" "$next_name" \
-            render_jobs \
-            "${page_photos[@]}"
-
-        prev_name="$name"
+        _render_album_page \
+            "$record" "$photos_dir" "$html_dir" "$thumbs_dir" "$blurs_dir" \
+            "$backhref" "$tarball_name" "${#page_records[@]}" "$prev_name" \
+            rendered_view_pages rendered_last_views
+        prev_name=$(album_page_name "${record%%$'\t'*}")
     done
 
     if ! job_pool_wait render_jobs; then

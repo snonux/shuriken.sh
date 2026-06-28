@@ -98,7 +98,9 @@ collect_dry_run_plan() {
     collect_dry_run_page_plan "$plan_name" "$image_count"
 }
 
-print_dry_run_plan() {
+# Print the scalar settings block (config source through tarball name plan).
+# Takes the plan array NAME and re-binds its own nameref so callers stay simple.
+_print_dry_run_settings() {
     local -r plan_name="$1"; shift
     # shellcheck disable=SC2178
     local -n plan_ref="$plan_name"
@@ -122,6 +124,14 @@ print_dry_run_plan() {
     printf 'Image count: %s\n' "${plan_ref["image_count"]}"
     printf 'Tarball setting: %s\n' "${plan_ref["tarball_include"]}"
     printf 'Tarball name plan: %s\n' "${plan_ref["tarball_name_plan"]}"
+}
+
+# Print the planned directories and generated-files listing (index/favicon/json,
+# image dirs, page/view/details/redirect counts, optional stats + tarball lines).
+_print_dry_run_files() {
+    local -r plan_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n plan_ref="$plan_name"
 
     printf 'Planned directories:\n'
     printf '  %s\n' "${plan_ref["dist_dir"]}"
@@ -165,4 +175,13 @@ print_dry_run_plan() {
         printf '  %s/%s\n' \
             "${plan_ref["dist_dir"]}" "${plan_ref["tarball_name_plan"]}"
     fi
+}
+
+# Thin orchestrator: print the settings block then the planned files listing.
+# Output is byte-identical to the previous single-function version.
+print_dry_run_plan() {
+    local -r plan_name="$1"; shift
+
+    _print_dry_run_settings "$plan_name"
+    _print_dry_run_files "$plan_name"
 }

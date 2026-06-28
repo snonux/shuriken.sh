@@ -29,22 +29,29 @@
 # the fixed 2/3/4/6-column grid is a complete rectangle -- a flush last row -- at
 # every width; (3) emit the (possibly merged) tiles. Splitting decide-from-emit
 # is what lets pass 2 adjust the layout before any HTML is built.
-append_preview_grid() {
-    local -n buffer_ref="$1"; shift
-    local -r thumbs_dir="$1"; shift
-    local -r backhref="$1"; shift
-    local -r href_prefix="$1"; shift
-    # 'yes' only for the main album's LAST page: when such a page cannot be
-    # aligned to a multiple of 12 (a short final page with a leftover photo), its
-    # final single tile is widened to span the whole row so the bottom stays
-    # flush. Callers that must not do this (stats mini-albums) pass 'no'.
-    local -r fill_last="$1"; shift
-    local -a photos=("$@")
+# Pass 1 + pass 2 for a normal (non-short-final) page: roll the photo list into
+# tiles, then align the cell total to a multiple of 12. Reads the photos array by
+# NAME (photos_name) and fills the three parallel tile arrays (layouts/starts/
+# counts) by NAME -- the names are unique so they cannot collide with the caller's
+# locals. Self-contained pass-1 state (features_used, total_cells) stays local
+# here; only the aligned tile arrays escape. Identical tile decisions to the old
+# inline code, so the flush-grid layout is unchanged.
+_roll_and_align_page_tiles() {
+    local -r photos_name="$1"; shift
+    local -r layouts_name="$1"; shift
+    local -r starts_name="$1"; shift
+    local -r counts_name="$1"; shift
+    local -n roll_photos_ref="$photos_name"
+    # shellcheck disable=SC2178
+    local -n roll_layouts_ref="$layouts_name"
+    # shellcheck disable=SC2178
+    local -n roll_starts_ref="$starts_name"
+    # shellcheck disable=SC2178
+    local -n roll_counts_ref="$counts_name"
     local -i i=0
     local -i count
     local -i total_cells=0
     local layout
-    local block
     # Cap the big 2x2 feature tiles at this many per page; once reached, later
     # tiles are no longer offered the "feature" layout (they fall back to
     # subdivided/single), so a page never gets crowded with hero tiles.
@@ -58,12 +65,87 @@ append_preview_grid() {
     # column count. This also disables features on pages too short to host one
     # safely (a feature needs >= feature_tail_margin photos after it).
     local -ri feature_tail_margin=16
-    # Parallel records of the page's tiles: layout, the first photo's 0-based
-    # index, and how many photos the tile spans.
-    local -a tile_layouts=()
-    local -a tile_starts=()
-    local -a tile_counts=()
+
+    # Pass 1: decide every tile (deterministic, seeded off each tile's first
+    # photo name). A 2x2 feature occupies 4 grid cells; every other tile 1.
+    while (( i < ${#roll_photos_ref[@]} )); do
+        read -r layout count < <(
+            tile_layout_for "$(( ${#roll_photos_ref[@]} - i ))" \
+                "${roll_photos_ref[i]}" \
+                "$(( features_used < max_features \
+                    && i + feature_tail_margin < ${#roll_photos_ref[@]} ? 1 : 0 ))"
+        )
+        if [ "$layout" = feature ]; then
+            (( ++features_used ))
+            (( total_cells += 4 ))
+        else
+            (( ++total_cells ))
+        fi
+        roll_layouts_ref+=("$layout")
+        roll_starts_ref+=("$i")
+        roll_counts_ref+=("$count")
+        (( i += count ))
+    done
+
+    # Pass 2: force the cell total onto a multiple of 12 so the grid is flush
+    # at every column breakpoint. Per-photo preview numbers are preserved.
+    _align_page_tiles_to_grid \
+        "$layouts_name" "$starts_name" "$counts_name" "$total_cells"
+}
+
+# Pass 3: emit the decided tile blocks in order into the buffer (passed by NAME).
+# Tile blocks are separated by a single newline; the first block is assigned, the
+# rest appended -- byte-identical to the old inline emit loop.
+_emit_page_tiles() {
+    local -r buffer_name="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r href_prefix="$1"; shift
+    local -r photos_name="$1"; shift
+    local -r layouts_name="$1"; shift
+    local -r starts_name="$1"; shift
+    local -r counts_name="$1"; shift
+    local -n emit_buffer_ref="$buffer_name"
+    local -n emit_photos_ref="$photos_name"
+    local -n emit_layouts_ref="$layouts_name"
+    local -n emit_starts_ref="$starts_name"
+    local -n emit_counts_ref="$counts_name"
+    local block
     local -i t
+
+    for (( t = 0; t < ${#emit_layouts_ref[@]}; t++ )); do
+        block=$(build_tile_block \
+            "$thumbs_dir" "$backhref" "$href_prefix" "${emit_layouts_ref[t]}" \
+            "$(( emit_starts_ref[t] + 1 ))" \
+            "${emit_photos_ref[@]:${emit_starts_ref[t]}:${emit_counts_ref[t]}}")
+        if [ -z "$emit_buffer_ref" ]; then
+            emit_buffer_ref="$block"
+        else
+            emit_buffer_ref+=$'\n'"$block"
+        fi
+    done
+}
+
+append_preview_grid() {
+    local -r buffer_name="$1"; shift
+    local -r thumbs_dir="$1"; shift
+    local -r backhref="$1"; shift
+    local -r href_prefix="$1"; shift
+    # 'yes' only for the main album's LAST page: when such a page cannot be
+    # aligned to a multiple of 12 (a short final page with a leftover photo), its
+    # final single tile is widened to span the whole row so the bottom stays
+    # flush. Callers that must not do this (stats mini-albums) pass 'no'.
+    local -r fill_last="$1"; shift
+    local -a photos=("$@")
+    # Parallel records of the page's tiles: layout, the first photo's 0-based
+    # index, and how many photos the tile spans. Filled and read by the tile
+    # helpers below via nameref, which shellcheck cannot see from here.
+    # shellcheck disable=SC2034
+    local -a tile_layouts=()
+    # shellcheck disable=SC2034
+    local -a tile_starts=()
+    # shellcheck disable=SC2034
+    local -a tile_counts=()
 
     # A SHORT final page (the album's last page with too few photos to tile into
     # a clean rectangle) is built by a dedicated all-singles helper that is
@@ -75,44 +157,14 @@ append_preview_grid() {
         _build_final_page_tiles \
             tile_layouts tile_starts tile_counts "${#photos[@]}"
     else
-        # Pass 1: decide every tile (deterministic, seeded off each tile's first
-        # photo name). A 2x2 feature occupies 4 grid cells; every other tile 1.
-        while (( i < ${#photos[@]} )); do
-            read -r layout count < <(
-                tile_layout_for "$(( ${#photos[@]} - i ))" "${photos[i]}" \
-                    "$(( features_used < max_features \
-                        && i + feature_tail_margin < ${#photos[@]} ? 1 : 0 ))"
-            )
-            if [ "$layout" = feature ]; then
-                (( ++features_used ))
-                (( total_cells += 4 ))
-            else
-                (( ++total_cells ))
-            fi
-            tile_layouts+=("$layout")
-            tile_starts+=("$i")
-            tile_counts+=("$count")
-            (( i += count ))
-        done
-
-        # Pass 2: force the cell total onto a multiple of 12 so the grid is flush
-        # at every column breakpoint. Per-photo preview numbers are preserved.
-        _align_page_tiles_to_grid \
-            tile_layouts tile_starts tile_counts "$total_cells"
+        _roll_and_align_page_tiles \
+            photos tile_layouts tile_starts tile_counts
     fi
 
-    # Pass 3: emit the tile blocks in order.
-    for (( t = 0; t < ${#tile_layouts[@]}; t++ )); do
-        block=$(build_tile_block \
-            "$thumbs_dir" "$backhref" "$href_prefix" "${tile_layouts[t]}" \
-            "$(( tile_starts[t] + 1 ))" \
-            "${photos[@]:${tile_starts[t]}:${tile_counts[t]}}")
-        if [ -z "$buffer_ref" ]; then
-            buffer_ref="$block"
-        else
-            buffer_ref+=$'\n'"$block"
-        fi
-    done
+    # Pass 3: emit the (possibly merged) tiles into the caller's buffer.
+    _emit_page_tiles \
+        "$buffer_name" "$thumbs_dir" "$backhref" "$href_prefix" \
+        photos tile_layouts tile_starts tile_counts
 }
 
 # Render the HTML for a single preview thumbnail (HTML-escaping every value the

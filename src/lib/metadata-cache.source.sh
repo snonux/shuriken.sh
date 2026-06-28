@@ -63,7 +63,6 @@ cached_photo_identify_output() {
     local cache_file
     local cached_signature=''
     local current_signature
-    local identify_status
 
     # Resolve the volatile EXIF cache dir via the shared exif_cache_dir() helper
     # (see its definition above for why it sits parallel to ./dist and survives a
@@ -85,6 +84,33 @@ cached_photo_identify_output() {
         fi
     fi
 
+    if ! _rebuild_photo_identify_cache "$photo" "$photo_path" \
+        "$cache_dir" "$cache_file" "$current_signature"; then
+        # Rebuild reported a failed identify: it already warned and removed the
+        # cache file, so there is nothing to print for this photo. Return 0 so
+        # one unreadable photo does not abort the backgrounded render job under
+        # `set -euo pipefail` (see the rebuild helper for the data-loss rationale).
+        return 0
+    fi
+
+    print_cached_photo_identify_output "$cache_file"
+}
+
+# Rebuild the identify cache file for one photo: write the signature line, then
+# append `identify -verbose` output. Returns 0 on success (cache_file now holds a
+# usable entry) and 1 on a failed identify, having warned and removed the
+# half-written cache file. Removing it is essential: a file holding only the
+# signature line is a valid-looking cache hit, so the next run would silently
+# reuse the empty result forever -- never retrying identify and never warning
+# again (the original data-loss bug). Deleting it makes the next run retry+warn.
+_rebuild_photo_identify_cache() {
+    local -r photo="$1"; shift
+    local -r photo_path="$1"; shift
+    local -r cache_dir="$1"; shift
+    local -r cache_file="$1"; shift
+    local -r current_signature="$1"; shift
+    local identify_status
+
     mkdir -p "$cache_dir"
     printf '%s\n' "$current_signature" > "$cache_file"
 
@@ -98,24 +124,17 @@ cached_photo_identify_output() {
 
     if [ "$identify_status" -ne 0 ]; then
         # Failed identify (corrupt photo, timeout, missing binary, ...): warn
-        # naming the photo and remove the cache file. Removing it is essential:
-        # a file holding only the signature line is a valid-looking cache hit,
-        # so the next run would silently reuse the empty result forever -- never
-        # retrying identify and never warning again (the original data-loss bug).
-        # Deleting it makes the next run retry and warn.
-        #
-        # We deliberately do NOT abort: this runs inside backgrounded render jobs
-        # under `set -euo pipefail`, and one unreadable photo must not kill the
-        # whole generation. The photo still renders, just with empty tooltip and
-        # stats, now accompanied by a warning.
+        # naming the photo and remove the cache file (see this function's header
+        # for why removal matters). The caller turns our non-zero return into a
+        # graceful "skip this photo" so the whole generation is not killed.
         rm -f "$cache_file"
         log_warning \
             "could not read EXIF for $photo (ImageMagick identify failed);" \
             "tooltip/stats will be missing"
-        return 0
+        return 1
     fi
 
-    print_cached_photo_identify_output "$cache_file"
+    return 0
 }
 
 # Canonical `identify -verbose` stream parser. Reads an identify stream from
