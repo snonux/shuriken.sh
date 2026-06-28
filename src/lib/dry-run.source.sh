@@ -45,6 +45,25 @@ collect_dry_run_page_plan() {
     fi
 }
 
+# Gather every value the dry-run plan reports into an associative array, then
+# hand it to print_dry_run_plan.
+#
+# Deliberately NOT derived from CONFIG_SPECS (task mr0, consumer 6). CONFIG_SPECS
+# stays the single source of truth for the config SCHEMA (defaults, CLI,
+# validation, print_config formatting), and the config VALUES read below
+# ($INCOMING_DIR, $TITLE, $SPLASH_PAGE, ...) are the canonical globals
+# apply_config_defaults already fills from the registry -- so there is no second
+# source of truth for any config fact. But the plan is bespoke human-facing prose
+# that interleaves config with NON-config: derived/computed values (the image,
+# page, redirect and details counts, the planned tarball name, the index-page
+# count) and whole non-config sections ("Planned directories:", "Planned
+# generated files:") that have no registry entry. It also reports only a curated
+# subset of fields, each with its own label and several with bespoke conditional
+# rendering (splash-vs-redirect index line, stats/tarball blocks). Forcing this
+# through a registry facet would need per-line label + format encoding plus markers
+# for the non-config lines, contorting the schema for no DRY benefit (each label
+# appears once). So presentation stays hand-written here; the dry-run plan tests
+# assert the output byte-for-byte.
 collect_dry_run_plan() {
     local -r plan_name="$1"; shift
     # shellcheck disable=SC2178

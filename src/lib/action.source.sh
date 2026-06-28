@@ -143,6 +143,23 @@ load_configured_action() {
     export SHURIKEN_CONFIG_SOURCE
 }
 
+# Log the effective configuration for a configured action (verbose mode).
+#
+# Deliberately NOT derived from CONFIG_SPECS (task mr0, consumer 5). The registry
+# is the single source of truth for the config SCHEMA -- defaults, CLI
+# overridability, validation, and print_config formatting all derive from it, so
+# there is no competing source of truth for those facts. This log, by contrast,
+# is bespoke human-facing PROSE: a curated subset of fields (not all 25), each
+# with its own label ("Effective incoming directory:"), per-field decoration
+# (the "s" suffix on the *_TIMEOUT seconds, the "(bundled default)" placeholder
+# for an empty FAVICON), and two values that are NOT config variables at all
+# (the resolved rc_file path and SHURIKEN_FORCE_GENERATE). Encoding all that in a
+# registry facet would mean a per-field label string plus format directives plus
+# an in/out flag -- contorting the schema and harming readability for no DRY win,
+# since these strings appear exactly once. So formatting stays hand-written here;
+# the config VALUES it reads ($INCOMING_DIR, $SPLASH_PAGE, ...) are the canonical
+# globals, which apply_config_defaults already populates from CONFIG_SPECS.
+# Output is asserted byte-for-byte by the effective-config log tests.
 log_configured_action() {
     local -r rc_file="$1"; shift
 
