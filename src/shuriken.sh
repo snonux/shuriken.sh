@@ -151,6 +151,8 @@ source "$SHURIKEN_SOURCE_DIR/lib/config.print.source.sh"
 source "$SHURIKEN_SOURCE_DIR/lib/config.sync.source.sh"
 # shellcheck source=src/lib/config.staging.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/config.staging.source.sh"
+# shellcheck source=src/lib/config.clean-guard.source.sh
+source "$SHURIKEN_SOURCE_DIR/lib/config.clean-guard.source.sh"
 # shellcheck source=src/lib/config.validate.source.sh
 source "$SHURIKEN_SOURCE_DIR/lib/config.validate.source.sh"
 # shellcheck source=src/lib/config.cli.source.sh
