@@ -51,6 +51,8 @@ declare -Ar CLI_OPTION_SPEC=(
     [--feature]='kind=value config=THUMB_FEATURE_PERCENT'
     [--image-jobs]='kind=value config=IMAGE_JOBS'
     [--random-seed]='kind=value config=RANDOM_SEED'
+    [--chronological]='kind=flag value=yes config=CHRONOLOGICAL_ORDER'
+    [--no-chronological]='kind=flag value=no config=CHRONOLOGICAL_ORDER'
     [--shuffle]='kind=flag value=yes config=SHUFFLE'
     [--no-shuffle]='kind=flag value=no config=SHUFFLE'
     [--splash]='kind=flag value=yes config=SPLASH_PAGE'

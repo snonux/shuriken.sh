@@ -51,6 +51,8 @@ declare -Ar CLI_OPTION_SPEC=(
     [--feature]='kind=value config=THUMB_FEATURE_PERCENT'
     [--image-jobs]='kind=value config=IMAGE_JOBS'
     [--random-seed]='kind=value config=RANDOM_SEED'
+    [--chronological]='kind=flag value=yes config=CHRONOLOGICAL_ORDER'
+    [--no-chronological]='kind=flag value=no config=CHRONOLOGICAL_ORDER'
     [--shuffle]='kind=flag value=yes config=SHUFFLE'
     [--no-shuffle]='kind=flag value=no config=SHUFFLE'
     [--splash]='kind=flag value=yes config=SPLASH_PAGE'
@@ -294,6 +296,8 @@ usage() {
     --feature PERCENT
     --image-jobs N
     --random-seed VALUE
+    --chronological
+    --no-chronological
     --splash
     --no-splash
     --details
@@ -2573,6 +2577,29 @@ photo_exif_tooltip_text() {
     _photo_exif_tooltip_text_from_values exif_values
 }
 
+# A photo's EXIF date-taken, in the raw "YYYY:MM:DD HH:MM:SS" EXIF format.
+# Consumed by CHRONOLOGICAL_ORDER (album-photo-select.source.sh,
+# chronological_sort_key_for_photo) so ordering by "date taken" uses exactly the
+# same tag fallback chain (DateTimeOriginal -> DateTimeDigitized -> DateTime) as
+# the tooltip's "Taken:" field above -- one photo can't disagree with itself
+# about when it was taken depending on which feature asks. Empty when none of
+# the three tags is present (e.g. screenshots, downloaded images); callers
+# needing a value in that case supply their own deterministic fallback rather
+# than guessing a date here.
+photo_date_taken() {
+    local -r photo="$1"; shift
+    local -r photo_path="$1"; shift
+    # exif_values is populated and read through nameref helpers.
+    # shellcheck disable=SC2034
+    local -A exif_values=()
+    local date_time
+
+    _photo_exif_values_to exif_values "$photo" "$photo_path"
+    _first_exif_value_to date_time exif_values \
+        DateTimeOriginal DateTimeDigitized DateTime
+    printf '%s\n' "$date_time"
+}
+
 # Inlined from src/lib/generation-metadata.source.sh
 # Generation metadata: collect a snapshot of the run (generator version, source
 # and generated file counts, effective settings) and serialise it to the
@@ -2618,6 +2645,7 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_feature_percent"]="$THUMB_FEATURE_PERCENT"
     _GENERATION_METADATA["settings_image_jobs"]="$IMAGE_JOBS"
     _GENERATION_METADATA["settings_random_seed"]="$RANDOM_SEED"
+    _GENERATION_METADATA["settings_chronological_order"]="$CHRONOLOGICAL_ORDER"
     _GENERATION_METADATA["settings_shuffle"]="$SHUFFLE"
     _GENERATION_METADATA["settings_splash_page"]="$SPLASH_PAGE"
     _GENERATION_METADATA["settings_details_page"]="$DETAILS_PAGE"
@@ -2688,6 +2716,8 @@ _generation_metadata_json_settings() {
         "$(json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
     printf '    "random_seed": %s,\n' \
         "$(json_string "${_GENERATION_METADATA["settings_random_seed"]}")"
+    printf '    "chronological_order": %s,\n' \
+        "$(json_bool "${_GENERATION_METADATA["settings_chronological_order"]}")"
     printf '    "shuffle": %s,\n' \
         "$(json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
     printf '    "splash_page": %s,\n' \
@@ -2810,6 +2840,7 @@ collect_dry_run_plan() {
     plan_ref["feature_percent"]="$THUMB_FEATURE_PERCENT"
     plan_ref["image_jobs"]="$IMAGE_JOBS"
     plan_ref["random_seed"]="$RANDOM_SEED"
+    plan_ref["chronological_order"]="$CHRONOLOGICAL_ORDER"
     plan_ref["shuffle"]="$SHUFFLE"
     plan_ref["splash_page"]="$SPLASH_PAGE"
     plan_ref["details_page"]="$DETAILS_PAGE"
@@ -2845,6 +2876,7 @@ _print_dry_run_settings() {
     printf 'Feature percent: %s\n' "${plan_ref["feature_percent"]}"
     printf 'Image jobs: %s\n' "${plan_ref["image_jobs"]}"
     printf 'Random seed: %s\n' "${plan_ref["random_seed"]}"
+    printf 'Chronological order: %s\n' "${plan_ref["chronological_order"]}"
     printf 'Shuffle: %s\n' "${plan_ref["shuffle"]}"
     printf 'Splash page: %s\n' "${plan_ref["splash_page"]}"
     printf 'Details page: %s\n' "${plan_ref["details_page"]}"
@@ -3498,22 +3530,100 @@ build_preview_thumbnail() {
 # album-render.source.sh (task ar0) so the "which photos are in this album, in
 # what order, and which one do we pick for a background/splash" concern lives
 # apart from the page orchestration, the tile-layout deciders and the thumbnail
-# HTML. This is selection POLICY (shuffle/sort, splash-requires-a-blur, seeded
-# random pick) and changes for different reasons than the rendering plumbing.
+# HTML. This is selection POLICY (shuffle/sort/chronological, splash-requires-a-
+# blur, seeded random pick) and changes for different reasons than the
+# rendering plumbing.
 #
 # These helpers are called by the orchestrator (album-render.source.sh) and by
 # the per-page render jobs at runtime; all libs are sourced before any code runs,
 # so availability does not depend on source order.
 
-# Unlike the other photo listings this one keeps its own find rather than using
-# list_photos (photo-list.source.sh): it pipes through maybe_shuffle, not sort,
-# because the album's display order is the configurable (seeded) shuffle, not a
-# plain sort. Uses $FIND (compat.source.sh) since -printf is a GNU-only action.
+# Main album display order, in precedence order (task 8v0):
+#   1. CHRONOLOGICAL_ORDER=yes -> chronological_photo_files (EXIF date taken,
+#      ascending, falling back to mtime for photos without one).
+#   2. otherwise -> the historical maybe_shuffle path (seeded/random SHUFFLE, or
+#      plain filename sort when SHUFFLE=no).
+# CHRONOLOGICAL_ORDER therefore takes precedence over SHUFFLE when both are
+# set: a chronological album is meant to read as a timeline, so an enabled
+# shuffle must not silently re-scramble it. This is deliberately a config-level
+# choice rather than an error, so flipping SHUFFLE on/off (e.g. via the CLI
+# flags) while experimenting does not require also touching
+# CHRONOLOGICAL_ORDER. Unlike the other photo listings this one keeps its own
+# find rather than using list_photos (photo-list.source.sh): both order modes
+# need the raw filename list before applying their own ordering, not a plain
+# sort. Uses $FIND (compat.source.sh) since -printf is a GNU-only action.
 album_photo_files() {
     local -r photos_dir="$1"; shift
 
+    if [ "$CHRONOLOGICAL_ORDER" = yes ]; then
+        chronological_photo_files "$photos_dir"
+        return
+    fi
+
     "$FIND" "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
         | maybe_shuffle
+}
+
+# Build the sort key chronological_photo_files uses to order one photo: a
+# tab-separated "<group>\t<time>\t<photo>" line consumed by a plain lexicographic
+# sort (see chronological_photo_files). EXIF reads always target the INCOMING_DIR
+# original (matching photo_exif_tooltip_text/photo_exif_details_html), not the
+# resized DIST_DIR copy, so ordering and tooltip/details agree about a photo's
+# taken time and both share the same identify cache entry.
+#
+#   group  0 when photo_date_taken (album-metadata.source.sh) found a real EXIF
+#          date, 1 otherwise. Group 0 always sorts before group 1, so photos
+#          with a genuine timestamp are never displaced by an approximate
+#          fallback for photos that lack one.
+#   time   the EXIF date normalized from "YYYY:MM:DD HH:MM:SS" to a 14-digit
+#          "YYYYMMDDHHMMSS" string (colons/space just stripped -- the calendar
+#          substrings are untouched, so this stays safe even though the EXIF
+#          string is not `date -d`-parseable, see docs/stats-exif-audit.md) for
+#          group 0, or the INCOMING_DIR file's mtime (compat.source.sh $STAT,
+#          zero-padded so it sorts lexicographically) for group 1. Fixed width
+#          within each group keeps a plain sort numerically correct.
+#   photo  final tiebreaker so photos sharing a timestamp (e.g. burst shots) or
+#          missing both an EXIF date and a readable mtime still sort in a
+#          stable, reproducible order across regenerations of the same
+#          incoming set.
+chronological_sort_key_for_photo() {
+    local -r photo="$1"; shift
+    local date_time
+    local mtime
+
+    date_time=$(photo_date_taken "$photo" "$INCOMING_DIR/$photo")
+    if [[ "$date_time" =~ ^([0-9]{4}):([0-9]{2}):([0-9]{2})\ ([0-9]{2}):([0-9]{2}):([0-9]{2})$ ]]; then
+        printf '0\t%s%s%s%s%s%s\t%s\n' \
+            "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" \
+            "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}" \
+            "$photo"
+        return
+    fi
+
+    # No usable EXIF date-taken (missing tag or a malformed value): fall back to
+    # the source file's mtime so ordering still reflects "roughly when this
+    # photo appeared" rather than an arbitrary readdir order, and stays fully
+    # deterministic across runs. A missing/unreadable source file (should not
+    # happen; INCOMING_DIR is validated before generation) reads as mtime 0 so
+    # this never aborts the render.
+    mtime=$("$STAT" -c '%Y' "$INCOMING_DIR/$photo" 2>/dev/null) || mtime=0
+    printf '1\t%020d\t%s\n' "$mtime" "$photo"
+}
+
+# Chronological ordering for CHRONOLOGICAL_ORDER=yes: every photo in
+# DIST_DIR/photos_dir, ordered ascending by chronological_sort_key_for_photo.
+# Explicit tab delimiter (rather than plain whitespace splitting) so a filename
+# containing a space (e.g. the "04 filename with spaces.jpg" test fixture) stays
+# one field instead of fracturing the sort/cut boundaries.
+chronological_photo_files() {
+    local -r photos_dir="$1"; shift
+
+    "$FIND" "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
+        | while IFS= read -r photo; do
+            chronological_sort_key_for_photo "$photo"
+        done \
+        | sort -t $'\t' -k1,1 -k2,2 \
+        | cut -f3-
 }
 
 # Pagination single source of truth (task nr0): how many preview pages a given
@@ -5952,6 +6062,7 @@ declare -gra CONFIG_SPECS=(
     'IMAGE_JOBS|3|yes|yes|required-posint|scalar'
     'IMAGEMAGICK_TIMEOUT|60|yes|no|posint|scalar'
     'RANDOM_SEED||yes|yes||scalar'
+    'CHRONOLOGICAL_ORDER|no|yes|yes|yesno|scalar'
     'SHUFFLE|no|yes|yes|yesno|scalar'
     'SPLASH_PAGE|yes|yes|yes|yesno|scalar'
     'DETAILS_PAGE|yes|yes|yes|yesno|scalar'
@@ -6887,6 +6998,7 @@ validate_common_config() {
         IMAGEMAGICK_TIMEOUT
         TAR_TIMEOUT
         SYNC_TIMEOUT
+        CHRONOLOGICAL_ORDER
         SHUFFLE
         SPLASH_PAGE
         DETAILS_PAGE
@@ -7310,6 +7422,7 @@ log_configured_action() {
     log_verbose "Effective image jobs: $IMAGE_JOBS"
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"
+    log_verbose "Effective chronological order setting: $CHRONOLOGICAL_ORDER"
     log_verbose "Effective splash page setting: $SPLASH_PAGE"
     log_verbose "Effective details page setting: $DETAILS_PAGE"
     log_verbose "Effective stats page setting: $STATS_PAGE"

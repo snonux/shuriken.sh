@@ -72,6 +72,8 @@ config variable documented in [configuration.md](configuration.md).
 | `--feature PERCENT` | `THUMB_FEATURE_PERCENT` |
 | `--image-jobs N` | `IMAGE_JOBS` |
 | `--random-seed VALUE` | `RANDOM_SEED` |
+| `--chronological` | `CHRONOLOGICAL_ORDER=yes` |
+| `--no-chronological` | `CHRONOLOGICAL_ORDER=no` |
 | `--shuffle` | `SHUFFLE=yes` |
 | `--no-shuffle` | `SHUFFLE=no` |
 | `--splash` | `SPLASH_PAGE=yes` |

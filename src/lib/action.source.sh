@@ -176,6 +176,7 @@ log_configured_action() {
     log_verbose "Effective image jobs: $IMAGE_JOBS"
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"
+    log_verbose "Effective chronological order setting: $CHRONOLOGICAL_ORDER"
     log_verbose "Effective splash page setting: $SPLASH_PAGE"
     log_verbose "Effective details page setting: $DETAILS_PAGE"
     log_verbose "Effective stats page setting: $STATS_PAGE"

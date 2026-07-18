@@ -298,6 +298,7 @@ validate_common_config() {
         IMAGEMAGICK_TIMEOUT
         TAR_TIMEOUT
         SYNC_TIMEOUT
+        CHRONOLOGICAL_ORDER
         SHUFFLE
         SPLASH_PAGE
         DETAILS_PAGE

@@ -90,6 +90,12 @@ timestamps, and `--shuffle` preview order remain non-deterministic. Set
 choices repeatable for stable tests or reproducible album builds. Use the same
 seed and inputs to produce the same HTML.
 
+`CHRONOLOGICAL_ORDER=yes` (see "Photo ordering" in
+[configuration.md](configuration.md)) is always deterministic regardless of
+`RANDOM_SEED`: it orders by each photo's EXIF date taken (with a source-mtime
+fallback), so it needs no seed to repeat, and it takes precedence over
+`SHUFFLE` when both are enabled.
+
 ## Parallelism and timeouts
 
 ImageMagick photo processing and per-photo HTML template rendering run in
@@ -111,9 +117,9 @@ metadata records:
 * generated photo, thumbnail, and HTML file counts;
 * tarball status (included + file);
 * effective settings (title, height, thumbheight, maxpreviews, subdivide
-  percent, feature percent, image jobs, random seed, shuffle, splash page,
-  details page, stats page, original basepath) useful for debugging a published
-  album.
+  percent, feature percent, image jobs, random seed, chronological order,
+  shuffle, splash page, details page, stats page, original basepath) useful for
+  debugging a published album.
 
 ## Favicon
 

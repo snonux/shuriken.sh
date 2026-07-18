@@ -18,7 +18,8 @@ values for the current run.
 | `IMAGE_JOBS` | `3` | Parallel jobs for image processing and HTML template rendering. Positive integer. |
 | `IMAGEMAGICK_TIMEOUT` | `60` | Per-ImageMagick-command timeout in seconds. Positive integer. |
 | `TAR_TIMEOUT` | `120` | Tarball creation timeout in seconds. Positive integer. |
-| `SHUFFLE` | `no` | Randomly shuffle all previews. `yes`/`no`. |
+| `CHRONOLOGICAL_ORDER` | `no` | Order the main album's photos chronologically by EXIF date taken (ascending), falling back to source mtime when a photo has no usable EXIF date. `yes`/`no`. Takes precedence over `SHUFFLE` when both are set. See "Photo ordering" below. |
+| `SHUFFLE` | `no` | Randomly shuffle all previews. `yes`/`no`. Ignored when `CHRONOLOGICAL_ORDER=yes`. |
 | `SPLASH_PAGE` | `yes` | Generate a splash landing page at `index.html`. `yes`/`no`. |
 | `DETAILS_PAGE` | `yes` | Generate each photo's `*-details.html` page (and its "Details" link). `yes`/`no`. See "Details pages" below. |
 | `STATS_PAGE` | `no` | Generate the EXIF stats site under `stats/`. `yes`/`no`. |
@@ -65,6 +66,26 @@ does not leave stale `*-details.html` files behind: generation stages the new
 output in a fresh directory and atomically replaces `DIST_DIR`, so files an
 older generation wrote but the current run does not produce are naturally gone.
 
+## Photo ordering
+
+By default the main album's photos are listed in plain filename order, or in a
+random/seeded shuffle when `SHUFFLE=yes` (see [generation.md](generation.md)
+for reproducibility). Set `CHRONOLOGICAL_ORDER=yes` (or pass `--chronological`)
+to instead order them chronologically by EXIF date taken (ascending), reusing
+the same `DateTimeOriginal` -> `DateTimeDigitized` -> `DateTime` tag fallback
+chain, and the same per-photo EXIF cache, as the "Taken:" tooltip field and the
+details page. A photo with none of those three tags falls back to its source
+file's modification time, so ordering is always fully deterministic and never
+crashes on EXIF-less photos (screenshots, downloaded images, ...); photos with
+a real EXIF date always sort before mtime-fallback photos, so an approximate
+fallback never displaces a genuine timestamp.
+
+**`CHRONOLOGICAL_ORDER` takes precedence over `SHUFFLE`** when both are set to
+`yes`: a chronological album is meant to read as a timeline, so an enabled
+shuffle is silently ignored rather than re-scrambling it. This is a config-level
+choice, not a validation error, so toggling `SHUFFLE` while experimenting does
+not require also touching `CHRONOLOGICAL_ORDER`.
+
 ## Supported source images
 
 Only regular files found directly in `INCOMING_DIR` (not in subdirectories) with
@@ -84,8 +105,9 @@ The checks (details in `src/lib/config.validate.source.sh`):
   `IMAGEMAGICK_TIMEOUT`, `TAR_TIMEOUT`; `HEIGHT` is an optional positive integer.
 * **Percentage (0-100 integer)**: `THUMB_SUBDIVIDE_PERCENT`,
   `THUMB_FEATURE_PERCENT`.
-* **`yes`/`no` settings**: `SHUFFLE`, `SPLASH_PAGE`, `DETAILS_PAGE`,
-  `STATS_PAGE`, `TARBALL_INCLUDE`, `SYNC_DELETE` (where applicable).
+* **`yes`/`no` settings**: `CHRONOLOGICAL_ORDER`, `SHUFFLE`, `SPLASH_PAGE`,
+  `DETAILS_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`, `SYNC_DELETE` (where
+  applicable).
 * **Readable input**: `INCOMING_DIR` must be a readable directory; `TEMPLATE_DIR`
   must be a readable directory containing the required templates (plus `splash`
   when `SPLASH_PAGE=yes`, and `details` when `DETAILS_PAGE=yes`).
@@ -107,9 +129,10 @@ Generation stops before writing album output when validation fails.
 `CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`,
 `SOURCE_URL`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
 `THUMB_SUBDIVIDE_PERCENT`, `THUMB_FEATURE_PERCENT`, `IMAGE_JOBS`,
-`IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `DETAILS_PAGE`,
-`STATS_PAGE`, `TARBALL_INCLUDE`, `TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`,
-`SYNC_DELETE`, `SYNC_DESTINATIONS`, `ORIGINAL_BASEPATH`.
+`IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `CHRONOLOGICAL_ORDER`, `SHUFFLE`,
+`SPLASH_PAGE`, `DETAILS_PAGE`, `STATS_PAGE`, `TARBALL_INCLUDE`,
+`TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, `SYNC_DELETE`,
+`SYNC_DESTINATIONS`, `ORIGINAL_BASEPATH`.
 
 Scalar values use Bash `%q` quoting; `TAR_OPTS` and `SYNC_DESTINATIONS` are
 normalized to Bash array assignments, so the output can be parsed by shell

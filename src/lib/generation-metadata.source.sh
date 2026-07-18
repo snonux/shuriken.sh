@@ -42,6 +42,7 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_feature_percent"]="$THUMB_FEATURE_PERCENT"
     _GENERATION_METADATA["settings_image_jobs"]="$IMAGE_JOBS"
     _GENERATION_METADATA["settings_random_seed"]="$RANDOM_SEED"
+    _GENERATION_METADATA["settings_chronological_order"]="$CHRONOLOGICAL_ORDER"
     _GENERATION_METADATA["settings_shuffle"]="$SHUFFLE"
     _GENERATION_METADATA["settings_splash_page"]="$SPLASH_PAGE"
     _GENERATION_METADATA["settings_details_page"]="$DETAILS_PAGE"
@@ -112,6 +113,8 @@ _generation_metadata_json_settings() {
         "$(json_string "${_GENERATION_METADATA["settings_image_jobs"]}")"
     printf '    "random_seed": %s,\n' \
         "$(json_string "${_GENERATION_METADATA["settings_random_seed"]}")"
+    printf '    "chronological_order": %s,\n' \
+        "$(json_bool "${_GENERATION_METADATA["settings_chronological_order"]}")"
     printf '    "shuffle": %s,\n' \
         "$(json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
     printf '    "splash_page": %s,\n' \

@@ -98,7 +98,8 @@ on Linux the default tools already are GNU, on macOS/FreeBSD install the
 Common per-run overrides (see the full reference table in [docs/usage.md](docs/usage.md)):
 
 `--incoming`, `--dist`, `--template`, `--title`, `--height`, `--thumbheight`,
-`--maxpreviews`, `--image-jobs`, `--random-seed`, `--shuffle`/`--no-shuffle`,
+`--maxpreviews`, `--image-jobs`, `--random-seed`,
+`--chronological`/`--no-chronological`, `--shuffle`/`--no-shuffle`,
 `--splash`/`--no-splash`, `--details`/`--no-details`, `--stats`/`--no-stats`,
 `--tarball`/`--no-tarball`, `--favicon`, `--source-url`, `--sync-destination`,
 `--sync-delete`/`--no-sync-delete`, `--quiet`, `--verbose`.
@@ -120,6 +121,11 @@ Feature toggles at a glance:
 * **Reproducible builds**: set `RANDOM_SEED` (or `--random-seed VALUE`) to make
   splash/background picks, animation classes, timestamps, and shuffle order
   repeatable.
+* **Chronological order** (`CHRONOLOGICAL_ORDER=no`, the default): set to
+  `yes` (or pass `--chronological`) to order the main album's photos by EXIF
+  date taken instead of filename/shuffle order, falling back to source mtime
+  for photos with no usable EXIF date. Takes precedence over `SHUFFLE` when
+  both are enabled.
 
 ## Documentation
 

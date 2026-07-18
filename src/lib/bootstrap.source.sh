@@ -32,6 +32,8 @@ usage() {
     --feature PERCENT
     --image-jobs N
     --random-seed VALUE
+    --chronological
+    --no-chronological
     --splash
     --no-splash
     --details

@@ -142,6 +142,7 @@ assert metadata["settings"]["maxpreviews"] == maxpreviews
 assert metadata["settings"]["subdivide_percent"] == "30"
 assert metadata["settings"]["feature_percent"] == "10"
 assert metadata["settings"]["image_jobs"] == "3"
+assert metadata["settings"]["chronological_order"] is False
 assert metadata["settings"]["shuffle"] is False
 assert isinstance(metadata["settings"]["splash_page"], bool)
 assert isinstance(metadata["settings"]["details_page"], bool)
@@ -1065,6 +1066,118 @@ test_generate_random_seed_repeats_html_with_shuffle() {
     test::teardown
 }
 
+# task 8v0: seed the six generate_fixture_images photos' EXIF cache entries with
+# a DateTimeOriginal that runs in the OPPOSITE order of their filenames (and of
+# the seeded shuffle used in the precedence test below), so neither a filename-
+# sort bug nor a shuffle-precedence bug could make either assertion pass by
+# accident. Cache files are pre-seeded (rather than routed through the fake
+# ImageMagick identify) using the same photo_cache_signature-based pattern as
+# test_stats_collect_reads_cached_identify_output, so the real --generate run
+# never has to invoke identify at all.
+test::seed_chronological_fixture_cache() {
+    local -r incoming_dir="$1"; shift
+    local -r cache_dir="$1"; shift
+
+    mkdir -p "$cache_dir"
+    (
+        test::source_shuriken_lib
+        seed_one() {
+            local -r photo="$1"; shift
+            local -r date_taken="$1"; shift
+            {
+                photo_cache_signature "$photo" "$incoming_dir/$photo"
+                printf '  exif:DateTimeOriginal: %s\n' "$date_taken"
+            } > "$cache_dir/$photo.txt"
+        }
+        seed_one '06-extra.jpg' '2019:01:01 08:00:00'
+        seed_one '05-extra.jpg' '2020:02:02 08:00:00'
+        seed_one '04 filename with spaces.jpg' '2021:03:03 08:00:00'
+        seed_one '03-square.jpg' '2022:04:04 08:00:00'
+        seed_one '02-portrait.jpg' '2023:05:05 08:00:00'
+        seed_one '01-landscape.jpg' '2024:06:06 08:00:00'
+    )
+}
+
+test_generate_chronological_order_sorts_by_exif_date_and_overrides_shuffle() {
+    local config_file
+    local fake_bin
+    local page_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::seed_chronological_fixture_cache \
+        "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/cache/exif"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Chronological album' 40
+    # SHUFFLE (with a seed, so it would otherwise be fully deterministic too) is
+    # also enabled, to prove CHRONOLOGICAL_ORDER takes precedence over SHUFFLE
+    # when both are set (see album-photo-select.source.sh, album_photo_files).
+    {
+        printf 'CHRONOLOGICAL_ORDER=yes\n'
+        printf 'SHUFFLE=yes\n'
+        printf 'RANDOM_SEED=chronological-precedence\n'
+    } >> "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
+    )
+
+    page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
+    test::assert_contains_before \
+        "id='06-extra.jpg'" "id='05-extra.jpg'" "$page_html"
+    test::assert_contains_before \
+        "id='05-extra.jpg'" "id='04 filename with spaces.jpg'" "$page_html"
+    test::assert_contains_before \
+        "id='04 filename with spaces.jpg'" "id='03-square.jpg'" "$page_html"
+    test::assert_contains_before \
+        "id='03-square.jpg'" "id='02-portrait.jpg'" "$page_html"
+    test::assert_contains_before \
+        "id='02-portrait.jpg'" "id='01-landscape.jpg'" "$page_html"
+
+    test::teardown
+}
+
+# Negative counterpart: with CHRONOLOGICAL_ORDER left at its default (no), the
+# same reversed EXIF dates must NOT affect ordering -- the album stays in plain
+# filename order, proving the new feature is off by default and does not change
+# existing behavior for albums that never set it.
+test_generate_chronological_order_default_off_keeps_filename_order() {
+    local config_file
+    local fake_bin
+    local page_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::seed_chronological_fixture_cache \
+        "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/cache/exif"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Filename order album' 40
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
+    )
+
+    page_html=$(<"$TEST_TMPDIR/dist/page-1.html")
+    test::assert_contains_before \
+        "id='01-landscape.jpg'" "id='06-extra.jpg'" "$page_html"
+
+    test::teardown
+}
+
 test_generate_cli_tarball_overrides_config() {
     local config_file
     local fake_bin
@@ -1728,6 +1841,7 @@ THUMB_FEATURE_PERCENT=10
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
+CHRONOLOGICAL_ORDER=no
 SHUFFLE=no
 SPLASH_PAGE=yes
 DETAILS_PAGE=yes
@@ -1781,6 +1895,7 @@ THUMB_FEATURE_PERCENT=10
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
+CHRONOLOGICAL_ORDER=no
 SHUFFLE=no
 SPLASH_PAGE=yes
 DETAILS_PAGE=yes
@@ -1927,6 +2042,7 @@ THUMB_FEATURE_PERCENT=10
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
+CHRONOLOGICAL_ORDER=no
 SHUFFLE=yes
 SPLASH_PAGE=yes
 DETAILS_PAGE=yes
@@ -1975,6 +2091,7 @@ THUMB_FEATURE_PERCENT=10
 IMAGE_JOBS=3
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
+CHRONOLOGICAL_ORDER=no
 SHUFFLE=no
 SPLASH_PAGE=yes
 DETAILS_PAGE=yes
@@ -2050,6 +2167,7 @@ THUMB_FEATURE_PERCENT=35
 IMAGE_JOBS=2
 IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=cli-seed
+CHRONOLOGICAL_ORDER=no
 SHUFFLE=yes
 SPLASH_PAGE=no
 DETAILS_PAGE=yes
@@ -3203,6 +3321,7 @@ test_generate_preflight_rejects_invalid_yes_no_values() {
     local incoming_dir
     local output
     local -a bool_vars=(
+        CHRONOLOGICAL_ORDER
         SHUFFLE
         SPLASH_PAGE
         DETAILS_PAGE
@@ -7160,6 +7279,74 @@ test_stats_collect_reads_cached_identify_output() {
     test::teardown
 }
 
+# task 8v0: chronological_photo_files (album-photo-select.source.sh) orders
+# photos by EXIF date taken, ascending, falling back to source mtime (and then
+# filename) for photos with no usable EXIF date. Exercises the function
+# directly (not a full --generate) for precise control over dates/mtimes, the
+# same pattern test_stats_collect_reads_cached_identify_output above uses for
+# the EXIF cache layer.
+test_chronological_photo_files_sorts_by_exif_date_with_mtime_fallback() {
+    local incoming_dir
+    local dist_dir
+    local cache_dir
+    local name
+    local -a ordered=()
+
+    test::setup
+    test::source_shuriken_lib
+
+    incoming_dir="$TEST_TMPDIR/incoming"
+    dist_dir="$TEST_TMPDIR/dist"
+    cache_dir="$TEST_TMPDIR/cache/exif"
+    mkdir -p "$incoming_dir" "$dist_dir/photos" "$cache_dir"
+
+    for name in a.jpg b.jpg c.jpg d.jpg; do
+        printf 'fake\n' > "$incoming_dir/$name"
+        printf 'fake\n' > "$dist_dir/photos/$name"
+    done
+
+    # a.jpg/d.jpg have no DateTimeOriginal/Digitized/DateTime tag at all (only
+    # an unrelated Make tag), so they must fall back to mtime. d.jpg's mtime is
+    # deliberately EARLIER than a.jpg's, and both are deliberately out of
+    # filename order, to prove the fallback is a real mtime sort rather than an
+    # accidental filename sort.
+    touch -d '2020-01-01 00:00:00' "$incoming_dir/d.jpg"
+    touch -d '2020-01-02 00:00:00' "$incoming_dir/a.jpg"
+
+    # b.jpg/c.jpg have a real EXIF date, deliberately reversed relative to their
+    # filenames (c.jpg is EARLIER than b.jpg) so a filename-sort bug would not
+    # accidentally pass this test either.
+    {
+        photo_cache_signature 'a.jpg' "$incoming_dir/a.jpg"
+        printf '  exif:Make: NoDateCam\n'
+    } > "$cache_dir/a.jpg.txt"
+    {
+        photo_cache_signature 'b.jpg' "$incoming_dir/b.jpg"
+        printf '  exif:DateTimeOriginal: 2023:06:14 15:30:00\n'
+    } > "$cache_dir/b.jpg.txt"
+    {
+        photo_cache_signature 'c.jpg' "$incoming_dir/c.jpg"
+        printf '  exif:DateTimeOriginal: 2021:01:01 00:00:00\n'
+    } > "$cache_dir/c.jpg.txt"
+    {
+        photo_cache_signature 'd.jpg' "$incoming_dir/d.jpg"
+        printf '  exif:Make: NoDateCam\n'
+    } > "$cache_dir/d.jpg.txt"
+
+    export INCOMING_DIR="$incoming_dir"
+    export DIST_DIR="$dist_dir"
+
+    mapfile -t ordered < <(chronological_photo_files photos)
+
+    # Real EXIF dates (c.jpg 2021, b.jpg 2023) sort before the mtime fallback
+    # group (d.jpg 2020-01-01, a.jpg 2020-01-02): a genuine timestamp is never
+    # displaced by an approximate fallback, even though the fallback group's
+    # own dates are chronologically earlier.
+    test "${ordered[*]}" = 'c.jpg b.jpg d.jpg a.jpg'
+
+    test::teardown
+}
+
 # Boundary test for the album/stats decoupling (task pn0). Proves two things:
 # 1) the album_view_page_for_photo accessor returns exactly what the private
 #    ALBUM_VIEW_PAGE_BY_PHOTO backing store holds (and "" for unknown photos), so
@@ -7440,6 +7627,12 @@ main() {
     test::run_case \
         '--generate --random-seed repeats HTML with shuffle' \
         test_generate_random_seed_repeats_html_with_shuffle
+    test::run_case \
+        '--generate CHRONOLOGICAL_ORDER sorts by EXIF date, overrides shuffle' \
+        test_generate_chronological_order_sorts_by_exif_date_and_overrides_shuffle
+    test::run_case \
+        '--generate CHRONOLOGICAL_ORDER default off keeps filename order' \
+        test_generate_chronological_order_default_off_keeps_filename_order
     test::run_case \
         '--generate --tarball overrides config' \
         test_generate_cli_tarball_overrides_config
@@ -7776,6 +7969,9 @@ main() {
     test::run_case \
         'stats collect reads cached identify output' \
         test_stats_collect_reads_cached_identify_output
+    test::run_case \
+        'chronological_photo_files sorts by EXIF date with mtime fallback' \
+        test_chronological_photo_files_sorts_by_exif_date_with_mtime_fallback
     test::run_case \
         'album/stats decoupling boundary (pn0)' \
         test_album_stats_decoupling_boundary

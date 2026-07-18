@@ -71,6 +71,7 @@ declare -gra CONFIG_SPECS=(
     'IMAGE_JOBS|3|yes|yes|required-posint|scalar'
     'IMAGEMAGICK_TIMEOUT|60|yes|no|posint|scalar'
     'RANDOM_SEED||yes|yes||scalar'
+    'CHRONOLOGICAL_ORDER|no|yes|yes|yesno|scalar'
     'SHUFFLE|no|yes|yes|yesno|scalar'
     'SPLASH_PAGE|yes|yes|yes|yesno|scalar'
     'DETAILS_PAGE|yes|yes|yes|yesno|scalar'

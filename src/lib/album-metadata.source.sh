@@ -188,3 +188,26 @@ photo_exif_tooltip_text() {
     _photo_exif_values_to exif_values "$photo" "$photo_path"
     _photo_exif_tooltip_text_from_values exif_values
 }
+
+# A photo's EXIF date-taken, in the raw "YYYY:MM:DD HH:MM:SS" EXIF format.
+# Consumed by CHRONOLOGICAL_ORDER (album-photo-select.source.sh,
+# chronological_sort_key_for_photo) so ordering by "date taken" uses exactly the
+# same tag fallback chain (DateTimeOriginal -> DateTimeDigitized -> DateTime) as
+# the tooltip's "Taken:" field above -- one photo can't disagree with itself
+# about when it was taken depending on which feature asks. Empty when none of
+# the three tags is present (e.g. screenshots, downloaded images); callers
+# needing a value in that case supply their own deterministic fallback rather
+# than guessing a date here.
+photo_date_taken() {
+    local -r photo="$1"; shift
+    local -r photo_path="$1"; shift
+    # exif_values is populated and read through nameref helpers.
+    # shellcheck disable=SC2034
+    local -A exif_values=()
+    local date_time
+
+    _photo_exif_values_to exif_values "$photo" "$photo_path"
+    _first_exif_value_to date_time exif_values \
+        DateTimeOriginal DateTimeDigitized DateTime
+    printf '%s\n' "$date_time"
+}
