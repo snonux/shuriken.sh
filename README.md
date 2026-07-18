@@ -8,13 +8,46 @@ JavaScript.
 
 ## Platform compatibility
 
-shuriken relies on **GNU** versions of the standard Unix tools. Specifically,
-it uses GNU-only extensions such as `find -printf`, `stat -c`, `cp -a`, and
-`sort -R`, which are not supported by the BSD variants shipped with macOS and
-BSD systems. As a result shuriken is currently **Linux-only** and will not run
-unmodified on macOS or BSD-based systems (including the stock tools that ship
-with macOS). If you are on macOS, run shuriken inside a Linux container or VM
-instead.
+shuriken relies on **GNU** versions of four standard Unix tools: it uses the
+GNU-only extensions `find -printf`, `stat -c`, `cp -a`, and `sort -R`, which
+are not supported by the BSD variants of those tools shipped with macOS and
+FreeBSD. shuriken runs on Linux, macOS, and FreeBSD: at startup it resolves
+each of the four tools to whichever binary is actually GNU, preferring a
+`g`-prefixed sibling (`gfind`, `gstat`, `gcp`, `gsort`) over the plain name
+when one is on `PATH` (mirroring the tool-selection variables used by the
+sibling [gemtexter](https://codeberg.org/snonux/gemtexter) project). On Linux
+the plain names are already GNU, so nothing extra is required. On macOS and
+FreeBSD you must install GNU coreutils/findutils first — shuriken verifies at
+startup that the resolved tools are genuinely GNU and exits with a clear error
+naming the missing tool otherwise, rather than failing confusingly deep inside
+generation.
+
+### Installing GNU coreutils on macOS
+
+Via [Homebrew](https://brew.sh):
+
+```sh
+brew install coreutils findutils
+```
+
+Homebrew installs these under their GNU names prefixed with `g`
+(`gstat`, `gcp`, `gsort` from `coreutils`; `gfind` from `findutils`) so they
+do not clobber the system BSD tools of the same bare name; shuriken picks them
+up automatically. (`brew install gnu-sed grep` are not required by shuriken
+today, but are commonly installed alongside for other GNU-reliant scripts.)
+
+### Installing GNU coreutils on FreeBSD
+
+Via `pkg`:
+
+```sh
+pkg install coreutils findutils
+```
+
+This installs the GNU tools under their `g`-prefixed names (`gstat`, `gcp`,
+`gsort`, `gfind`) alongside the base-system BSD tools, which shuriken picks up
+automatically. (`pkg install gsed gnugrep` are not required by shuriken today
+but provide `gsed`/`ggrep` for other GNU-reliant scripts.)
 
 ## Example site
 
@@ -43,9 +76,9 @@ shuriken --clean      # remove ./dist and leftover staging dirs
 ```
 
 ImageMagick (`magick` or `convert`) and Bash 5.1 or newer are required.
-GNU coreutils/findutils (the default `find`, `stat`, `cp`, and `sort` on a
-Linux distribution) are also required; the BSD/macOS equivalents are not
-sufficient (see *Platform compatibility* above).
+GNU coreutils/findutils (`find`, `stat`, `cp`, and `sort`) are also required;
+on Linux the default tools already are GNU, on macOS/FreeBSD install the
+`g`-prefixed GNU versions first (see *Platform compatibility* above).
 
 ## Main flags
 

@@ -23,11 +23,13 @@
 # suppressed (the stats background loader) adds its own 2>/dev/null. This is the
 # SORTED listing; album_photo_files deliberately keeps its own maybe_shuffle
 # variant because the album's display order is the configurable shuffle, not a
-# plain sort.
+# plain sort. Uses $FIND (compat.source.sh): -printf is GNU-only, so this must
+# run against the resolved GNU find, not whatever "find" plain resolves to on
+# macOS/FreeBSD. The trailing plain "sort" is POSIX-portable and left as-is.
 list_photos() {
     local -r photos_dir="$1"; shift
 
-    find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' | sort
+    "$FIND" "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' | sort
 }
 
 # Pick one seeded-random entry from an already-collected list, addressed by

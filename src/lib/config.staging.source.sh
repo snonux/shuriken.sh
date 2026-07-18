@@ -29,12 +29,14 @@ prepare_generation_staging_dir() {
         return
     fi
 
+    # $CP (compat.source.sh): -a (archive mode) is not supported by minimal/older
+    # BSD cp variants, so this must run against the resolved GNU cp.
     for cache_dir in photos thumbs blurs; do
         if [ -d "$final_dist/$cache_dir" ]; then
             if ! mkdir -p "$staging_dir/$cache_dir"; then
                 return 1
             fi
-            if ! cp -a "$final_dist/$cache_dir/." "$staging_dir/$cache_dir/"; then
+            if ! "$CP" -a "$final_dist/$cache_dir/." "$staging_dir/$cache_dir/"; then
                 return 1
             fi
         fi

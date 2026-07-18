@@ -29,12 +29,14 @@ exif_cache_dir() {
 # Build the cache signature line ("<photo>:<size>:<mtime>") used to decide
 # whether a cache entry is still valid for the source file. Kept private to this
 # module alongside its only consumers, plus the stats test that pre-seeds caches.
+# Uses $STAT (compat.source.sh): -c FORMAT is GNU-only (BSD/macOS stat uses -f
+# and rejects -c), so this must run against the resolved GNU stat.
 photo_cache_signature() {
     local -r photo="$1"; shift
     local -r photo_path="$1"; shift
     local stat_output
 
-    stat_output=$(stat -c '%s:%Y' "$photo_path")
+    stat_output=$("$STAT" -c '%s:%Y' "$photo_path")
     printf '%s:%s\n' "$photo" "$stat_output"
 }
 

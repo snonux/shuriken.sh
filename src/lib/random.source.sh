@@ -66,9 +66,11 @@ maybe_shuffle() {
         if random_seed_is_set; then
             deterministic_shuffle
         else
-            sort -R
+            # $SORT (compat.source.sh): -R (random shuffle) is GNU-only.
+            "$SORT" -R
         fi
     else
+        # Plain sort here is POSIX-portable; no GNU-only flag involved.
         sort
     fi
 }

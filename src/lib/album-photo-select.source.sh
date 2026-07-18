@@ -12,11 +12,11 @@
 # Unlike the other photo listings this one keeps its own find rather than using
 # list_photos (photo-list.source.sh): it pipes through maybe_shuffle, not sort,
 # because the album's display order is the configurable (seeded) shuffle, not a
-# plain sort.
+# plain sort. Uses $FIND (compat.source.sh) since -printf is a GNU-only action.
 album_photo_files() {
     local -r photos_dir="$1"; shift
 
-    find "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
+    "$FIND" "$DIST_DIR/$photos_dir" -maxdepth 1 -type f -printf '%f\n' \
         | maybe_shuffle
 }
 

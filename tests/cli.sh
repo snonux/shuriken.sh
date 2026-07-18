@@ -6782,6 +6782,93 @@ FAKE
     test::teardown
 }
 
+# resolve_gnu_tool (src/lib/compat.source.sh) must prefer a "g"-prefixed
+# sibling over a broken plain-named tool, the macOS/FreeBSD layout produced by
+# `brew install coreutils findutils` / `pkg install coreutils findutils`
+# (see README.md's "Platform compatibility" section): the GNU tool is
+# installed as "gfind" alongside the system's own (non-GNU) "find" rather than
+# replacing it. Here "find" is replaced with a fake that rejects -printf (as
+# BSD/macOS find would), but a real, working find is also installed as
+# "gfind" -- shuriken must resolve FIND to "gfind" and succeed, proving the
+# preference is applied rather than the guard merely tolerating a fluke.
+test_gnu_tool_guard_prefers_g_prefixed_sibling() {
+    local path_bin
+    local real_find
+    local output
+
+    test::setup
+    path_bin="$TEST_TMPDIR/bin"
+    real_find=$(command -v find)
+    test::install_coreutils_without_imagemagick "$path_bin"
+    rm -f "$path_bin/find"
+    cat > "$path_bin/find" <<FAKE
+#!/usr/bin/env bash
+set -euo pipefail
+for arg in "\$@"; do
+    if [ "\$arg" = -printf ]; then
+        printf 'find: unknown predicate -printf\n' >&2
+        exit 2
+    fi
+done
+exec "$real_find" "\$@"
+FAKE
+    chmod 0755 "$path_bin/find"
+    ln -s "$real_find" "$path_bin/gfind"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$path_bin" "$TEST_SHURIKEN" --version
+    )
+
+    test::assert_contains 'This is Shuriken Version' "$output"
+    test::assert_not_contains 'shuriken requires the GNU versions' "$output"
+    test::teardown
+}
+
+# verify_gnu_tool_versions (src/lib/compat.source.sh) is the fast preflight
+# check that runs before the (slower) behavioral probes: it rejects a resolved
+# tool outright when its own --version output does not claim to be GNU, naming
+# the tool and pointing at the README install instructions. This is distinct
+# from (and runs before) the "GNU-tool guard rejects non-GNU find" case above,
+# which covers a tool that claims GNU but lacks the specific behavior.
+test_gnu_tool_guard_rejects_non_gnu_version_string() {
+    local path_bin
+    local real_find
+    local output
+
+    test::setup
+    path_bin="$TEST_TMPDIR/bin"
+    real_find=$(command -v find)
+    test::install_coreutils_without_imagemagick "$path_bin"
+    rm -f "$path_bin/find"
+    cat > "$path_bin/find" <<FAKE
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "\${1:-}" = --version ]; then
+    printf 'find (BSD)\n'
+    exit 0
+fi
+for arg in "\$@"; do
+    if [ "\$arg" = -printf ]; then
+        printf 'find: unknown predicate -printf\n' >&2
+        exit 2
+    fi
+done
+exec "$real_find" "\$@"
+FAKE
+    chmod 0755 "$path_bin/find"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$path_bin" test::capture_failure_output \
+            "$TEST_SHURIKEN" --version
+    )
+
+    test::assert_contains 'does not report itself as GNU' "$output"
+    test::assert_contains 'Platform compatibility' "$output"
+    test::teardown
+}
+
 test_extra_args_fail() {
     test::assert_failure 'extra operand is rejected' "$TEST_SHURIKEN" --version extra
     test::assert_failure \
@@ -7746,6 +7833,12 @@ main() {
     test::run_case \
         'GNU-tool guard rejects non-GNU stat' \
         test_gnu_tool_guard_rejects_non_gnu_stat
+    test::run_case \
+        'GNU-tool guard prefers a g-prefixed sibling tool' \
+        test_gnu_tool_guard_prefers_g_prefixed_sibling
+    test::run_case \
+        'GNU-tool guard rejects a tool with a non-GNU version string' \
+        test_gnu_tool_guard_rejects_non_gnu_version_string
     test::run_case \
         'src/shuriken.sh lib source list matches Justfile LIB_SOURCES' \
         test_lib_sources_match_justfile_lib_sources

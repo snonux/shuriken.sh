@@ -45,11 +45,14 @@ is_supported_image_file() {
 incoming_image_files() {
     local file
 
+    # $FIND (compat.source.sh): -printf is a GNU-only action, so this must run
+    # against the resolved GNU find, not whatever "find" plain resolves to on
+    # macOS/FreeBSD. The trailing sort is POSIX-portable and left as-is.
     while IFS= read -r file; do
         if is_supported_image_file "$file"; then
             printf '%s\n' "$file"
         fi
-    done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n') \
+    done < <("$FIND" "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n') \
         | sort
 }
 
@@ -94,11 +97,12 @@ count_tree_files() {
 warn_unsupported_incoming_files() {
     local file
 
+    # $FIND (compat.source.sh): -printf is a GNU-only action.
     while IFS= read -r file; do
         if ! is_supported_image_file "$file"; then
             log_warning "Ignoring unsupported incoming file: $file"
         fi
-    done < <(find "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n' | sort)
+    done < <("$FIND" "$INCOMING_DIR" -maxdepth 1 -type f -printf '%f\n' | sort)
 }
 
 scalephotos() {
