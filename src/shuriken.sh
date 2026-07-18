@@ -55,6 +55,8 @@ declare -Ar CLI_OPTION_SPEC=(
     [--no-shuffle]='kind=flag value=no config=SHUFFLE'
     [--splash]='kind=flag value=yes config=SPLASH_PAGE'
     [--no-splash]='kind=flag value=no config=SPLASH_PAGE'
+    [--details]='kind=flag value=yes config=DETAILS_PAGE'
+    [--no-details]='kind=flag value=no config=DETAILS_PAGE'
     [--stats]='kind=flag value=yes config=STATS_PAGE'
     [--no-stats]='kind=flag value=no config=STATS_PAGE'
     [--tarball]='kind=flag value=yes config=TARBALL_INCLUDE'

@@ -144,6 +144,7 @@ assert metadata["settings"]["feature_percent"] == "10"
 assert metadata["settings"]["image_jobs"] == "3"
 assert metadata["settings"]["shuffle"] is False
 assert isinstance(metadata["settings"]["splash_page"], bool)
+assert isinstance(metadata["settings"]["details_page"], bool)
 assert isinstance(metadata["settings"]["stats_page"], bool)
 assert "original_basepath" in metadata["settings"]
 PY
@@ -1729,6 +1730,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
+DETAILS_PAGE=yes
 STATS_PAGE=no
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
@@ -1781,6 +1783,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
+DETAILS_PAGE=yes
 STATS_PAGE=no
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
@@ -1926,6 +1929,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=yes
 SPLASH_PAGE=yes
+DETAILS_PAGE=yes
 STATS_PAGE=no
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
@@ -1973,6 +1977,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=''
 SHUFFLE=no
 SPLASH_PAGE=yes
+DETAILS_PAGE=yes
 STATS_PAGE=no
 TARBALL_INCLUDE=no
 TARBALL_SUFFIX=.tar
@@ -2047,6 +2052,7 @@ IMAGEMAGICK_TIMEOUT=60
 RANDOM_SEED=cli-seed
 SHUFFLE=yes
 SPLASH_PAGE=no
+DETAILS_PAGE=yes
 STATS_PAGE=no
 TARBALL_INCLUDE=yes
 TARBALL_SUFFIX=.tar
@@ -2084,12 +2090,37 @@ test_print_config_applies_negative_cli_overrides() {
     output=$(
         cd "$TEST_TMPDIR"
         "$TEST_SHURIKEN" \
-            --print-config --no-shuffle --no-splash --no-tarball
+            --print-config --no-shuffle --no-splash --no-details --no-tarball
     )
 
     test::assert_contains 'SHUFFLE=no' "$output"
     test::assert_contains 'SPLASH_PAGE=no' "$output"
+    test::assert_contains 'DETAILS_PAGE=no' "$output"
     test::assert_contains 'TARBALL_INCLUDE=no' "$output"
+    test::teardown
+}
+
+# task 6v0: --details must override a config file that turns details pages off,
+# proving the positive direction of the CLI flag (the negative direction,
+# --no-details overriding a config that leaves it at the yes default, is
+# covered by test_print_config_applies_negative_cli_overrides above).
+test_print_config_applies_details_cli_override_over_config_no() {
+    local config_file
+    local output
+
+    test::setup
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Details override' 40
+    printf 'DETAILS_PAGE=no\n' >> "$config_file"
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        "$TEST_SHURIKEN" --print-config --details
+    )
+
+    test::assert_contains 'DETAILS_PAGE=yes' "$output"
     test::teardown
 }
 
@@ -2353,6 +2384,38 @@ test_dry_run_no_stats_omits_stats_plan() {
     test::assert_contains 'Stats page: no' "$output"
     test::assert_not_contains 'stats/index.html (EXIF stats page)' "$output"
     test::assert_not_contains 'stats/*/ (filter mini-albums)' "$output"
+    test::assert_path_absent "$dist_dir"
+    test::teardown
+}
+
+test_dry_run_no_details_omits_details_plan() {
+    local config_file
+    local dist_dir
+    local fake_bin
+    local output
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    dist_dir="$TEST_TMPDIR/dist"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$dist_dir" 'Dry no details' 40
+
+    output=$(
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --dry-run --no-details
+    )
+
+    test::assert_contains 'Details page: no' "$output"
+    test::assert_not_contains 'details.html' "$output"
+    # 6 photos with MAXPREVIEWS=40 is a single page: 2 view-only wrap-around
+    # redirects plus 1 last-page entry stub = 3, instead of 6 with details
+    # twins (album_redirect_count_for_page_count halves with DETAILS_PAGE=no).
+    test::assert_contains '[redirect].html (3 navigation redirects)' "$output"
     test::assert_path_absent "$dist_dir"
     test::teardown
 }
@@ -3142,6 +3205,7 @@ test_generate_preflight_rejects_invalid_yes_no_values() {
     local -a bool_vars=(
         SHUFFLE
         SPLASH_PAGE
+        DETAILS_PAGE
         TARBALL_INCLUDE
     )
 
@@ -3711,6 +3775,42 @@ test_generate_cli_no_splash_overrides_config() {
     test::teardown
 }
 
+# task 6v0: mirrors test_generate_cli_no_splash_overrides_config -- validate_template_dir
+# only requires details.tmpl when DETAILS_PAGE=yes would actually render it, so
+# an album that disables details pages does not need to keep that template.
+test_generate_cli_no_details_allows_missing_details_template() {
+    local config_file
+    local fake_bin
+    local template_dir
+    local view_html
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+    template_dir="$TEST_TMPDIR/templates"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    cp -R "$TEST_REPO_ROOT/share/templates/default" "$template_dir"
+    rm -f "$template_dir/details.tmpl"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'No details CLI album' 40
+    printf 'TEMPLATE_DIR=%q\n' "$template_dir" >> "$config_file"
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" \
+            --generate --no-details
+    )
+
+    test::assert_path_absent "$TEST_TMPDIR/dist/1-1-details.html"
+    view_html=$(<"$TEST_TMPDIR/dist/1-1.html")
+    test::assert_not_contains 'Details</a>' "$view_html"
+    test::teardown
+}
+
 test_generate_uses_custom_favicon() {
     local config_file
     local fake_bin
@@ -3893,6 +3993,87 @@ assert metadata["settings"]["stats_page"] is False
 PY
 
     test::teardown
+}
+
+# task 6v0: DETAILS_PAGE=no must omit every *-details.html file (view pages,
+# navigation redirects, and stats filter mini-albums alike) and every link that
+# would point at one, while leaving the normal thumbnail overview, per-photo
+# view pages, and EXIF tooltips untouched. Runs the same generation under both
+# STATS_PAGE settings (acceptance criterion: DETAILS_PAGE=no works with stats
+# either on or off) so the stats site's own Details links are proven gone too.
+test_generate_no_details_omits_pages_and_links() {
+    local config_file
+    local fake_bin
+    local -i dangling_link_count
+    local -i details_file_count
+    local stats_flag
+    local view_html
+
+    for stats_flag in --stats --no-stats; do
+        test::setup
+        fake_bin="$TEST_TMPDIR/bin"
+        config_file="$TEST_TMPDIR/shuriken.conf"
+
+        test::install_fake_imagemagick "$fake_bin"
+        PATH="$fake_bin:$PATH" \
+            test::generate_fixture_images "$TEST_TMPDIR/incoming"
+        test::write_album_config \
+            "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+            'No details album' 40
+
+        (
+            cd "$TEST_TMPDIR"
+            PATH="$fake_bin:$PATH" \
+                TEST_IMAGEMAGICK_IDENTIFY_OUTPUT="$(test::stats_identify_output)" \
+                "$TEST_SHURIKEN" --generate --no-details "$stats_flag" \
+                    --random-seed details-seed
+        )
+
+        # No *-details.html file anywhere in the output tree (main album,
+        # navigation redirects, or a stats filter mini-album).
+        details_file_count=$(
+            find "$TEST_TMPDIR/dist" -name '*-details.html' | wc -l
+        )
+        test "$details_file_count" -eq 0
+
+        # No generated page links to a "*-details.html" file (a dangling link
+        # would exist if any template still emitted the "Details" href). The
+        # "|| true" keeps a no-match grep (exit 1) from tripping errexit on
+        # this assignment -- zero dangling links is the expected case.
+        dangling_link_count=$(
+            { grep -RFl -- '-details.html' "$TEST_TMPDIR/dist" || true; } \
+                | wc -l
+        )
+        test "$dangling_link_count" -eq 0
+
+        # Normal per-photo view pages still render, and the EXIF tooltip (which
+        # DETAILS_PAGE must not affect) is still present.
+        test::assert_file_exists "$TEST_TMPDIR/dist/1-1.html"
+        view_html=$(<"$TEST_TMPDIR/dist/1-1.html")
+        test::assert_not_contains 'Details</a>' "$view_html"
+        test::assert_contains 'title="Camera: ' "$view_html"
+
+        if [ "$stats_flag" = --stats ]; then
+            # STATS_PAGE stays independently controlled: the stats site and its
+            # filter mini-albums still generate, just without a Details link.
+            test::assert_file_exists "$TEST_TMPDIR/dist/stats/index.html"
+        else
+            test::assert_path_absent "$TEST_TMPDIR/dist/stats"
+        fi
+
+        python3 - "$TEST_TMPDIR/dist/shuriken.json" "$stats_flag" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata_file, stats_flag = sys.argv[1:]
+metadata = json.loads(pathlib.Path(metadata_file).read_text())
+assert metadata["settings"]["details_page"] is False
+assert metadata["settings"]["stats_page"] is (stats_flag == "--stats")
+PY
+
+        test::teardown
+    done
 }
 
 test_refresh_splash_rewrites_only_index_from_existing_assets() {
@@ -7248,6 +7429,9 @@ main() {
         '--print-config applies negative CLI overrides' \
         test_print_config_applies_negative_cli_overrides
     test::run_case \
+        '--print-config --details overrides config DETAILS_PAGE=no (6v0)' \
+        test_print_config_applies_details_cli_override_over_config_no
+    test::run_case \
         '--print-config normalizes scalar and array TAR_OPTS' \
         test_print_config_normalizes_scalar_and_array_tar_opts
     test::run_case \
@@ -7265,6 +7449,9 @@ main() {
     test::run_case \
         '--dry-run --no-stats omits stats from the plan' \
         test_dry_run_no_stats_omits_stats_plan
+    test::run_case \
+        '--dry-run --no-details omits details from the plan (6v0)' \
+        test_dry_run_no_details_omits_details_plan
     test::run_case \
         '--dry-run reports empty plan without writes' \
         test_dry_run_reports_empty_plan_without_writes
@@ -7344,6 +7531,9 @@ main() {
         '--generate --no-splash keeps root index redirect' \
         test_generate_cli_no_splash_overrides_config
     test::run_case \
+        '--generate --no-details allows missing details.tmpl (6v0)' \
+        test_generate_cli_no_details_allows_missing_details_template
+    test::run_case \
         '--generate --favicon uses a custom favicon' \
         test_generate_uses_custom_favicon
     test::run_case \
@@ -7352,6 +7542,9 @@ main() {
     test::run_case \
         '--generate --no-stats suppresses stats pages and nav link' \
         test_generate_no_stats_suppresses_pages_and_nav
+    test::run_case \
+        '--generate --no-details omits details pages and links (6v0)' \
+        test_generate_no_details_omits_pages_and_links
     test::run_case \
         '--refresh-splash rewrites only root index from existing assets' \
         test_refresh_splash_rewrites_only_index_from_existing_assets

@@ -66,15 +66,20 @@ Common per-run overrides (see the full reference table in [docs/usage.md](docs/u
 
 `--incoming`, `--dist`, `--template`, `--title`, `--height`, `--thumbheight`,
 `--maxpreviews`, `--image-jobs`, `--random-seed`, `--shuffle`/`--no-shuffle`,
-`--splash`/`--no-splash`, `--stats`/`--no-stats`, `--tarball`/`--no-tarball`,
-`--favicon`, `--source-url`, `--sync-destination`, `--sync-delete`/`--no-sync-delete`,
-`--quiet`, `--verbose`.
+`--splash`/`--no-splash`, `--details`/`--no-details`, `--stats`/`--no-stats`,
+`--tarball`/`--no-tarball`, `--favicon`, `--source-url`, `--sync-destination`,
+`--sync-delete`/`--no-sync-delete`, `--quiet`, `--verbose`.
 
 Feature toggles at a glance:
 
 * **Splash page** (`SPLASH_PAGE=yes`, the default): the root `index.html` is a
   no-JavaScript splash page using a random album photo. `--no-splash` restores a
   top-level redirect to `page-1.html`.
+* **Details pages** (`DETAILS_PAGE=yes`, the default): every photo gets a
+  `*-details.html` EXIF summary page linked from its normal view page.
+  `--no-details` skips these pages and removes their "Details" links (from the
+  normal view pages and, when stats are enabled, the stats filter mini-albums)
+  without affecting EXIF tooltips or the stats site itself.
 * **Stats site** (`STATS_PAGE=no`, the default): set `--stats` to generate a
   no-JavaScript EXIF stats site under `stats/` (camera leaderboard, shooting
   dates, exposure/dimension/format breakdowns), with each bucket as its own
@@ -90,7 +95,7 @@ The quick start above is all you need for a first album. Detailed reference:
 * [docs/installation.md](docs/installation.md) — build, install, paths, packaging overrides, requirements.
 * [docs/usage.md](docs/usage.md) — full CLI reference: every action, `--config`, the override-option table, output flags.
 * [docs/configuration.md](docs/configuration.md) — the config file format, every variable, defaults, and validation rules.
-* [docs/generation.md](docs/generation.md) — how generation works: artifact reuse, the EXIF cache, `--force`, splash/stats pages, `--refresh-splash`, reproducibility, parallelism/timeouts, `shuriken.json`, favicon, source URL.
+* [docs/generation.md](docs/generation.md) — how generation works: artifact reuse, the EXIF cache, `--force`, splash/details/stats pages, `--refresh-splash`, reproducibility, parallelism/timeouts, `shuriken.json`, favicon, source URL.
 * [docs/publishing.md](docs/publishing.md) — publishing with `--sync`, `SYNC_DESTINATIONS`, `SYNC_DELETE`, and the rsync command.
 * [docs/templates.md](docs/templates.md) — HTML template layout and customization.
 * [docs/stats-exif-audit.md](docs/stats-exif-audit.md) — EXIF field coverage audit behind the stats site (historical design record).

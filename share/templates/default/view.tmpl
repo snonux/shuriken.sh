@@ -1,5 +1,7 @@
 # A non-empty EXIF summary becomes a title="" attribute so hovering the image
-# shows the camera/exposure details, mirroring the details view.
+# shows the camera/exposure details, mirroring the details view. This tooltip is
+# independent of the Details link below: it stays available even when
+# DETAILS_PAGE=no has suppressed the details page itself.
 if [ -n "$render_exif_tooltip_html" ]; then
     render_exif_tooltip_attr=" title=\"$render_exif_tooltip_html\""
 else
@@ -14,7 +16,20 @@ cat <<END
     <div class="navigator">
         <a href="${render_page_num_html}-${render_view_prev_html}.html" class="arrow">&lArr;</a>
         <a href="page-${render_page_num_html}.html#${render_photo_html}">Thumbnails</a> <span class="nav-sep">|</span>
+END
+
+# The Details link is only emitted when DETAILS_PAGE=yes actually rendered the
+# *-details.html page it points to; otherwise it would be a dangling link.
+# Keeping this as its own conditional cat block (rather than inlining the link
+# into a shell variable) keeps the DETAILS_PAGE=yes output byte-for-byte
+# identical to before this toggle existed.
+if [ "${render_details_page_html}" = 'yes' ]; then
+    cat <<END
         <a href="${render_page_num_html}-${render_preview_num_html}-details.html">Details</a> <span class="nav-sep">|</span>
+END
+fi
+
+cat <<END
         <a href='${render_backhref_html}/${render_photos_dir_html}/${render_photo_html}'>Direct link</a>
         <a href="${render_page_num_html}-${render_view_next_html}.html" class="arrow">&rArr;</a>
     </div>

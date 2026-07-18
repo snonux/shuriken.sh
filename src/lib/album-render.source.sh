@@ -223,6 +223,10 @@ render_view_page() {
         tarball_name "$tarball_name"
 }
 
+# Render one photo's *-details.html page. Only called by
+# render_photo_view_and_details when DETAILS_PAGE=yes; callers must not invoke
+# this directly for a photo when details are disabled, or a dangling file would
+# be produced with no page linking to it.
 render_details_page() {
     local -r html_dir="$1"; shift
     local -r photos_dir="$1"; shift
@@ -285,15 +289,22 @@ render_photo_view_and_details() {
         "$page_num" \
         "$preview_num" \
         "$photo"
-    render_details_page \
-        "$html_dir" \
-        "$photos_dir" \
-        "$blurs_dir" \
-        "$backhref" \
-        "$tarball_name" \
-        "$page_num" \
-        "$preview_num" \
-        "$photo"
+
+    # DETAILS_PAGE=no skips the *-details.html file entirely (view.tmpl's Details
+    # link is likewise suppressed via render_details_page_html, so nothing links
+    # to it). This is the only place a photo's details page would be rendered, so
+    # skipping the call here is sufficient to omit the file for every photo.
+    if [ "$DETAILS_PAGE" = yes ]; then
+        render_details_page \
+            "$html_dir" \
+            "$photos_dir" \
+            "$blurs_dir" \
+            "$backhref" \
+            "$tarball_name" \
+            "$page_num" \
+            "$preview_num" \
+            "$photo"
+    fi
 }
 
 record_rendered_view_page() {
@@ -310,32 +321,78 @@ record_rendered_view_page() {
     last_views_ref["$page"]="$preview"
 }
 
-# Navigation-redirect count single source of truth (task nr0). Every view page
-# gets ALBUM_REDIRECTS_PER_PAGE wrap-around redirect files: the prev stub
-# (N-0.html) and its details twin, plus the next stub (N-(last+1).html) and its
-# details twin -- four files, emitted by render_page_view_redirects below for
-# every page. The LAST page additionally emits ALBUM_REDIRECTS_LAST_PAGE_EXTRA
-# files: the 0-MAXPREVIEWS / 0-MAXPREVIEWS-details entry stubs that bounce into
-# the album. Keep these two numbers in lockstep with render_page_view_redirects;
-# the dry-run plan predicts redirect_count from them via
-# album_redirect_count_for_page_count instead of a magic "*4+2".
-declare -gri ALBUM_REDIRECTS_PER_PAGE=4
-declare -gri ALBUM_REDIRECTS_LAST_PAGE_EXTRA=2
+# Navigation-redirect count single source of truth (task nr0; extended for
+# DETAILS_PAGE by task 6v0). Every view page gets ALBUM_VIEW_REDIRECTS_PER_PAGE
+# wrap-around redirect files: the prev stub (N-0.html) and the next stub
+# (N-(last+1).html). When DETAILS_PAGE=yes, each of those also gets a
+# "-details" twin, adding ALBUM_DETAILS_REDIRECTS_PER_PAGE more -- so
+# render_page_view_redirects emits 2 files per page with details disabled, 4
+# with them enabled. The LAST page additionally emits
+# ALBUM_VIEW_REDIRECTS_LAST_PAGE_EXTRA entry stubs (plus their details twins
+# when enabled): the 0-MAXPREVIEWS / loop-to-1 stubs that bounce into the
+# album. Keep these numbers in lockstep with render_page_view_redirects; the
+# dry-run plan predicts redirect_count from them via
+# album_redirect_count_for_page_count instead of a magic formula.
+declare -gri ALBUM_VIEW_REDIRECTS_PER_PAGE=2
+declare -gri ALBUM_DETAILS_REDIRECTS_PER_PAGE=2
+declare -gri ALBUM_VIEW_REDIRECTS_LAST_PAGE_EXTRA=1
+declare -gri ALBUM_DETAILS_REDIRECTS_LAST_PAGE_EXTRA=1
+
+# Per-page / last-page-extra redirect file counts for the CURRENT DETAILS_PAGE
+# setting: the view-only counts, plus the details counts when DETAILS_PAGE=yes.
+# Split out of album_redirect_count_for_page_count so that function stays a
+# short arithmetic one-liner.
+album_redirects_per_page() {
+    local -i count=$ALBUM_VIEW_REDIRECTS_PER_PAGE
+
+    if [ "$DETAILS_PAGE" = yes ]; then
+        count+=$ALBUM_DETAILS_REDIRECTS_PER_PAGE
+    fi
+    printf '%d\n' "$count"
+}
+
+album_redirects_last_page_extra() {
+    local -i count=$ALBUM_VIEW_REDIRECTS_LAST_PAGE_EXTRA
+
+    if [ "$DETAILS_PAGE" = yes ]; then
+        count+=$ALBUM_DETAILS_REDIRECTS_LAST_PAGE_EXTRA
+    fi
+    printf '%d\n' "$count"
+}
 
 # Total navigation redirects a run produces for a given number of preview pages:
-# four per page plus the last page's extra entry stubs. Zero pages -> zero
-# redirects (render_view_redirects returns early on an empty album). This is the
-# count render_page_view_redirects actually writes across all pages, expressed
-# once so the dry-run plan cannot drift from real generation.
+# album_redirects_per_page per page plus the last page's extra entry stubs.
+# Zero pages -> zero redirects (render_view_redirects returns early on an empty
+# album). This is the count render_page_view_redirects actually writes across
+# all pages, expressed once so the dry-run plan cannot drift from real
+# generation.
 album_redirect_count_for_page_count() {
     local -ri page_count="$1"; shift
+    local -i per_page
+    local -i last_page_extra
 
     if (( page_count <= 0 )); then
         printf '0\n'
         return
     fi
-    printf '%d\n' "$(( page_count * ALBUM_REDIRECTS_PER_PAGE \
-        + ALBUM_REDIRECTS_LAST_PAGE_EXTRA ))"
+    per_page=$(album_redirects_per_page)
+    last_page_extra=$(album_redirects_last_page_extra)
+    printf '%d\n' "$(( page_count * per_page + last_page_extra ))"
+}
+
+# Render one details-redirect stub, but only when DETAILS_PAGE=yes (mirrors
+# render_photo_view_and_details skipping render_details_page entirely). A no-op
+# under DETAILS_PAGE=no keeps every "-details.html" navigation stub from ever
+# being written, so no generated page can link to a missing one.
+_render_details_redirect() {
+    local -r html_dir="$1"; shift
+    local -r filename="$1"; shift
+    local -r target="$1"; shift
+
+    if [ "$DETAILS_PAGE" != yes ]; then
+        return
+    fi
+    template redirect "$filename" html_dir "$html_dir" redirect_page "$target"
 }
 
 # Render every navigation redirect for a single view page (the prev/next
@@ -345,7 +402,7 @@ album_redirect_count_for_page_count() {
 # files for distinct pages are produced here. The wrap-around redirects for the
 # very last page (0-MAXPREVIEWS and the loop-to-1 links) are emitted as part of
 # that page's group. Per-page / last-page file counts are fixed by
-# ALBUM_REDIRECTS_PER_PAGE / ALBUM_REDIRECTS_LAST_PAGE_EXTRA above.
+# album_redirects_per_page / album_redirects_last_page_extra above.
 render_page_view_redirects() {
     local -r html_dir="$1"; shift
     local -ri page="$1"; shift
@@ -357,30 +414,26 @@ render_page_view_redirects() {
     template redirect "$prevredirect.html" \
         html_dir "$html_dir" \
         redirect_page "$(( page - 1 ))-${MAXPREVIEWS}"
-    template redirect "$prevredirect-details.html" \
-        html_dir "$html_dir" \
-        redirect_page "$(( page - 1 ))-${MAXPREVIEWS}-details"
+    _render_details_redirect "$html_dir" "$prevredirect-details.html" \
+        "$(( page - 1 ))-${MAXPREVIEWS}-details"
 
     if (( page == max_page )); then
         template redirect "0-$MAXPREVIEWS.html" \
             html_dir "$html_dir" \
             redirect_page "${page}-$lastview"
-        template redirect "0-$MAXPREVIEWS-details.html" \
-            html_dir "$html_dir" \
-            redirect_page "${page}-$lastview-details"
+        _render_details_redirect "$html_dir" "0-$MAXPREVIEWS-details.html" \
+            "${page}-$lastview-details"
         template redirect "$nextredirect.html" \
             html_dir "$html_dir" \
             redirect_page '1-1'
-        template redirect "$nextredirect-details.html" \
-            html_dir "$html_dir" \
-            redirect_page '1-1-details'
+        _render_details_redirect "$html_dir" "$nextredirect-details.html" \
+            '1-1-details'
     else
         template redirect "$nextredirect.html" \
             html_dir "$html_dir" \
             redirect_page "$(( page + 1 ))-1"
-        template redirect "$nextredirect-details.html" \
-            html_dir "$html_dir" \
-            redirect_page "$(( page + 1 ))-1-details"
+        _render_details_redirect "$html_dir" "$nextredirect-details.html" \
+            "$(( page + 1 ))-1-details"
     fi
 }
 

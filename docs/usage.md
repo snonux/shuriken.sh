@@ -76,6 +76,8 @@ config variable documented in [configuration.md](configuration.md).
 | `--no-shuffle` | `SHUFFLE=no` |
 | `--splash` | `SPLASH_PAGE=yes` |
 | `--no-splash` | `SPLASH_PAGE=no` |
+| `--details` | `DETAILS_PAGE=yes` |
+| `--no-details` | `DETAILS_PAGE=no` |
 | `--stats` | `STATS_PAGE=yes` |
 | `--no-stats` | `STATS_PAGE=no` |
 | `--tarball` | `TARBALL_INCLUDE=yes` |

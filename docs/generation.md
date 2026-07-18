@@ -45,6 +45,20 @@ the site favicon) using the existing `photos` and `blurs` output, so it avoids
 reprocessing images and rerendering album pages. It requires `SPLASH_PAGE=yes`;
 pass `--random-seed VALUE` when you need a repeatable pick.
 
+## Details pages
+
+Every photo gets a `*-details.html` page by default: a dedicated view with the
+full EXIF summary table, reachable via the "Details" link on that photo's
+normal view page. Set `DETAILS_PAGE=no` or pass `--no-details` to skip
+generating these pages; the "Details" link (on the normal view pages and, when
+`STATS_PAGE=yes`, on the filter mini-album view pages) is removed along with
+it, so no generated page links to a missing file.
+
+`DETAILS_PAGE=no` only affects the details pages and their links. It does not
+disable the per-photo EXIF tooltip (the `title=""` attribute shown on hover
+over a photo) or `STATS_PAGE`: both stay independently controlled and keep
+working exactly as configured.
+
 ## Stats site
 
 `shuriken` can also generate a no-JavaScript stats site with EXIF-derived
@@ -97,8 +111,9 @@ metadata records:
 * generated photo, thumbnail, and HTML file counts;
 * tarball status (included + file);
 * effective settings (title, height, thumbheight, maxpreviews, subdivide
-  percent, feature percent, image jobs, random seed, shuffle, splash page, stats
-  page, original basepath) useful for debugging a published album.
+  percent, feature percent, image jobs, random seed, shuffle, splash page,
+  details page, stats page, original basepath) useful for debugging a published
+  album.
 
 ## Favicon
 

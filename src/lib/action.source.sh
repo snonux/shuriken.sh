@@ -177,6 +177,7 @@ log_configured_action() {
     log_verbose "Effective ImageMagick timeout: ${IMAGEMAGICK_TIMEOUT}s"
     log_verbose "Effective tar timeout: ${TAR_TIMEOUT}s"
     log_verbose "Effective splash page setting: $SPLASH_PAGE"
+    log_verbose "Effective details page setting: $DETAILS_PAGE"
     log_verbose "Effective stats page setting: $STATS_PAGE"
     log_verbose "Effective tarball setting: $TARBALL_INCLUDE"
     log_verbose "Effective sync delete setting: $SYNC_DELETE"

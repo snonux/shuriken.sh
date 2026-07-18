@@ -39,9 +39,14 @@ collect_dry_run_page_plan() {
         # files are touched here, so dry-run stays side-effect free.
         page_count=$(album_page_count_for_image_count "$image_count")
         redirect_count=$(album_redirect_count_for_page_count "$page_count")
-        plan_ref["details_count"]="$image_count"
         plan_ref["page_count"]="$page_count"
         plan_ref["redirect_count"]="$redirect_count"
+        # One details page per photo, but only when DETAILS_PAGE=yes -- mirrors
+        # render_photo_view_and_details skipping render_details_page entirely,
+        # so the plan cannot drift from what --generate actually writes.
+        if [ "$DETAILS_PAGE" = yes ]; then
+            plan_ref["details_count"]="$image_count"
+        fi
     fi
 }
 
@@ -86,6 +91,7 @@ collect_dry_run_plan() {
     plan_ref["random_seed"]="$RANDOM_SEED"
     plan_ref["shuffle"]="$SHUFFLE"
     plan_ref["splash_page"]="$SPLASH_PAGE"
+    plan_ref["details_page"]="$DETAILS_PAGE"
     plan_ref["stats_page"]="$STATS_PAGE"
     plan_ref["image_count"]="$image_count"
     plan_ref["tarball_include"]="$TARBALL_INCLUDE"
@@ -120,14 +126,17 @@ _print_dry_run_settings() {
     printf 'Random seed: %s\n' "${plan_ref["random_seed"]}"
     printf 'Shuffle: %s\n' "${plan_ref["shuffle"]}"
     printf 'Splash page: %s\n' "${plan_ref["splash_page"]}"
+    printf 'Details page: %s\n' "${plan_ref["details_page"]}"
     printf 'Stats page: %s\n' "${plan_ref["stats_page"]}"
     printf 'Image count: %s\n' "${plan_ref["image_count"]}"
     printf 'Tarball setting: %s\n' "${plan_ref["tarball_include"]}"
     printf 'Tarball name plan: %s\n' "${plan_ref["tarball_name_plan"]}"
 }
 
-# Print the planned directories and generated-files listing (index/favicon/json,
-# image dirs, page/view/details/redirect counts, optional stats + tarball lines).
+# Print the planned directories, plus the generated-files lines that are always
+# present regardless of any page toggle (index/favicon/json/image dirs/page/view
+# counts). Split from the optional-lines half below (_print_dry_run_optional_files)
+# so each stays around 30 lines, matching the generation-metadata JSON split.
 _print_dry_run_files() {
     local -r plan_name="$1"; shift
     # shellcheck disable=SC2178
@@ -159,8 +168,21 @@ _print_dry_run_files() {
         "${plan_ref["dist_dir"]}" "${plan_ref["page_count"]}"
     printf '  %s/[page]-[image].html (%s view pages)\n' \
         "${plan_ref["dist_dir"]}" "${plan_ref["image_count"]}"
-    printf '  %s/[page]-[image]-details.html (%s details pages)\n' \
-        "${plan_ref["dist_dir"]}" "${plan_ref["details_count"]}"
+}
+
+# Print the generated-files lines gated behind a page toggle (details, the
+# navigation redirect count that itself depends on DETAILS_PAGE, stats, and the
+# tarball). Split out of _print_dry_run_files (see its comment) purely to keep
+# both halves short; output is unchanged from the previous single function.
+_print_dry_run_optional_files() {
+    local -r plan_name="$1"; shift
+    # shellcheck disable=SC2178
+    local -n plan_ref="$plan_name"
+
+    if [ "${plan_ref["details_page"]}" = yes ]; then
+        printf '  %s/[page]-[image]-details.html (%s details pages)\n' \
+            "${plan_ref["dist_dir"]}" "${plan_ref["details_count"]}"
+    fi
     printf '  %s/[redirect].html (%s navigation redirects)\n' \
         "${plan_ref["dist_dir"]}" "${plan_ref["redirect_count"]}"
     if [ "${plan_ref["stats_page"]}" = yes ]; then
@@ -184,4 +206,5 @@ print_dry_run_plan() {
 
     _print_dry_run_settings "$plan_name"
     _print_dry_run_files "$plan_name"
+    _print_dry_run_optional_files "$plan_name"
 }

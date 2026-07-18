@@ -73,6 +73,7 @@ declare -gra CONFIG_SPECS=(
     'RANDOM_SEED||yes|yes||scalar'
     'SHUFFLE|no|yes|yes|yesno|scalar'
     'SPLASH_PAGE|yes|yes|yes|yesno|scalar'
+    'DETAILS_PAGE|yes|yes|yes|yesno|scalar'
     'STATS_PAGE|no|yes|yes|yesno|scalar'
     'TARBALL_INCLUDE|yes|yes|yes|yesno|scalar'
     'TARBALL_SUFFIX|.tar|yes|no||scalar'

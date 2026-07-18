@@ -44,6 +44,7 @@ _collect_generation_metadata() {
     _GENERATION_METADATA["settings_random_seed"]="$RANDOM_SEED"
     _GENERATION_METADATA["settings_shuffle"]="$SHUFFLE"
     _GENERATION_METADATA["settings_splash_page"]="$SPLASH_PAGE"
+    _GENERATION_METADATA["settings_details_page"]="$DETAILS_PAGE"
     _GENERATION_METADATA["settings_stats_page"]="$STATS_PAGE"
     _GENERATION_METADATA["settings_original_basepath"]="$ORIGINAL_BASEPATH"
 }
@@ -115,6 +116,8 @@ _generation_metadata_json_settings() {
         "$(json_bool "${_GENERATION_METADATA["settings_shuffle"]}")"
     printf '    "splash_page": %s,\n' \
         "$(json_bool "${_GENERATION_METADATA["settings_splash_page"]}")"
+    printf '    "details_page": %s,\n' \
+        "$(json_bool "${_GENERATION_METADATA["settings_details_page"]}")"
     printf '    "stats_page": %s,\n' \
         "$(json_bool "${_GENERATION_METADATA["settings_stats_page"]}")"
     printf '    "original_basepath": %s\n' \

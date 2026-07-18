@@ -20,6 +20,7 @@ values for the current run.
 | `TAR_TIMEOUT` | `120` | Tarball creation timeout in seconds. Positive integer. |
 | `SHUFFLE` | `no` | Randomly shuffle all previews. `yes`/`no`. |
 | `SPLASH_PAGE` | `yes` | Generate a splash landing page at `index.html`. `yes`/`no`. |
+| `DETAILS_PAGE` | `yes` | Generate each photo's `*-details.html` page (and its "Details" link). `yes`/`no`. See "Details pages" below. |
 | `STATS_PAGE` | `no` | Generate the EXIF stats site under `stats/`. `yes`/`no`. |
 | `RANDOM_SEED` | _(unset)_ | Any non-empty value makes splash/background picks, animation classes, timestamps, and shuffle order repeatable. |
 | `INCOMING_DIR` | `$(pwd)/incoming` | Directory containing source photos (full path). |
@@ -37,6 +38,32 @@ values for the current run.
 > Note on `TARBALL_INCLUDE`: the bundled `shuriken.default.conf` sets it to
 > `yes`, so a freshly `--init`'d config enables the tarball. The runtime default
 > applied when a config file leaves it unset is `no`.
+
+## Details pages
+
+`DETAILS_PAGE` (default `yes`) controls whether each photo gets its own
+`*-details.html` page -- a dedicated view showing the full EXIF summary table,
+reachable via the "Details" link on that photo's normal view page and, when
+`STATS_PAGE=yes`, from the matching filter mini-album's view pages too.
+
+Setting `DETAILS_PAGE=no` (or passing `--no-details`) skips generating these
+pages entirely and removes every "Details" link that would point at one, so no
+generated page ever links to a missing file. Everything else keeps working
+unchanged:
+
+* The normal thumbnail overview pages and per-photo view pages are still
+  generated.
+* The per-photo EXIF tooltip (the `title=""` attribute shown on hover) is
+  unaffected -- it is controlled independently of the details page.
+* `STATS_PAGE` is unaffected: the EXIF stats site and its filter mini-albums
+  still generate normally with `DETAILS_PAGE=no`; only their "Details" links
+  (which would otherwise point at the main album's per-photo details page) are
+  omitted.
+
+A later `--generate` run that switches `DETAILS_PAGE` from `yes` back to `no`
+does not leave stale `*-details.html` files behind: generation stages the new
+output in a fresh directory and atomically replaces `DIST_DIR`, so files an
+older generation wrote but the current run does not produce are naturally gone.
 
 ## Supported source images
 
@@ -57,11 +84,11 @@ The checks (details in `src/lib/config.validate.source.sh`):
   `IMAGEMAGICK_TIMEOUT`, `TAR_TIMEOUT`; `HEIGHT` is an optional positive integer.
 * **Percentage (0-100 integer)**: `THUMB_SUBDIVIDE_PERCENT`,
   `THUMB_FEATURE_PERCENT`.
-* **`yes`/`no` settings**: `SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`,
-  `TARBALL_INCLUDE`, `SYNC_DELETE` (where applicable).
+* **`yes`/`no` settings**: `SHUFFLE`, `SPLASH_PAGE`, `DETAILS_PAGE`,
+  `STATS_PAGE`, `TARBALL_INCLUDE`, `SYNC_DELETE` (where applicable).
 * **Readable input**: `INCOMING_DIR` must be a readable directory; `TEMPLATE_DIR`
   must be a readable directory containing the required templates (plus `splash`
-  when `SPLASH_PAGE=yes`).
+  when `SPLASH_PAGE=yes`, and `details` when `DETAILS_PAGE=yes`).
 * **Writable output**: `DIST_DIR` (or its nearest existing parent) must be
   writable.
 * **ImageMagick** availability (`magick` or `convert`).
@@ -80,9 +107,9 @@ Generation stops before writing album output when validation fails.
 `CONFIG_SOURCE`, `INCOMING_DIR`, `DIST_DIR`, `TEMPLATE_DIR`, `FAVICON`,
 `SOURCE_URL`, `TITLE`, `HEIGHT`, `THUMBHEIGHT`, `MAXPREVIEWS`,
 `THUMB_SUBDIVIDE_PERCENT`, `THUMB_FEATURE_PERCENT`, `IMAGE_JOBS`,
-`IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `STATS_PAGE`,
-`TARBALL_INCLUDE`, `TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`, `SYNC_DELETE`,
-`SYNC_DESTINATIONS`, `ORIGINAL_BASEPATH`.
+`IMAGEMAGICK_TIMEOUT`, `RANDOM_SEED`, `SHUFFLE`, `SPLASH_PAGE`, `DETAILS_PAGE`,
+`STATS_PAGE`, `TARBALL_INCLUDE`, `TARBALL_SUFFIX`, `TAR_TIMEOUT`, `TAR_OPTS`,
+`SYNC_DELETE`, `SYNC_DESTINATIONS`, `ORIGINAL_BASEPATH`.
 
 Scalar values use Bash `%q` quoting; `TAR_OPTS` and `SYNC_DESTINATIONS` are
 normalized to Bash array assignments, so the output can be parsed by shell

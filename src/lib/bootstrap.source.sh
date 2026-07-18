@@ -34,6 +34,8 @@ usage() {
     --random-seed VALUE
     --splash
     --no-splash
+    --details
+    --no-details
     --stats
     --no-stats
     --shuffle

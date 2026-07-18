@@ -22,7 +22,9 @@
 # within that filter. The "--<index>" suffix cannot collide with another gallery
 # name because a pagebase never contains "--". All pages reuse the album's shared
 # photos/thumbs/blurs assets (only the HTML differs); view pages link "Details"
-# to the album's own details page via the album_view_page_for_photo accessor.
+# to the album's own details page via the album_view_page_for_photo accessor,
+# but only when DETAILS_PAGE=yes actually rendered that page (see
+# _stats_build_filterview_body below).
 # Pages render in
 # parallel through the shared job pool, throttled to IMAGE_JOBS. The galleries
 # reuse camera.tmpl and the view pages reuse cameraview.tmpl.
@@ -165,7 +167,11 @@ _stats_build_filterview_body() {
         tooltip_attr=" title=\"$(html_escape "$tooltip")\""
     fi
     view_page=$(album_view_page_for_photo "$photo")
-    if [ -n "$view_page" ]; then
+    # Only link to the album's details page when it was actually rendered
+    # (DETAILS_PAGE=yes); otherwise album_view_page_for_photo resolving a page
+    # would still point at a details file that render_photo_view_and_details
+    # never wrote, leaving a dangling link.
+    if [ -n "$view_page" ] && [ "$DETAILS_PAGE" = yes ]; then
         details_link=$(printf \
             ' <a href="%s/%s-details.html">Details</a> <span class="nav-sep">|</span>' \
             "$backhref_html" "$view_page")

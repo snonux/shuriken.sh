@@ -240,6 +240,7 @@ declare -ra TEMPLATE_RENDER_FIELD_SPECS=(
     'render_cameraview_body_html|context_raw|cameraview_body|cameraview_body|cameraview'
     'render_camera_thumbs_html|context_raw|camera_thumbs|camera_thumbs|camera'
     'render_current_date_text|current_date_html|||header'
+    'render_details_page_html|config_html|DETAILS_PAGE||view'
     'render_enter_page_html|context_html|enter_page|enter_page|splash'
     'render_exif_details_html|context_raw|exif_details|exif_details|details'
     'render_exif_tooltip_html|context_html|exif_tooltip|exif_tooltip|details view'

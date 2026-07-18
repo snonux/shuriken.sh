@@ -113,8 +113,20 @@ validate_template_file() {
 
 validate_template_dir() {
     local template_name
-    local -a required_templates=(
-        details
+    local -a required_templates=()
+
+    validate_template_dir_access || return
+
+    # details.tmpl is only needed when DETAILS_PAGE=yes actually renders it
+    # (mirrors the SPLASH_PAGE=yes conditional below), so an album that opts out
+    # of details pages does not need to keep a details.tmpl around at all. Kept
+    # first in the list (as it always was) so the reporting order for the
+    # unconditional templates below is unchanged from before DETAILS_PAGE
+    # existed.
+    if [ "$DETAILS_PAGE" = yes ]; then
+        required_templates+=(details)
+    fi
+    required_templates+=(
         footer
         header
         next
@@ -124,8 +136,6 @@ validate_template_dir() {
         redirect
         view
     )
-
-    validate_template_dir_access || return
 
     if [ "$SPLASH_PAGE" = yes ]; then
         required_templates+=(splash)
@@ -290,6 +300,7 @@ validate_common_config() {
         SYNC_TIMEOUT
         SHUFFLE
         SPLASH_PAGE
+        DETAILS_PAGE
         STATS_PAGE
         TARBALL_INCLUDE
         FAVICON
