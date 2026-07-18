@@ -18,7 +18,7 @@ values for the current run.
 | `IMAGE_JOBS` | `3` | Parallel jobs for image processing and HTML template rendering. Positive integer. |
 | `IMAGEMAGICK_TIMEOUT` | `60` | Per-ImageMagick-command timeout in seconds. Positive integer. |
 | `TAR_TIMEOUT` | `120` | Tarball creation timeout in seconds. Positive integer. |
-| `CHRONOLOGICAL_ORDER` | `no` | Order the main album's photos chronologically by EXIF date taken (ascending), falling back to source mtime when a photo has no usable EXIF date. `yes`/`no`. Takes precedence over `SHUFFLE` when both are set. See "Photo ordering" below. |
+| `CHRONOLOGICAL_ORDER` | `no` | Order the main album's photos chronologically by EXIF date taken (ascending; years before 2001 are treated as an implausible camera clock-reset default, not a real date), falling back to filename order when a photo has no usable EXIF date. `yes`/`no`. Takes precedence over `SHUFFLE` when both are set. See "Photo ordering" below. |
 | `SHUFFLE` | `no` | Randomly shuffle all previews. `yes`/`no`. Ignored when `CHRONOLOGICAL_ORDER=yes`. |
 | `SPLASH_PAGE` | `yes` | Generate a splash landing page at `index.html`. `yes`/`no`. |
 | `DETAILS_PAGE` | `yes` | Generate each photo's `*-details.html` page (and its "Details" link). `yes`/`no`. See "Details pages" below. |
@@ -74,11 +74,18 @@ for reproducibility). Set `CHRONOLOGICAL_ORDER=yes` (or pass `--chronological`)
 to instead order them chronologically by EXIF date taken (ascending), reusing
 the same `DateTimeOriginal` -> `DateTimeDigitized` -> `DateTime` tag fallback
 chain, and the same per-photo EXIF cache, as the "Taken:" tooltip field and the
-details page. A photo with none of those three tags falls back to its source
-file's modification time, so ordering is always fully deterministic and never
-crashes on EXIF-less photos (screenshots, downloaded images, ...); photos with
-a real EXIF date always sort before mtime-fallback photos, so an approximate
-fallback never displaces a genuine timestamp.
+details page. An EXIF date is only trusted from year 2001 onward: many camera
+bodies default their clock to a `2000-01-01`-ish date once the battery dies
+and stamp every timestamp with that bogus value instead of omitting it, so an
+older year is treated the same as a missing tag rather than sorting a whole
+clock-reset camera roll to the front of the album. A photo with no usable EXIF
+date falls back to plain filename order (not modification time -- copying or
+rsyncing an incoming directory commonly rewrites every file's mtime to the
+transfer time, unrelated to capture order), so ordering is always fully
+deterministic and never crashes on EXIF-less photos (screenshots, downloaded
+images, ...); photos with a real, plausible EXIF date always sort before
+filename-fallback photos, so an approximate fallback never displaces a
+genuine timestamp.
 
 **`CHRONOLOGICAL_ORDER` takes precedence over `SHUFFLE`** when both are set to
 `yes`: a chronological album is meant to read as a timeline, so an enabled

@@ -92,7 +92,7 @@ seed and inputs to produce the same HTML.
 
 `CHRONOLOGICAL_ORDER=yes` (see "Photo ordering" in
 [configuration.md](configuration.md)) is always deterministic regardless of
-`RANDOM_SEED`: it orders by each photo's EXIF date taken (with a source-mtime
+`RANDOM_SEED`: it orders by each photo's EXIF date taken (with a filename
 fallback), so it needs no seed to repeat, and it takes precedence over
 `SHUFFLE` when both are enabled.
 

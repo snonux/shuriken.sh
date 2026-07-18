@@ -12,7 +12,8 @@
 
 # Main album display order, in precedence order (task 8v0):
 #   1. CHRONOLOGICAL_ORDER=yes -> chronological_photo_files (EXIF date taken,
-#      ascending, falling back to mtime for photos without one).
+#      ascending, falling back to filename order for photos without a usable
+#      one).
 #   2. otherwise -> the historical maybe_shuffle path (seeded/random SHUFFLE, or
 #      plain filename sort when SHUFFLE=no).
 # CHRONOLOGICAL_ORDER therefore takes precedence over SHUFFLE when both are
@@ -36,6 +37,16 @@ album_photo_files() {
         | maybe_shuffle
 }
 
+# Digital cameras were not commercially available before the 1990s, and a
+# long tail of camera bodies -- including the Fujifilm X100V that motivated
+# this constant -- silently default their clock to "2000-01-01" (or similar)
+# once its battery dies, then stamp every EXIF timestamp with that bogus date
+# instead of omitting it. An EXIF year below this is therefore treated as
+# unusable rather than real, so a whole clock-reset camera roll does not sort
+# to the very front of an otherwise correctly-dated album (see
+# chronological_sort_key_for_photo).
+readonly CHRONOLOGICAL_MIN_PLAUSIBLE_YEAR=2001
+
 # Build the sort key chronological_photo_files uses to order one photo: a
 # tab-separated "<group>\t<time>\t<photo>" line consumed by a plain lexicographic
 # sort (see chronological_photo_files). EXIF reads always target the INCOMING_DIR
@@ -43,28 +54,27 @@ album_photo_files() {
 # resized DIST_DIR copy, so ordering and tooltip/details agree about a photo's
 # taken time and both share the same identify cache entry.
 #
-#   group  0 when photo_date_taken (album-metadata.source.sh) found a real EXIF
-#          date, 1 otherwise. Group 0 always sorts before group 1, so photos
-#          with a genuine timestamp are never displaced by an approximate
-#          fallback for photos that lack one.
+#   group  0 when photo_date_taken (album-metadata.source.sh) found a real,
+#          plausible (CHRONOLOGICAL_MIN_PLAUSIBLE_YEAR or later) EXIF date, 1
+#          otherwise. Group 0 always sorts before group 1, so photos with a
+#          genuine timestamp are never displaced by an approximate fallback.
 #   time   the EXIF date normalized from "YYYY:MM:DD HH:MM:SS" to a 14-digit
 #          "YYYYMMDDHHMMSS" string (colons/space just stripped -- the calendar
 #          substrings are untouched, so this stays safe even though the EXIF
 #          string is not `date -d`-parseable, see docs/stats-exif-audit.md) for
-#          group 0, or the INCOMING_DIR file's mtime (compat.source.sh $STAT,
-#          zero-padded so it sorts lexicographically) for group 1. Fixed width
-#          within each group keeps a plain sort numerically correct.
-#   photo  final tiebreaker so photos sharing a timestamp (e.g. burst shots) or
-#          missing both an EXIF date and a readable mtime still sort in a
-#          stable, reproducible order across regenerations of the same
-#          incoming set.
+#          group 0, or the photo's own filename for group 1 (see the fallback
+#          comment below for why filename, not mtime). Fixed width within
+#          group 0 keeps a plain sort numerically correct.
+#   photo  final tiebreaker so photos sharing a timestamp (e.g. burst shots)
+#          still sort in a stable, reproducible order across regenerations of
+#          the same incoming set.
 chronological_sort_key_for_photo() {
     local -r photo="$1"; shift
     local date_time
-    local mtime
 
     date_time=$(photo_date_taken "$photo" "$INCOMING_DIR/$photo")
-    if [[ "$date_time" =~ ^([0-9]{4}):([0-9]{2}):([0-9]{2})\ ([0-9]{2}):([0-9]{2}):([0-9]{2})$ ]]; then
+    if [[ "$date_time" =~ ^([0-9]{4}):([0-9]{2}):([0-9]{2})\ ([0-9]{2}):([0-9]{2}):([0-9]{2})$ ]] \
+        && ((10#${BASH_REMATCH[1]} >= CHRONOLOGICAL_MIN_PLAUSIBLE_YEAR)); then
         printf '0\t%s%s%s%s%s%s\t%s\n' \
             "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" \
             "${BASH_REMATCH[4]}" "${BASH_REMATCH[5]}" "${BASH_REMATCH[6]}" \
@@ -72,14 +82,15 @@ chronological_sort_key_for_photo() {
         return
     fi
 
-    # No usable EXIF date-taken (missing tag or a malformed value): fall back to
-    # the source file's mtime so ordering still reflects "roughly when this
-    # photo appeared" rather than an arbitrary readdir order, and stays fully
-    # deterministic across runs. A missing/unreadable source file (should not
-    # happen; INCOMING_DIR is validated before generation) reads as mtime 0 so
-    # this never aborts the render.
-    mtime=$("$STAT" -c '%Y' "$INCOMING_DIR/$photo" 2>/dev/null) || mtime=0
-    printf '1\t%020d\t%s\n' "$mtime" "$photo"
+    # No usable EXIF date-taken (tag missing, malformed, or an implausible
+    # clock-reset default): fall back to plain filename order rather than
+    # source mtime. mtime looked like a reasonable fallback but is not a
+    # reliable proxy for capture order in practice -- copying/rsyncing an
+    # incoming directory commonly touches every file's mtime to the transfer
+    # time, unrelated to when it was actually shot -- whereas sequential
+    # camera filenames (e.g. Fujifilm's DSCFnnnn shutter-count naming) track
+    # real shooting order even across a clock reset.
+    printf '1\t%s\t%s\n' "$photo" "$photo"
 }
 
 # Chronological ordering for CHRONOLOGICAL_ORDER=yes: every photo in

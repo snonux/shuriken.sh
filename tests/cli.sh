@@ -7279,13 +7279,14 @@ test_stats_collect_reads_cached_identify_output() {
     test::teardown
 }
 
-# task 8v0: chronological_photo_files (album-photo-select.source.sh) orders
-# photos by EXIF date taken, ascending, falling back to source mtime (and then
-# filename) for photos with no usable EXIF date. Exercises the function
-# directly (not a full --generate) for precise control over dates/mtimes, the
-# same pattern test_stats_collect_reads_cached_identify_output above uses for
-# the EXIF cache layer.
-test_chronological_photo_files_sorts_by_exif_date_with_mtime_fallback() {
+# task 8v0 (and its bugfix once irregular.ninja/so.war.das surfaced a real
+# camera clock-reset roll): chronological_photo_files
+# (album-photo-select.source.sh) orders photos by EXIF date taken, ascending,
+# falling back to filename order for photos with no usable EXIF date.
+# Exercises the function directly (not a full --generate) for precise control
+# over dates/mtimes, the same pattern test_stats_collect_reads_cached_identify_output
+# above uses for the EXIF cache layer.
+test_chronological_photo_files_sorts_by_exif_date_with_filename_fallback() {
     local incoming_dir
     local dist_dir
     local cache_dir
@@ -7306,12 +7307,14 @@ test_chronological_photo_files_sorts_by_exif_date_with_mtime_fallback() {
     done
 
     # a.jpg/d.jpg have no DateTimeOriginal/Digitized/DateTime tag at all (only
-    # an unrelated Make tag), so they must fall back to mtime. d.jpg's mtime is
-    # deliberately EARLIER than a.jpg's, and both are deliberately out of
-    # filename order, to prove the fallback is a real mtime sort rather than an
-    # accidental filename sort.
-    touch -d '2020-01-01 00:00:00' "$incoming_dir/d.jpg"
-    touch -d '2020-01-02 00:00:00' "$incoming_dir/a.jpg"
+    # an unrelated Make tag), so they must fall back to filename order. Their
+    # mtimes are deliberately set OUT of filename order (d.jpg newer than
+    # a.jpg) to prove the fallback is a real filename sort rather than an
+    # accidental mtime sort (mtime is not trustworthy: bulk-copying/rsyncing an
+    # incoming directory commonly rewrites every file's mtime to the transfer
+    # time regardless of capture order).
+    touch -d '2020-01-02 00:00:00' "$incoming_dir/d.jpg"
+    touch -d '2020-01-01 00:00:00' "$incoming_dir/a.jpg"
 
     # b.jpg/c.jpg have a real EXIF date, deliberately reversed relative to their
     # filenames (c.jpg is EARLIER than b.jpg) so a filename-sort bug would not
@@ -7338,11 +7341,63 @@ test_chronological_photo_files_sorts_by_exif_date_with_mtime_fallback() {
 
     mapfile -t ordered < <(chronological_photo_files photos)
 
-    # Real EXIF dates (c.jpg 2021, b.jpg 2023) sort before the mtime fallback
-    # group (d.jpg 2020-01-01, a.jpg 2020-01-02): a genuine timestamp is never
-    # displaced by an approximate fallback, even though the fallback group's
-    # own dates are chronologically earlier.
-    test "${ordered[*]}" = 'c.jpg b.jpg d.jpg a.jpg'
+    # Real EXIF dates (c.jpg 2021, b.jpg 2023) sort before the filename
+    # fallback group (a.jpg, d.jpg): a genuine timestamp is never displaced by
+    # an approximate fallback. Within the fallback group, a.jpg sorts before
+    # d.jpg by filename despite its mtime being earlier -- proving mtime plays
+    # no part in the fallback order.
+    test "${ordered[*]}" = 'c.jpg b.jpg a.jpg d.jpg'
+
+    test::teardown
+}
+
+# Regression test for the real-world bug found via irregular.ninja/so.war.das:
+# a Fujifilm X100V whose battery died reset its clock to 2000-01-01, and every
+# EXIF timestamp on that roll (DateTimeOriginal/Digitized/DateTime, all
+# identical) was stamped with that bogus date instead of omitting it. Trusting
+# it at face value put an entire clock-reset roll at the very FRONT of an
+# album ahead of hundreds of correctly (2020s-)dated photos -- the opposite of
+# what CHRONOLOGICAL_ORDER promises. old.jpg's implausible year-2000 EXIF date
+# must therefore be treated the same as a missing tag (filename fallback, group
+# 1), not as a real group-0 timestamp.
+test_chronological_photo_files_treats_implausible_exif_year_as_camera_clock_reset() {
+    local incoming_dir
+    local dist_dir
+    local cache_dir
+    local name
+    local -a ordered=()
+
+    test::setup
+    test::source_shuriken_lib
+
+    incoming_dir="$TEST_TMPDIR/incoming"
+    dist_dir="$TEST_TMPDIR/dist"
+    cache_dir="$TEST_TMPDIR/cache/exif"
+    mkdir -p "$incoming_dir" "$dist_dir/photos" "$cache_dir"
+
+    for name in old.jpg real.jpg; do
+        printf 'fake\n' > "$incoming_dir/$name"
+        printf 'fake\n' > "$dist_dir/photos/$name"
+    done
+
+    {
+        photo_cache_signature 'old.jpg' "$incoming_dir/old.jpg"
+        printf '  exif:DateTimeOriginal: 2000:01:01 05:50:52\n'
+    } > "$cache_dir/old.jpg.txt"
+    {
+        photo_cache_signature 'real.jpg' "$incoming_dir/real.jpg"
+        printf '  exif:DateTimeOriginal: 2026:06:07 13:19:23\n'
+    } > "$cache_dir/real.jpg.txt"
+
+    export INCOMING_DIR="$incoming_dir"
+    export DIST_DIR="$dist_dir"
+
+    mapfile -t ordered < <(chronological_photo_files photos)
+
+    # real.jpg (a plausible 2026 date, group 0) sorts before old.jpg (an
+    # implausible 2000 clock-reset date, demoted to the group-1 filename
+    # fallback), even though 2000 is numerically earlier than 2026.
+    test "${ordered[*]}" = 'real.jpg old.jpg'
 
     test::teardown
 }
@@ -7970,8 +8025,11 @@ main() {
         'stats collect reads cached identify output' \
         test_stats_collect_reads_cached_identify_output
     test::run_case \
-        'chronological_photo_files sorts by EXIF date with mtime fallback' \
-        test_chronological_photo_files_sorts_by_exif_date_with_mtime_fallback
+        'chronological_photo_files sorts by EXIF date with filename fallback' \
+        test_chronological_photo_files_sorts_by_exif_date_with_filename_fallback
+    test::run_case \
+        'chronological_photo_files treats implausible EXIF year as camera clock reset' \
+        test_chronological_photo_files_treats_implausible_exif_year_as_camera_clock_reset
     test::run_case \
         'album/stats decoupling boundary (pn0)' \
         test_album_stats_decoupling_boundary

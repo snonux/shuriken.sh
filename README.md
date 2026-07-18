@@ -123,9 +123,10 @@ Feature toggles at a glance:
   repeatable.
 * **Chronological order** (`CHRONOLOGICAL_ORDER=no`, the default): set to
   `yes` (or pass `--chronological`) to order the main album's photos by EXIF
-  date taken instead of filename/shuffle order, falling back to source mtime
-  for photos with no usable EXIF date. Takes precedence over `SHUFFLE` when
-  both are enabled.
+  date taken instead of filename/shuffle order (years before 2001 are
+  treated as an implausible camera clock-reset default, not a real date),
+  falling back to filename order for photos with no usable EXIF date. Takes
+  precedence over `SHUFFLE` when both are enabled.
 
 ## Documentation
 
