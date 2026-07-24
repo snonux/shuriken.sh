@@ -15,7 +15,7 @@ FreeBSD. shuriken runs on Linux, macOS, and FreeBSD: at startup it resolves
 each of the four tools to whichever binary is actually GNU, preferring a
 `g`-prefixed sibling (`gfind`, `gstat`, `gcp`, `gsort`) over the plain name
 when one is on `PATH` (mirroring the tool-selection variables used by the
-sibling [gemtexter](https://codeberg.org/snonux/gemtexter) project). On Linux
+sibling [gemtexter](https://github.com/snonux/gemtexter) project). On Linux
 the plain names are already GNU, so nothing extra is required. On macOS and
 FreeBSD you must install GNU coreutils/findutils first — shuriken verifies at
 startup that the resolved tools are genuinely GNU and exits with a clear error
@@ -54,7 +54,7 @@ but provide `gsed`/`ggrep` for other GNU-reliant scripts.)
 [irregular.ninja](https://irregular.ninja) is a live photo album built with
 shuriken. Its source — including the `shuriken.conf`, templates, and publish
 setup — lives at
-[codeberg.org/snonux/irregular.ninja](https://codeberg.org/snonux/irregular.ninja)
+[github.com/snonux/irregular.ninja](https://github.com/snonux/irregular.ninja)
 and works as a ready-to-read sample configuration for all of shuriken's
 features.
 
