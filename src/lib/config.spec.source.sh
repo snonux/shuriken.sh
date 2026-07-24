@@ -61,7 +61,7 @@ declare -gra CONFIG_SPECS=(
     'DIST_DIR||no|yes|required|scalar'
     'TEMPLATE_DIR||no|yes|required|scalar'
     'FAVICON||yes|yes|favicon|scalar'
-    'SOURCE_URL|https://codeberg.org/snonux/shuriken.sh|yes|yes||scalar'
+    'SOURCE_URL|https://github.com/snonux/shuriken.sh|yes|yes||scalar'
     'TITLE||no|yes|required|scalar'
     'HEIGHT||yes|yes|opt-posint|scalar'
     'THUMBHEIGHT||no|yes|required-posint|scalar'

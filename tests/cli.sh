@@ -859,7 +859,7 @@ test_generate_source_url_override_sets_footer_link() {
         printf 'INCOMING_DIR=%q/url-incoming\n' "$TEST_TMPDIR"
         printf 'DIST_DIR=%q/url-dist\n' "$TEST_TMPDIR"
         printf 'TEMPLATE_DIR=%q/share/templates/default\n' "$TEST_REPO_ROOT"
-        printf 'SOURCE_URL=https://codeberg.org/snonux/irregular.ninja\n'
+        printf 'SOURCE_URL=https://github.com/snonux/irregular.ninja\n'
         printf 'TARBALL_INCLUDE=no\n'
     } > "$config_file"
 
@@ -870,10 +870,10 @@ test_generate_source_url_override_sets_footer_link() {
 
     page_html=$(<"$TEST_TMPDIR/url-dist/page-1.html")
     test::assert_contains \
-        'href="https://codeberg.org/snonux/irregular.ninja"' "$page_html"
-    test::assert_contains 'codeberg.org/snonux/irregular.ninja</a>' "$page_html"
+        'href="https://github.com/snonux/irregular.ninja"' "$page_html"
+    test::assert_contains 'github.com/snonux/irregular.ninja</a>' "$page_html"
     # The default credit link must be gone once SOURCE_URL is overridden.
-    test::assert_not_contains 'codeberg.org/snonux/shuriken.sh' "$page_html"
+    test::assert_not_contains 'github.com/snonux/shuriken.sh' "$page_html"
 
     test::teardown
 }
@@ -1831,7 +1831,7 @@ INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 FAVICON=''
-SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
+SOURCE_URL=https://github.com/snonux/shuriken.sh
 TITLE=A\\ simple\\ Shuriken
 HEIGHT=1200
 THUMBHEIGHT=300
@@ -1885,7 +1885,7 @@ INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 FAVICON=''
-SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
+SOURCE_URL=https://github.com/snonux/shuriken.sh
 TITLE=Minimal\\ defaults
 HEIGHT=''
 THUMBHEIGHT=30
@@ -2032,7 +2032,7 @@ INCOMING_DIR=$TEST_TMPDIR/custom-incoming
 DIST_DIR=$TEST_TMPDIR/custom-dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 FAVICON=''
-SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
+SOURCE_URL=https://github.com/snonux/shuriken.sh
 TITLE=Selected\\ config
 HEIGHT=120
 THUMBHEIGHT=30
@@ -2081,7 +2081,7 @@ INCOMING_DIR=$TEST_TMPDIR/incoming
 DIST_DIR=$TEST_TMPDIR/dist
 TEMPLATE_DIR=$TEST_REPO_ROOT/share/templates/default
 FAVICON=''
-SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
+SOURCE_URL=https://github.com/snonux/shuriken.sh
 TITLE=Current\\ directory\\ config
 HEIGHT=120
 THUMBHEIGHT=30
@@ -2157,7 +2157,7 @@ INCOMING_DIR=$TEST_TMPDIR/cli-incoming
 DIST_DIR=$dist_dir
 TEMPLATE_DIR=$TEST_TMPDIR/cli-template
 FAVICON=''
-SOURCE_URL=https://codeberg.org/snonux/shuriken.sh
+SOURCE_URL=https://github.com/snonux/shuriken.sh
 TITLE=CLI\\ title
 HEIGHT=456
 THUMBHEIGHT=45
@@ -3540,10 +3540,10 @@ test_integration_generates_album_outputs_and_cleans() {
         "$(<"$TEST_TMPDIR/dist/page-2.html")"
     test::assert_contains 'Next 2 pictures' "$page_html"
     test::assert_contains \
-        'href="https://codeberg.org/snonux/shuriken.sh"' \
+        'href="https://github.com/snonux/shuriken.sh"' \
         "$page_html"
-    test::assert_contains 'codeberg.org/snonux/shuriken.sh' "$page_html"
-    test::assert_not_contains 'codeberg.org/snonux/photoalbum' "$page_html"
+    test::assert_contains 'github.com/snonux/shuriken.sh' "$page_html"
+    test::assert_not_contains 'github.com/snonux/photoalbum' "$page_html"
     test::assert_contains 'No EXIF details available.' "$details_html"
     test::assert_contains '<div class="details-layout">' "$details_html"
     test::assert_contains '<div class="details-photo-column">' "$details_html"

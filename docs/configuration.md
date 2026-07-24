@@ -28,7 +28,7 @@ values for the current run.
 | `DIST_DIR` | `$(pwd)/dist` | Output directory (full path). |
 | `TEMPLATE_DIR` | `/usr/share/shuriken/templates/default` | Template directory. Falls back to the source tree's `share/templates/default` when running from a checkout. |
 | `FAVICON` | _(unset = bundled default)_ | Custom favicon, published as `favicon.ico`. Must be a readable file when set. |
-| `SOURCE_URL` | `https://codeberg.org/snonux/shuriken.sh` | Project/source link shown in the page header bar. |
+| `SOURCE_URL` | `https://github.com/snonux/shuriken.sh` | Project/source link shown in the page header bar. |
 | `TARBALL_INCLUDE` | `yes` (in `--init` config) | Include a `.tar` of the incoming dir in the dist. `yes`/`no`. |
 | `TARBALL_SUFFIX` | `.tar` | Suffix for the generated tarball. |
 | `TAR_OPTS` | `(-c)` | Tar options as a Bash array (or whitespace-separated scalar). |
