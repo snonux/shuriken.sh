@@ -789,3 +789,74 @@ test::write_album_config() {
         printf 'TARBALL_INCLUDE=no\n'
     } > "$config_file"
 }
+
+# Assert dist/status.json has the expected monitoring shape and values.
+#
+# status.json is the minimal sidecar an external monitor polls for page age:
+#   { "generated_at": { "human_readable": "...", "unix_epoch": <int> },
+#     "image_count": <int>, "total_size_bytes": <int> }
+#
+# image_count and total_size_bytes must match the supported incoming images so
+# the sidecar stays consistent with the album source. When expect_epoch is
+# 'seeded', the timestamp must be pinned to the Unix epoch (reproducible build);
+# otherwise (expect_epoch='live') unix_epoch must be a non-negative integer and
+# human_readable must parse as a real UTC timestamp, but no exact value is
+# pinned (the run happens at wall-clock time).
+test::assert_status_metadata() {
+    local -r status_file="$1"; shift
+    local -r incoming_dir="$1"; shift
+    local -r expect_epoch="$1"; shift
+
+    python3 - \
+        "$status_file" \
+        "$incoming_dir" \
+        "$expect_epoch" <<'PY'
+import datetime
+import json
+import pathlib
+import sys
+
+status_file, incoming_dir, expect_epoch = sys.argv[1:]
+
+status = json.loads(pathlib.Path(status_file).read_text())
+required = {"generated_at", "image_count", "total_size_bytes"}
+missing = sorted(required - set(status))
+assert not missing, f"missing status keys: {missing}"
+extra = sorted(set(status) - required)
+assert not extra, f"unexpected status keys: {extra}"
+
+generated_at = status["generated_at"]
+assert isinstance(generated_at, dict), "generated_at must be an object"
+assert set(generated_at) == {"human_readable", "unix_epoch"}, \
+    f"generated_at keys: {sorted(generated_at)}"
+assert isinstance(generated_at["human_readable"], str), \
+    "human_readable must be a string"
+assert isinstance(generated_at["unix_epoch"], int), \
+    "unix_epoch must be an integer"
+assert generated_at["unix_epoch"] >= 0, "unix_epoch must be non-negative"
+
+if expect_epoch == "seeded":
+    assert generated_at["unix_epoch"] == 0, \
+        f"seeded epoch expected 0, got {generated_at['unix_epoch']}"
+    assert generated_at["human_readable"] == "1970-01-01 00:00:00 UTC", \
+        f"seeded human_readable: {generated_at['human_readable']!r}"
+else:
+    datetime.datetime.strptime(
+        generated_at["human_readable"], "%Y-%m-%d %H:%M:%S UTC"
+    )
+    assert generated_at["unix_epoch"] > 0, \
+        f"live epoch expected > 0, got {generated_at['unix_epoch']}"
+
+incoming_path = pathlib.Path(incoming_dir)
+supported = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
+images = [
+    p for p in incoming_path.iterdir()
+    if p.is_file() and p.suffix.lower() in supported
+]
+assert status["image_count"] == len(images), \
+    f"image_count {status['image_count']} != {len(images)}"
+assert status["total_size_bytes"] == sum(p.stat().st_size for p in images), \
+    f"total_size_bytes {status['total_size_bytes']} != " \
+    f"{sum(p.stat().st_size for p in images)}"
+PY
+}

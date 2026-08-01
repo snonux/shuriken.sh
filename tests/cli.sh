@@ -1049,6 +1049,7 @@ test_generate_random_seed_repeats_html_with_shuffle() {
     if ! diff -ru \
         --exclude=blurs \
         --exclude=shuriken.json \
+        --exclude=status.json \
         --exclude=photos \
         --exclude=thumbs \
         "$TEST_TMPDIR/dist-one" \
@@ -1063,6 +1064,22 @@ test_generate_random_seed_repeats_html_with_shuffle() {
     fi
 
     test::assert_path_absent "$sort_log"
+
+    # Seeded generation pins the monitoring timestamp to the Unix epoch so
+    # the build is reproducible; the status sidecar must reflect that and
+    # stay byte-identical across both seeded runs.
+    test::assert_file_exists "$TEST_TMPDIR/dist-one/status.json"
+    test::assert_status_metadata \
+        "$TEST_TMPDIR/dist-one/status.json" \
+        "$TEST_TMPDIR/incoming" \
+        seeded
+    test::assert_status_metadata \
+        "$TEST_TMPDIR/dist-two/status.json" \
+        "$TEST_TMPDIR/incoming" \
+        seeded
+    cmp -s \
+        "$TEST_TMPDIR/dist-one/status.json" \
+        "$TEST_TMPDIR/dist-two/status.json"
     test::teardown
 }
 
@@ -1282,6 +1299,16 @@ test_generate_custom_tarball_suffix_cleans_previous_archive() {
     cat > "$fake_bin/date" <<'DATE'
 #!/usr/bin/env bash
 set -euo pipefail
+
+# A unix-epoch request (date -u +'%s') is used by status-metadata.source.sh
+# for the monitoring sidecar. Handle it before the counter so the ISO/slug
+# call sequence (and thus the tarball suffix) is unchanged by the extra call.
+for arg in "$@"; do
+    if [ "$arg" = +%s ]; then
+        printf '1719600000\n'
+        exit 0
+    fi
+done
 
 count=0
 if [ -f "$TEST_FAKE_DATE_COUNTER" ]; then
@@ -2448,6 +2475,7 @@ test_dry_run_reports_cli_overrides_without_writes() {
         "$output"
     test::assert_contains "  $dist_dir/favicon.ico" "$output"
     test::assert_contains "  $dist_dir/shuriken.json" "$output"
+    test::assert_contains "  $dist_dir/status.json" "$output"
     test::assert_contains "  $dist_dir/photos/* (6 image files)" "$output"
     test::assert_contains "  $dist_dir/thumbs/* (6 image files)" "$output"
     test::assert_contains "  $dist_dir/blurs/* (6 image files)" "$output"
@@ -3524,6 +3552,11 @@ test_integration_generates_album_outputs_and_cleans() {
     test::assert_file_exists "$TEST_TMPDIR/dist/index.html"
     test::assert_file_exists "$TEST_TMPDIR/dist/favicon.ico"
     test::assert_file_exists "$TEST_TMPDIR/dist/shuriken.json"
+    test::assert_file_exists "$TEST_TMPDIR/dist/status.json"
+    test::assert_status_metadata \
+        "$TEST_TMPDIR/dist/status.json" \
+        "$TEST_TMPDIR/incoming" \
+        live
     test::assert_no_html_subdir_output "$TEST_TMPDIR/dist"
 
     # The published dist root must carry the same (umask-default) permissions as
@@ -3612,6 +3645,43 @@ test_integration_generates_album_outputs_and_cleans() {
         "$TEST_SHURIKEN" --clean
     )
     test::assert_path_absent "$TEST_TMPDIR/dist"
+    test::teardown
+}
+
+# Regression guard for the status.json total-size accumulator: a zero-byte
+# supported image must NOT abort generation under set -euo pipefail. The size
+# sum used to be a bare "(( total += size ))", which returns status 1 when the
+# running total is 0 and would kill the whole generate on the first (sorted)
+# zero-byte image. The assignment form "total=$(( total + size ))" is safe.
+test_status_json_handles_zero_byte_source_image() {
+    local config_file
+    local fake_bin
+
+    test::setup
+    fake_bin="$TEST_TMPDIR/bin"
+    config_file="$TEST_TMPDIR/shuriken.conf"
+
+    test::install_fake_imagemagick "$fake_bin"
+    PATH="$fake_bin:$PATH" \
+        test::generate_fixture_images "$TEST_TMPDIR/incoming"
+    # Add a zero-byte supported image that sorts FIRST (0x prefix), so it is
+    # the first file _status_total_image_size processes -- the exact case where
+    # the running total is 0 when the bare (( )) would have fired.
+    : > "$TEST_TMPDIR/incoming/00-zero-byte.jpg"
+    test::write_album_config \
+        "$config_file" "$TEST_TMPDIR/incoming" "$TEST_TMPDIR/dist" \
+        'Zero byte album' 2
+
+    (
+        cd "$TEST_TMPDIR"
+        PATH="$fake_bin:$PATH" "$TEST_SHURIKEN" --generate
+    )
+
+    test::assert_file_exists "$TEST_TMPDIR/dist/status.json"
+    test::assert_status_metadata \
+        "$TEST_TMPDIR/dist/status.json" \
+        "$TEST_TMPDIR/incoming" \
+        live
     test::teardown
 }
 
@@ -4249,6 +4319,14 @@ test_refresh_splash_rewrites_only_index_from_existing_assets() {
     fi
     test "$before_page" = "$after_page"
     test "$before_metadata" = "$after_metadata"
+    # --refresh-splash rewrites the monitoring sidecar too; under a pinned
+    # random seed the timestamp stays at the Unix epoch, so the refreshed
+    # status.json must still be valid and match the seeded snapshot.
+    test::assert_file_exists "$TEST_TMPDIR/dist/status.json"
+    test::assert_status_metadata \
+        "$TEST_TMPDIR/dist/status.json" \
+        "$TEST_TMPDIR/incoming" \
+        seeded
     test::teardown
 }
 
@@ -7850,6 +7928,9 @@ main() {
     test::run_case \
         '--generate creates output structure and --clean removes it' \
         test_integration_generates_album_outputs_and_cleans
+    test::run_case \
+        'status.json survives a zero-byte source image (set -e arithmetic guard)' \
+        test_status_json_handles_zero_byte_source_image
     test::run_case \
         'view redirects use numeric last view' \
         test_render_view_redirects_uses_numeric_last_view

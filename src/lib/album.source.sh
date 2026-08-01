@@ -79,6 +79,7 @@ generate() {
     fi
     create_generation_archive "$tarball_name"
     write_generation_metadata "$tarball_name"
+    write_status_metadata
 }
 
 refresh_splash() {
@@ -142,5 +143,12 @@ refresh_splash() {
     # so the RETURN handler does not delete the file we just moved into place.
     trap - RETURN INT TERM HUP
     mv "$DIST_DIR/$tmp_html" "$DIST_DIR/index.html"
+
+    # Refreshing the splash page is itself a generation of a published page, so
+    # update dist/status.json too -- an external monitor watching the page age
+    # should see the splash refresh, not just full --generate runs. The image
+    # count/size are unchanged; only the timestamp moves. Written after the mv
+    # so the timestamp reflects a successful page promotion.
+    write_status_metadata
     log_info "Refreshed splash page $(_display_path "$DIST_DIR/index.html")"
 }

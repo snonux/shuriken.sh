@@ -160,6 +160,7 @@ _print_dry_run_files() {
     fi
     printf '  %s/favicon.ico\n' "${plan_ref["dist_dir"]}"
     printf '  %s/shuriken.json\n' "${plan_ref["dist_dir"]}"
+    printf '  %s/status.json\n' "${plan_ref["dist_dir"]}"
     printf '  %s/photos/* (%s image files)\n' \
         "${plan_ref["dist_dir"]}" "${plan_ref["image_count"]}"
     printf '  %s/thumbs/* (%s image files)\n' \
