@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policymap [
+<!ELEMENT policymap (policy)*>
+<!ATTLIST policymap xmlns CDATA #FIXED "">
+<!ELEMENT policy EMPTY>
+<!ATTLIST policy xmlns CDATA #FIXED "">
+<!ATTLIST policy domain NMTOKEN #REQUIRED>
+<!ATTLIST policy name NMTOKEN #IMPLIED>
+<!ATTLIST policy pattern CDATA #IMPLIED>
+<!ATTLIST policy rights NMTOKEN #IMPLIED>
+<!ATTLIST policy stealth NMTOKEN #IMPLIED>
+<!ATTLIST policy value CDATA #IMPLIED>
+]>
+<policymap>
+  <!--
+    ImageMagick resource policy for the shuriken container.
+
+    Alpine's ImageMagick 7 is a Q16-HDRI build: each pixel channel is a 64-bit
+    float (8 bytes/channel, 32 bytes/pixel for RGBA). Decoding a large source
+    photo therefore needs ~32 bytes * megapixels -- a 37 MP AI-upscaled PNG is
+    ~1.2 GiB for ONE decoded image buffer, and `-auto-orient` transiently holds
+    a second copy. With an unbounded policy that blows the pod's cgroup memory
+    limit and the container gets OOM-killed on the first big image.
+
+    This caps the in-RAM pixel cache (memory) and the memory-mapped cache (map)
+    so a single oversized decode spills the excess to a disk-backed pixel cache
+    (disk) in /tmp instead of OOMing. Normal-sized photos still process in RAM;
+    only the multi-megapixel upscales touch disk. Coders/delegates are left open
+    -- we need JPEG/PNG/WebP.
+  -->
+  <policy domain="resource" name="memory" value="512MiB"/>
+  <policy domain="resource" name="map" value="512MiB"/>
+  <policy domain="resource" name="disk" value="8GiB"/>
+</policymap>

@@ -20,6 +20,7 @@ COPY share/templates /usr/share/shuriken/templates
 COPY assets/site /usr/share/shuriken/assets
 COPY src/shuriken.default.conf /etc/default/shuriken
 COPY docker/entrypoint.sh /usr/local/bin/shuriken-entrypoint
+COPY docker/imagemagick-policy.xml /etc/ImageMagick-7/policy.xml
 
 RUN chmod 0755 /usr/bin/shuriken /usr/local/bin/shuriken-entrypoint
 
