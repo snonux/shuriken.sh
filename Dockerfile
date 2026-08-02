@@ -9,6 +9,7 @@ RUN apk add --no-cache \
         imagemagick \
         imagemagick-jpeg \
         imagemagick-webp \
+        openssh-client \
         rsync \
         sed \
         tar
