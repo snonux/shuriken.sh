@@ -176,6 +176,15 @@ generate_staged() {
     local staging_dir
     local -i status=0
 
+    # Drop the previous status sidecar BEFORE regenerating. status.json is the
+    # last file a successful run writes into staging, and the staging swap
+    # carries the fresh one into the live dist -- so its absence on the live
+    # dist means "generation in progress or failed". The shuriken-sync
+    # CronJob uses that as the signal to publish only after a completed
+    # generation (never a half-regenerated tree). The new status.json is
+    # written by generate() -> write_status_metadata once rendering is done.
+    rm -f "$final_dist/status.json"
+
     staging_dir=$(generation_staging_dir "$final_dist")
     log_verbose "Effective output directory: $final_dist"
     log_verbose "Generation staging directory: $staging_dir"

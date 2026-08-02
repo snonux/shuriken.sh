@@ -4624,6 +4624,11 @@ refresh_splash() {
     local tmp_html
     local tmp_path
 
+    # Drop the previous status sidecar before refreshing, mirroring generate_staged:
+    # status.json is only rewritten on a successful refresh, so its absence means
+    # "refresh in progress or failed". The shuriken-sync CronJob keys off that.
+    rm -f "$DIST_DIR/status.json"
+
     tmp_path=$(mktemp "$DIST_DIR/.index.html.XXXXXX")
     tmp_html=$(basename "$tmp_path")
 
@@ -6677,6 +6682,15 @@ generate_staged() {
     local -r final_dist="$DIST_DIR"
     local staging_dir
     local -i status=0
+
+    # Drop the previous status sidecar BEFORE regenerating. status.json is the
+    # last file a successful run writes into staging, and the staging swap
+    # carries the fresh one into the live dist -- so its absence on the live
+    # dist means "generation in progress or failed". The shuriken-sync
+    # CronJob uses that as the signal to publish only after a completed
+    # generation (never a half-regenerated tree). The new status.json is
+    # written by generate() -> write_status_metadata once rendering is done.
+    rm -f "$final_dist/status.json"
 
     staging_dir=$(generation_staging_dir "$final_dist")
     log_verbose "Effective output directory: $final_dist"

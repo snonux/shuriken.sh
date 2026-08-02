@@ -87,6 +87,11 @@ refresh_splash() {
     local tmp_html
     local tmp_path
 
+    # Drop the previous status sidecar before refreshing, mirroring generate_staged:
+    # status.json is only rewritten on a successful refresh, so its absence means
+    # "refresh in progress or failed". The shuriken-sync CronJob keys off that.
+    rm -f "$DIST_DIR/status.json"
+
     tmp_path=$(mktemp "$DIST_DIR/.index.html.XXXXXX")
     tmp_html=$(basename "$tmp_path")
 
