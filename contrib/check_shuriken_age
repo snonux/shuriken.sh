@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#!/usr/bin/perl
 # check_shuriken_age -- Nagios/gogios plugin: check the freshness of a
 # shuriken-generated photo album via its dist/status.json unix_epoch.
 #
