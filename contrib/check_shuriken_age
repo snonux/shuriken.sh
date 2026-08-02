@@ -1,0 +1,88 @@
+#!/usr/bin/env perl
+# check_shuriken_age -- Nagios/gogios plugin: check the freshness of a
+# shuriken-generated photo album via its dist/status.json unix_epoch.
+#
+# Usage:
+#   check_shuriken_age -f <status.json> [-w <seconds>] [-c <seconds>]
+#
+#   -f path   path to the album's status.json, e.g.
+#             /var/www/htdocs/irregular.ninja/status.json
+#   -w secs   WARNING age threshold  (default 604800   = 1 week)
+#   -c secs   CRITICAL age threshold (default 1209600  = 2 weeks)
+#
+# status.json is the last file a successful shuriken run writes (and the
+# shuriken-sync CronJob pushes it to the frontends alongside the album), so a
+# stale epoch means the album has not been regenerated AND published within the
+# threshold -- i.e. the daily generation CronJob or the rsync sync is broken.
+# Reading the file locally on the frontend therefore monitors the whole
+# generation+sync pipeline end to end.
+#
+# Exit codes follow the Nagios plugin API: 0 OK, 1 WARNING, 2 CRITICAL,
+# 3 UNKNOWN. One line of text plus "|perfdata" is printed to stdout.
+
+use strict;
+use warnings;
+use Getopt::Std;
+
+my %opt;
+getopts( 'f:w:c:', \%opt );
+
+my $file = $opt{f};
+my $warn = defined $opt{w} ? int $opt{w} : 604800;     # 1 week
+my $crit = defined $opt{c} ? int $opt{c} : 1209600;    # 2 weeks
+
+sub quit {
+    my ( $code, $msg ) = @_;
+    print "$msg\n";
+    exit $code;
+}
+
+quit( 3,
+    "UNKNOWN: usage: $0 -f <status.json> [-w <seconds>] [-c <seconds>]" )
+  unless defined $file && length $file;
+
+quit( 3, "UNKNOWN: -w ($warn) must be less than -c ($crit)" )
+  if $warn >= $crit;
+
+my $perf = "age=U;$warn;$crit;0;";
+
+unless ( -r $file ) {
+    quit( 2,
+        "CRITICAL: $file missing or unreadable (album not published?)|$perf" );
+}
+
+open( my $fh, '<', $file )
+  or quit( 3, "UNKNOWN: cannot open $file: $!|$perf" );
+local $/;
+my $json = <$fh>;
+close($fh);
+
+my ($epoch) = $json =~ /"unix_epoch"\s*:\s*(\d+)/;
+quit( 3, "UNKNOWN: could not parse unix_epoch from $file|$perf" )
+  unless defined $epoch;
+
+my $age = time() - $epoch;
+if ( $age < 0 ) {
+    quit( 3,
+        "UNKNOWN: negative age (epoch $epoch in the future, clock skew?)|age=$age;$warn;$crit;0;"
+    );
+}
+
+sub human {
+    my $s = shift;
+    sprintf( "%dd%02dh%02dm",
+        int( $s / 86400 ), int( ( $s % 86400 ) / 3600 ), int( ( $s % 3600 ) / 60 ) );
+}
+
+my $h    = human($age);
+my $perfv = "age=${age}s;$warn;$crit;0;";
+
+if ( $age >= $crit ) {
+    quit( 2, "CRITICAL: album age $h (epoch $epoch) >= ${crit}s|$perfv" );
+}
+elsif ( $age >= $warn ) {
+    quit( 1, "WARNING: album age $h (epoch $epoch) >= ${warn}s|$perfv" );
+}
+else {
+    quit( 0, "OK: album age $h (epoch $epoch)|$perfv" );
+}
