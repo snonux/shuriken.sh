@@ -7,8 +7,8 @@
 #
 #   -f path   path to the album's status.json, e.g.
 #             /var/www/htdocs/irregular.ninja/status.json
-#   -w secs   WARNING age threshold  (default 604800   = 1 week)
-#   -c secs   CRITICAL age threshold (default 1209600  = 2 weeks)
+#   -w secs   WARNING age threshold  (default 1814400  = 3 weeks)
+#   -c secs   CRITICAL age threshold (default 3024000  = 5 weeks)
 #
 # status.json is the last file a successful shuriken run writes (and the
 # shuriken-sync CronJob pushes it to the frontends alongside the album), so a
@@ -28,8 +28,8 @@ my %opt;
 getopts( 'f:w:c:', \%opt );
 
 my $file = $opt{f};
-my $warn = defined $opt{w} ? int $opt{w} : 604800;     # 1 week
-my $crit = defined $opt{c} ? int $opt{c} : 1209600;    # 2 weeks
+my $warn = defined $opt{w} ? int $opt{w} : 1814400;    # 3 weeks
+my $crit = defined $opt{c} ? int $opt{c} : 3024000;   # 5 weeks
 
 sub quit {
     my ( $code, $msg ) = @_;
