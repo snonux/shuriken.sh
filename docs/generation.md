@@ -62,14 +62,13 @@ working exactly as configured.
 ## Stats site
 
 `shuriken` can also generate a no-JavaScript stats site with EXIF-derived
-insights (camera leaderboard, shooting dates, exposure, dimension, format, and
-decoded-enum breakdowns), reachable from the `Stats` link in the page header
+insights (camera leaderboard, shooting dates, and megapixel / aspect-ratio /
+orientation breakdowns), reachable from the `Stats` link in the page header
 bar. This is off by default; set `STATS_PAGE=yes` or pass `--stats` to enable it.
 
-Every row on the stats overview is clickable: each bucket (each camera, ISO,
-year, aperture, orientation, …) is its own filter "mini-album" — a gallery of
-just the matching photos with view pages whose previous/next cycle within that
-filter.
+Every row on the stats overview is clickable: each bucket (each camera, year,
+month, orientation, …) is its own filter "mini-album" — a gallery of just the
+matching photos with view pages whose previous/next cycle within that filter.
 
 To keep the album root uncluttered, all of this lives under a `stats/`
 subdirectory: the overview is `stats/index.html` and each mini-album is its own

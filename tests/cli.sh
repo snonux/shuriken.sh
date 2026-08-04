@@ -4107,14 +4107,16 @@ test_generate_stats_pages_created_and_nav_linked() {
     test::assert_contains "src='../../thumbs/" "$camera_html"
     test::assert_contains "href='1.html'" "$camera_html"
 
-    # Non-camera stats are clickable mini-albums too: the ISO row links to a
-    # filter mini-album that exists and is itself a gallery of matching photos.
-    test::assert_contains 'href="iso-400/index.html"' \
+    # Non-camera stats are clickable mini-albums too: the orientation row links
+    # to a filter mini-album that exists and is itself a gallery of matching
+    # photos (the synthetic identify output gives every photo a 160x90
+    # geometry, i.e. Landscape).
+    test::assert_contains 'href="orientation-landscape/index.html"' \
         "$(<"$TEST_TMPDIR/dist/stats/index.html")"
-    test::assert_file_exists "$TEST_TMPDIR/dist/stats/iso-400/index.html"
-    test::assert_file_exists "$TEST_TMPDIR/dist/stats/iso-400/1.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/stats/orientation-landscape/index.html"
+    test::assert_file_exists "$TEST_TMPDIR/dist/stats/orientation-landscape/1.html"
     test::assert_contains "href='1.html'" \
-        "$(<"$TEST_TMPDIR/dist/stats/iso-400/index.html")"
+        "$(<"$TEST_TMPDIR/dist/stats/orientation-landscape/index.html")"
 
     # A per-camera view page exists and its navigation stays within the filter:
     # prev/next point at sibling view pages, plus a Gallery link and a Details
@@ -5426,9 +5428,10 @@ BASH
     # double-render test could not (both renders were equally broken).
     test::assert_contains 'class="stats-bar-fill" style="width:100%"' "$html"
     test::assert_contains 'class="stats-bar-fill" style="width:50%"' "$html"
-    # A histogram section is present.
-    test::assert_contains '<h2>ISO</h2>' "$html"
-    test::assert_contains '400' "$html"
+    # A histogram section is present (orientation: two landscape + one portrait
+    # geometry among the synthetic fixtures).
+    test::assert_contains '<h2>Orientation</h2>' "$html"
+    test::assert_contains 'Landscape' "$html"
     # EXIF-derived label with & and < is HTML-escaped, not raw markup.
     test::assert_contains 'Nikon &amp; Co &lt;Z6&gt;' "$html"
     test::assert_not_contains 'Nikon & Co <Z6>' "$html"
@@ -5436,10 +5439,11 @@ BASH
     test::assert_contains '3 photos analysed.' "$html"
     # The Stats nav link is wired into the shared header.
     test::assert_contains '>Stats</a>' "$html"
-    # Empty categories are omitted (no flash/lens/shutter data was supplied).
-    test::assert_not_contains '<h2>Flash</h2>' "$html"
-    test::assert_not_contains '<h2>Lenses</h2>' "$html"
+    # Removed categories are omitted entirely (no exposure/format/enum sections).
+    test::assert_not_contains '<h2>Aperture</h2>' "$html"
     test::assert_not_contains '<h2>Shutter speed</h2>' "$html"
+    test::assert_not_contains '<h2>ISO</h2>' "$html"
+    test::assert_not_contains '<h2>File format</h2>' "$html"
     test::teardown
 }
 
@@ -7147,19 +7151,10 @@ test_stats_aggregates_synthetic_exif_fixtures() {
     test::source_shuriken_lib
     reset_photo_exif_stats
 
-    # Canon frame: rationals, ISO under PhotographicSensitivity, enums, geometry.
+    # Canon frame: geometry + datetime (the kept categories only need those).
     fixture=$'  Geometry: 6000x4000+0+0\n'
     fixture+=$'  exif:Make: Canon\n'
     fixture+=$'  exif:Model: Canon EOS 5D Mark IV\n'
-    fixture+=$'  exif:LensModel: EF50mm f/1.8 STM\n'
-    fixture+=$'  exif:FNumber: 14/5\n'
-    fixture+=$'  exif:ExposureTime: 1/250\n'
-    fixture+=$'  exif:FocalLength: 50/1\n'
-    fixture+=$'  exif:PhotographicSensitivity: 400\n'
-    fixture+=$'  exif:ExposureProgram: 3\n'
-    fixture+=$'  exif:MeteringMode: 5\n'
-    fixture+=$'  exif:WhiteBalance: 0\n'
-    fixture+=$'  exif:Flash: 1\n'
     fixture+=$'  exif:DateTimeOriginal: 2023:06:14 15:30:00'
     accumulate_photo_stats 'a.jpg' <<< "$fixture"
 
@@ -7176,55 +7171,36 @@ test_stats_aggregates_synthetic_exif_fixtures() {
         = 'camera-canon-eos-5d-mark-iv'
     # The camera's filter mini-album keeps both frames in encounter order.
     test "${STATS_FILTER_PHOTOS[camera-canon-eos-5d-mark-iv]}" = $'a.jpg\nb.png'
-    test "${STATS_LENSES[EF50mm f/1.8 STM]}" -eq 1
     test "${STATS_YEARS[2023]}" -eq 1
     test "${STATS_YEARS[2024]}" -eq 1
     test "${STATS_MONTHS[06]}" -eq 1
     test "${STATS_MONTHS[01]}" -eq 1
-    # 14/5 = f/2.8 ; 1/250s ; FocalLength 50mm -> 35-70mm ; ISO 400.
-    test "${STATS_APERTURE[f/2.8]}" -eq 1
-    test "${STATS_SHUTTER[1/250s]}" -eq 1
-    test "${STATS_FOCAL[35-70mm]}" -eq 1
-    test "${STATS_ISO[400]}" -eq 1
-    test "${STATS_EXPOSURE_PROGRAM[Aperture priority]}" -eq 1
-    test "${STATS_METERING[Multi-segment]}" -eq 1
-    test "${STATS_WHITE_BALANCE[Auto]}" -eq 1
-    test "${STATS_FLASH[Flash fired]}" -eq 1
     # 6000x4000 = 24MP -> 20-40MP, 3:2, Landscape; portrait frame -> Portrait.
     test "${STATS_MEGAPIXELS[20-40MP]}" -eq 2
     test "${STATS_ASPECT[3:2]}" -eq 2
     test "${STATS_ORIENTATION[Landscape]}" -eq 1
     test "${STATS_ORIENTATION[Portrait]}" -eq 1
-    test "${STATS_FORMAT[JPEG]}" -eq 1
-    test "${STATS_FORMAT[PNG]}" -eq 1
 
     test::teardown
 }
 
 test_stats_tolerates_missing_and_edge_case_fields() {
-    local fixture
-
     test::setup
     test::source_shuriken_lib
     reset_photo_exif_stats
 
-    # Photo with no EXIF and no camera at all: counted, but no leaderboard entry.
+    # Photo with no EXIF and no camera at all: counted, but no leaderboard entry
+    # and no dimension buckets (no Geometry line for the recorder to parse).
     accumulate_photo_stats 'bare.gif' <<< $'  Format: GIF'
     test "${STATS_TOTALS[photos]}" -eq 1
     test "${#STATS_CAMERAS[@]}" -eq 0
-    test "${STATS_FORMAT[GIF]}" -eq 1
+    test "${#STATS_MEGAPIXELS[@]}" -eq 0
+    test "${#STATS_ORIENTATION[@]}" -eq 0
 
     # Make only (no Model) still produces a leaderboard entry and mini-album.
     accumulate_photo_stats 'phone.jpg' <<< $'  exif:Make: Apple'
     test "${STATS_CAMERAS[Apple]}" -eq 1
     test "${STATS_FILTER_PAGEBASE[camera${STATS_FILTER_KEYSEP}Apple]}" = 'camera-apple'
-
-    # Rational guards: zero denominator and bare decimal exposure time.
-    fixture=$'  exif:FNumber: 4/0\n'
-    fixture+=$'  exif:ExposureTime: 0.5'
-    accumulate_photo_stats 'edge.jpg' <<< "$fixture"
-    test "${#STATS_APERTURE[@]}" -eq 0
-    test "${STATS_SHUTTER[1/2s]}" -eq 1
 
     test::teardown
 }
@@ -7290,17 +7266,8 @@ test_stats_bucket_boundaries_and_datetime_parsing() {
     test::setup
     test::source_shuriken_lib
 
-    # Aperture/shutter/ISO/focal boundary checks against the plan ladders.
-    test "$(_stats_aperture_bucket "$(_stats_rational_to_decimal 14/5)")" = 'f/2.8'
-    test "$(_stats_aperture_bucket 1.4)" = 'f/1.8 or wider'
-    test "$(_stats_aperture_bucket 22)" = 'f/22 or narrower'
-    test "$(_stats_shutter_bucket 0.002)" = '1/500s'
-    test "$(_stats_shutter_bucket 2)" = 'longer than 1s'
-    test "$(_stats_iso_bucket 100)" = '100'
-    test "$(_stats_iso_bucket 250)" = '400'
-    test "$(_stats_iso_bucket 51200)" = 'over 25600'
-    test "$(_stats_focal_bucket 24)" = '24-35mm'
-    test "$(_stats_focal_bucket 300)" = 'over 200mm'
+    # Megapixel/aspect/orientation bucket boundary checks (the kept ordered
+    # categories) against the plan ladders.
     test "$(_stats_megapixels_bucket 24)" = '20-40MP'
     test "$(_stats_aspect_bucket 1920 1080)" = '16:9'
     test "$(_stats_aspect_bucket 100 100)" = '1:1'

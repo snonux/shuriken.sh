@@ -116,7 +116,7 @@ Feature toggles at a glance:
   without affecting EXIF tooltips or the stats site itself.
 * **Stats site** (`STATS_PAGE=no`, the default): set `--stats` to generate a
   no-JavaScript EXIF stats site under `stats/` (camera leaderboard, shooting
-  dates, exposure/dimension/format breakdowns), with each bucket as its own
+  dates, megapixel/aspect/orientation breakdowns), with each bucket as its own
   clickable filter mini-album.
 * **Reproducible builds**: set `RANDOM_SEED` (or `--random-seed VALUE`) to make
   splash/background picks, animation classes, timestamps, and shuffle order
