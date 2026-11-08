@@ -1,6 +1,16 @@
-FROM alpine:latest
+# Pinned base: Alpine 3.24.4 (released 2026-11-05), multi-arch index digest.
+# A floating alpine:latest made every rebuild a different, unrecorded base.
+# Bump tag and digest together when Alpine publishes a new patch release
+# (skopeo inspect docker://docker.io/library/alpine:<version>).
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
-RUN apk add --no-cache \
+# apk upgrade pulls the v3.24 security fixes published after the base image
+# was built. Packages are not pinned with `pkg=version`: Alpine drops
+# superseded versions from its repositories, so exact pins break any later
+# rebuild. The image tag is immutable instead (conf
+# f3s/shuriken/docker-image/Justfile): it freezes the resolved package set,
+# and every refresh is a NEW tag whose package list is recorded at build time.
+RUN apk upgrade --no-cache && apk add --no-cache \
         bash \
         coreutils \
         findutils \

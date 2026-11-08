@@ -59,7 +59,10 @@ the bundled favicon falls back to `assets/site/favicon.ico`.
 
 ## Docker image
 
-Build the Alpine-based image from the source checkout:
+Build the Alpine-based image from the source checkout. The `Dockerfile` pins
+an Alpine patch release by digest and runs `apk upgrade`; bump the pin when
+Alpine publishes a new patch release, and publish every rebuild under a new
+image tag:
 
 ```sh
 docker build -t shuriken .
